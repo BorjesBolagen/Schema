@@ -6,7 +6,8 @@ const MIGRATIONS_FOLDER = "./drizzle";
 
 /** Kör migrationerna mot vilken av de två drivrutinerna som än används. */
 export async function runMigrations(db: Db, folder = MIGRATIONS_FOLDER): Promise<void> {
-  const isPglite = "$client" in db && db.$client?.constructor?.name === "PGlite";
+  const client = (db as { $client?: { constructor?: { name?: string } } }).$client;
+  const isPglite = client?.constructor?.name === "PGlite";
   if (isPglite) {
     await migratePglite(db as never, { migrationsFolder: folder });
   } else {

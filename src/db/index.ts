@@ -2,11 +2,14 @@ import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { PGlite } from "@electric-sql/pglite";
 import postgres from "postgres";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 
-export type Db =
-  | ReturnType<typeof drizzlePg<typeof schema>>
-  | ReturnType<typeof drizzlePglite<typeof schema>>;
+/**
+ * Gemensam typ för båda drivrutinerna. Utan den blir varje
+ * insert-anrop en union av två överlagringar och typningen faller isär.
+ */
+export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
 /**
  * Databaskoppling.
@@ -18,10 +21,10 @@ export type Db =
  */
 export function createDb(url = process.env.DATABASE_URL): Db {
   if (url?.startsWith("postgres://") || url?.startsWith("postgresql://")) {
-    return drizzlePg(postgres(url, { max: 10 }), { schema });
+    return drizzlePg(postgres(url, { max: 10 }), { schema }) as unknown as Db;
   }
   const dataDir = url?.replace(/^pglite:\/\//, "") ?? process.env.PGLITE_DIR ?? "memory://";
-  return drizzlePglite(new PGlite(dataDir), { schema });
+  return drizzlePglite(new PGlite(dataDir), { schema }) as unknown as Db;
 }
 
 let cached: Db | undefined;
