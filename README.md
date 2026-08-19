@@ -30,6 +30,18 @@ npm run db:generate   # ny migration efter ändring i src/db/schema.ts
 npm run typecheck
 ```
 
+## Kör appen
+
+```bash
+npm run import -- --file /sökväg/till/Schema.xlsx --db ./.pgdata
+PGLITE_DIR=./.pgdata npm run dev
+```
+
+Startsidan listar tavlorna. Varje tavla har egen veckostart och egna
+veckodagar — dagschemat visar måndag–fredag, veckoschemat söndag–fredag
+— och samma vecka går att se med bilarna som rader eller med personerna
+som rader. Personvyn är samma data som bilvyn, inte en andra kopia.
+
 ## Importera befintliga Excel-scheman
 
 ```bash
@@ -44,7 +56,8 @@ rapporterar hur mycket som gick att koppla.
 personnummer, hemadresser och förarkortnummer. Importen läser medvetet
 inte de fälten — bara namn, anställningsnummer, signatur, kontaktväg och
 grupptillhörighet — men filen som helhet ska ligga utanför versions-
-hanteringen. `data/` är ignorerad och är en lämplig plats.
+hanteringen. `data/` är ignorerad och är en lämplig plats. Detsamma gäller
+`.pgdata/` — utvecklingsdatabasen innehåller importerad personal.
 
 ### Vad importen visar om underlaget
 

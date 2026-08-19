@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #ffffff;
+  --color-ink: #16181d;
+  --color-muted: #6b7280;
+  --color-line: #e3e6ea;
+  --color-accent: #1f5fa9;
+  --color-warn: #b45309;
+  --color-danger: #b42318;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: #f5f6f8;
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Rutnätet ska kunna rulla i sidled utan att sidan gör det. */
+.grid-scroll {
+  overflow-x: auto;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .grid-scroll {
+    overflow: visible;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+}

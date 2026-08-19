@@ -9,3 +9,4 @@ next-env.d.ts
 .pgdata/
 drizzle/meta/_journal.json.bak
 .DS_Store
+.pgdata/
