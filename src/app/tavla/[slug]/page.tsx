@@ -5,7 +5,7 @@ import { getDb, schema } from "@/db";
 import { getBoardWeek } from "@/server/board-week";
 import { fullDisplayName } from "@/lib/name";
 import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
-import { WeekGrid } from "@/components/WeekGrid";
+import { BoardWorkspace } from "@/components/BoardWorkspace";
 import { PersonGrid } from "@/components/PersonGrid";
 
 export const dynamic = "force-dynamic";
@@ -41,10 +41,20 @@ export default async function BoardPage({ params, searchParams }: Props) {
   if (!data) notFound();
 
   const db = getDb();
-  const [employees, vehicles] = await Promise.all([
+  const [employees, stations] = await Promise.all([
     db.select().from(schema.employee).orderBy(asc(schema.employee.firstName)),
-    db.select().from(schema.vehicle).orderBy(asc(schema.vehicle.displayName)),
+    db.select().from(schema.stationPlace),
   ]);
+  const stationName = new Map(stations.map((s) => [s.id, s.name]));
+  const allEmployees = employees
+    .filter((e) => e.isActive)
+    .map((e) => ({
+      id: e.id,
+      name: fullDisplayName(e),
+      employeeNumber: e.employeeNumber,
+      stationPlace: e.stationPlaceId ? (stationName.get(e.stationPlaceId) ?? null) : null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 
   const prev = step(year, week, -1);
   const next = step(year, week, 1);
@@ -54,6 +64,9 @@ export default async function BoardPage({ params, searchParams }: Props) {
   const doubleBooked = data.conflicts.filter((c) => c.kind === "double-booked").length;
   const absentPlanned = data.conflicts.filter((c) => c.kind === "absent").length;
   const unmanned = data.conflicts.filter((c) => c.kind === "unmanned").length;
+  const unplacedPeople = new Set(
+    data.crew.filter((c) => c.unplaced.length > 0).map((c) => c.employeeId),
+  ).size;
 
   return (
     <main className="mx-auto max-w-[1600px] px-6 py-8">
@@ -93,10 +106,16 @@ export default async function BoardPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      {(doubleBooked > 0 || absentPlanned > 0) && (
+      {(doubleBooked > 0 || absentPlanned > 0 || unplacedPeople > 0) && (
         <p className="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-(--color-warn)">
           {doubleBooked > 0 && <>⚠ {doubleBooked} dubbelbokning{doubleBooked === 1 ? "" : "ar"}. </>}
           {absentPlanned > 0 && <>⚠ {absentPlanned} inplanerad under frånvaro. </>}
+          {unplacedPeople > 0 && (
+            <>
+              ⚠ {unplacedPeople} {unplacedPeople === 1 ? "person jobbar" : "personer jobbar"} men
+              saknar bil.{" "}
+            </>
+          )}
           <span className="text-(--color-muted)">{unmanned} tomma pass.</span>
         </p>
       )}
@@ -105,11 +124,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
         {view === "person" ? (
           <PersonGrid data={data} />
         ) : (
-          <WeekGrid
-            data={data}
-            employees={employees.map((e) => ({ id: e.id, name: fullDisplayName(e) }))}
-            vehicles={vehicles.map((v) => ({ id: v.id, name: v.displayName }))}
-          />
+          <BoardWorkspace data={data} allEmployees={allEmployees} />
         )}
       </div>
     </main>

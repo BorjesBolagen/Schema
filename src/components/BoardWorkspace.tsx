@@ -1,0 +1,208 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { BoardWeek, CellAssignment } from "@/server/board-week";
+import type { Shift } from "@/lib/work-days";
+import {
+  assignEmployee,
+  fillWeek,
+  moveAssignment,
+  removeAssignment,
+  type FillResult,
+} from "@/app/actions";
+import { WeekGrid } from "./WeekGrid";
+import { CrewPanel } from "./CrewPanel";
+import { CrewPicker, type PickerEmployee } from "./CrewPicker";
+import { AssignmentEditor } from "./AssignmentEditor";
+import { parseDragId, parseDropId } from "./dnd";
+
+interface Props {
+  data: BoardWeek;
+  allEmployees: PickerEmployee[];
+}
+
+export function BoardWorkspace({ data, allEmployees }: Props) {
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [open, setOpen] = useState<CellAssignment | null>(null);
+  const [picker, setPicker] = useState(false);
+  const [fillReport, setFillReport] = useState<FillResult | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  /* ⇧ under dragningen kopierar i stället för att flytta. */
+  const copyRef = useRef(false);
+  useEffect(() => {
+    const set = (e: KeyboardEvent) => (copyRef.current = e.shiftKey);
+    window.addEventListener("keydown", set);
+    window.addEventListener("keyup", set);
+    return () => {
+      window.removeEventListener("keydown", set);
+      window.removeEventListener("keyup", set);
+    };
+  }, []);
+
+  const sensors = useSensors(
+    // Liten tröskel så ett klick på ett pass inte startar en dragning.
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+
+  const employeeOf = useCallback(
+    (source: ReturnType<typeof parseDragId>): string | null => {
+      if (!source) return null;
+      if (source.kind === "crew") return source.employeeId;
+      for (const row of data.rows) {
+        for (const cells of Object.values(row.cells)) {
+          const hit = cells.find((c) => c.id === source.assignmentId);
+          if (hit) return hit.employeeId;
+        }
+      }
+      return null;
+    },
+    [data.rows],
+  );
+
+  /**
+   * Varför en släppning skulle bli fel — räknas ut redan under
+   * dragningen så problemet syns innan man släpper, inte efter.
+   */
+  const dropCheck = useCallback(
+    (target: { boardRowId: string; date: string; shift: Shift }): string | null => {
+      const employeeId = employeeOf(parseDragId(dragging ?? ""));
+      if (!employeeId) return null;
+
+      const member = data.crew.find((c) => c.employeeId === employeeId);
+      if (member?.absence) {
+        const { fromDate, toDate, type } = member.absence;
+        if (target.date >= fromDate && target.date <= toDate) return type;
+      }
+
+      for (const row of data.rows) {
+        const cells = row.cells[`${target.date}|${target.shift}`] ?? [];
+        for (const c of cells) {
+          if (c.employeeId !== employeeId) continue;
+          if (row.id === target.boardRowId) return null; // redan i cellen
+          return `Står redan på ${row.label}`;
+        }
+      }
+
+      if (member && !member.workDays.some((w) => w.date === target.date)) {
+        return "Jobbar inte den dagen";
+      }
+      return null;
+    },
+    [dragging, data.crew, data.rows, employeeOf],
+  );
+
+  function onDragEnd(event: DragEndEvent) {
+    setDragging(null);
+    const source = parseDragId(String(event.active.id));
+    const target = event.over ? parseDropId(String(event.over.id)) : null;
+    if (!source || !target) return;
+
+    const copy = copyRef.current;
+    startTransition(async () => {
+      if (target.kind === "crew-panel") {
+        if (source.kind === "assignment") {
+          await removeAssignment(source.assignmentId, data.board.slug);
+        }
+        return;
+      }
+      if (source.kind === "crew") {
+        await assignEmployee({
+          boardRowId: target.boardRowId,
+          date: target.date,
+          shift: target.shift,
+          employeeId: source.employeeId,
+          boardSlug: data.board.slug,
+        });
+      } else {
+        await moveAssignment({
+          assignmentId: source.assignmentId,
+          boardRowId: target.boardRowId,
+          date: target.date,
+          shift: target.shift,
+          copy,
+          boardSlug: data.board.slug,
+        });
+      }
+    });
+  }
+
+  const draggedLabel = (() => {
+    const employeeId = employeeOf(parseDragId(dragging ?? ""));
+    return data.crew.find((c) => c.employeeId === employeeId)?.name ?? "Pass";
+  })();
+
+  return (
+    <DndContext
+      // Fast id så serverns och klientens aria-attribut blir lika.
+      id="board"
+      sensors={sensors}
+      onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
+      onDragCancel={() => setDragging(null)}
+      onDragEnd={onDragEnd}
+    >
+      <div className="mb-3 flex flex-wrap items-center gap-3 no-print">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            startTransition(async () => {
+              setFillReport(
+                await fillWeek({
+                  boardId: data.board.id,
+                  boardSlug: data.board.slug,
+                  year: data.year,
+                  week: data.week,
+                }),
+              );
+            })
+          }
+          className="rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white disabled:opacity-50"
+        >
+          Fyll veckan
+        </button>
+        <span className="text-xs text-(--color-muted)">
+          Arbetsdagar från: {data.workDaySource}
+        </span>
+        {fillReport && (
+          <span className="text-xs text-(--color-muted)">
+            {fillReport.created} pass utlagda
+            {fillReport.unplaced.length > 0 &&
+              `, ${new Set(fillReport.unplaced.map((u) => u.employeeId)).size} personer utan bil`}
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-4">
+        <div className="min-w-0 flex-1">
+          <WeekGrid data={data} onOpen={setOpen} dropCheck={dropCheck} />
+        </div>
+        <CrewPanel crew={data.crew} dates={data.dates} onOpenPicker={() => setPicker(true)} />
+      </div>
+
+      <DragOverlay>
+        {dragging && (
+          <span className="rounded bg-(--color-accent) px-2 py-1 text-sm text-white shadow-lg">
+            {draggedLabel}
+          </span>
+        )}
+      </DragOverlay>
+
+      {picker && (
+        <CrewPicker
+          boardId={data.board.id}
+          boardSlug={data.board.slug}
+          employees={allEmployees}
+          selected={data.crew.map((c) => c.employeeId)}
+          onClose={() => setPicker(false)}
+        />
+      )}
+
+      {open && (
+        <AssignmentEditor cell={open} boardSlug={data.board.slug} onClose={() => setOpen(null)} />
+      )}
+    </DndContext>
+  );
+}

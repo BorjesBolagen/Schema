@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import {
   type AbsenceLike,
@@ -10,7 +10,9 @@ import {
   isRowActive,
 } from "@/lib/conflicts";
 import { fullDisplayName } from "@/lib/name";
+import type { Shift, WorkDay } from "@/lib/work-days";
 import { weekDates } from "@/lib/week";
+import { getWorkDayProvider } from "./work-days";
 
 export interface CellAssignment {
   id: string;
@@ -19,9 +21,8 @@ export interface CellAssignment {
   employeeName: string | null;
   vehicleId: string | null;
   vehicleName: string | null;
-  startTime: string | null;
-  endTime: string | null;
   note: string | null;
+  source: "generated" | "manual";
   conflicts: Conflict[];
 }
 
@@ -33,16 +34,29 @@ export interface WeekRow {
   groupLabel: string | null;
   defaultVehicleId: string | null;
   defaultVehicleName: string | null;
-  /** Nyckel `datum` → tilldelningar i cellen, sorterade på slot. */
+  /** Nyckel `datum|skift` → passen i cellen, sorterade på slot. */
   cells: Record<string, CellAssignment[]>;
   /** Datum där raden ligger utanför sitt giltighetsintervall. */
   inactiveDates: string[];
 }
 
+export interface CrewMember {
+  employeeId: string;
+  name: string;
+  stationPlace: string | null;
+  /** Dagarna personen jobbar den här veckan, från arbetsdagskällan. */
+  workDays: Array<{ date: string; shift: Shift }>;
+  /** Arbetsdagar som ännu inte lagts ut på någon bil. */
+  unplaced: Array<{ date: string; shift: Shift }>;
+  absence: { type: string; fromDate: string; toDate: string } | null;
+}
+
 export interface PersonDay {
   date: string;
-  entries: Array<{ rowLabel: string; vehicleName: string | null; note: string | null }>;
+  entries: Array<{ rowLabel: string; vehicleName: string | null; shift: Shift; note: string | null }>;
   absence: { type: string; note: string | null } | null;
+  /** Jobbar enligt arbetsdagskällan men står inte på någon rad. */
+  worksButUnplaced: boolean;
 }
 
 export interface BoardWeek {
@@ -50,17 +64,14 @@ export interface BoardWeek {
   year: number;
   week: number;
   dates: string[];
+  shifts: Shift[];
   rows: WeekRow[];
-  /** Personvyn: samma tilldelningar med personerna som rader. */
   personRows: Array<{ employeeId: string; name: string; days: PersonDay[] }>;
   conflicts: Conflict[];
-  /** Frånvaro som berör veckan, för sidopanelen. */
-  absences: Array<{ employeeId: string; name: string; type: string; fromDate: string; toDate: string }>;
-  /** Förare utan bokning en viss dag — nyckel `datum`. */
-  availableByDate: Record<string, Array<{ id: string; name: string }>>;
+  crew: CrewMember[];
+  /** Namnet på källan som gav arbetsdagarna, för att visa var de kommer ifrån. */
+  workDaySource: string;
 }
-
-const fullName = fullDisplayName;
 
 export async function getBoardBySlug(slug: string) {
   const db = getDb();
@@ -73,16 +84,21 @@ export async function listBoards() {
   return db.select().from(schema.board).orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
 }
 
-export async function getBoardWeek(slug: string, year: number, week: number): Promise<BoardWeek | null> {
+export async function getBoardWeek(
+  slug: string,
+  year: number,
+  week: number,
+): Promise<BoardWeek | null> {
   const db = getDb();
   const board = await getBoardBySlug(slug);
   if (!board) return null;
 
   const dates = weekDates(year, week, board.weekStartsOn, board.visibleWeekdays);
+  const shifts = board.visibleShifts as Shift[];
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  const [rows, groups, employees, vehicles] = await Promise.all([
+  const [rows, groups, employees, vehicles, stations, crewRows] = await Promise.all([
     db
       .select()
       .from(schema.boardRow)
@@ -91,23 +107,31 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
     db.select().from(schema.boardGroup).where(eq(schema.boardGroup.boardId, board.id)),
     db.select().from(schema.employee),
     db.select().from(schema.vehicle),
+    db.select().from(schema.stationPlace),
+    db
+      .select()
+      .from(schema.boardCrew)
+      .where(eq(schema.boardCrew.boardId, board.id))
+      .orderBy(asc(schema.boardCrew.sortOrder)),
   ]);
 
   const employeeById = new Map(employees.map((e) => [e.id, e]));
   const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
+  const stationById = new Map(stations.map((s) => [s.id, s]));
   const groupById = new Map(groups.map((g) => [g.id, g]));
 
-  /* Alla tilldelningar i veckan, från samtliga tavlor — dubbelbokning
-     ska hittas även när den andra bokningen ligger på en annan tavla. */
-  const allRows = await db.select().from(schema.boardRow);
-  const allBoards = await db.select().from(schema.board);
+  /* Alla pass i veckan, från samtliga tavlor — dubbelbokning ska hittas
+     även när den andra bokningen ligger på en annan tavla. */
+  const [allRows, allBoards, rawAssignments] = await Promise.all([
+    db.select().from(schema.boardRow),
+    db.select().from(schema.board),
+    db
+      .select()
+      .from(schema.assignment)
+      .where(and(gte(schema.assignment.date, first), lte(schema.assignment.date, last))),
+  ]);
   const rowInfo = new Map(allRows.map((r) => [r.id, r]));
   const boardName = new Map(allBoards.map((b) => [b.id, b.name]));
-
-  const rawAssignments = await db
-    .select()
-    .from(schema.assignment)
-    .where(and(gte(schema.assignment.date, first), lte(schema.assignment.date, last)));
 
   const globalAssignments: AssignmentLike[] = rawAssignments.map((a) => {
     const row = rowInfo.get(a.boardRowId);
@@ -115,9 +139,10 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
       id: a.id,
       boardRowId: a.boardRowId,
       date: a.date,
+      shift: a.shift,
       slot: a.slot,
       employeeId: a.employeeId,
-      vehicleId: a.vehicleId,
+      vehicleId: a.vehicleId ?? row?.defaultVehicleId ?? null,
       boardId: row?.boardId ?? "",
       boardName: boardName.get(row?.boardId ?? "") ?? "",
       rowLabel: row ? (row.sublabel ? `${row.label} ${row.sublabel}` : row.label) : "",
@@ -128,7 +153,6 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
     .select()
     .from(schema.absence)
     .where(and(lte(schema.absence.fromDate, last), gte(schema.absence.toDate, first)));
-
   const absenceLikes: AbsenceLike[] = rawAbsences.map((a) => ({
     employeeId: a.employeeId,
     fromDate: a.fromDate,
@@ -145,6 +169,7 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
       {
         rows: rows.map((r) => ({ id: r.id, validFrom: r.validFrom, validTo: r.validTo })),
         dates,
+        shifts,
         assignments: boardAssignments,
       },
     ]),
@@ -153,26 +178,27 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
 
   const weekRows: WeekRow[] = rows.map((r) => {
     const cells: Record<string, CellAssignment[]> = {};
-    for (const date of dates) cells[date] = [];
+    for (const date of dates) for (const s of shifts) cells[`${date}|${s}`] = [];
+
     for (const a of rawAssignments) {
       if (a.boardRowId !== r.id) continue;
-      if (!cells[a.date]) continue;
+      const key = `${a.date}|${a.shift}`;
+      if (!cells[key]) continue;
       const emp = a.employeeId ? employeeById.get(a.employeeId) : undefined;
       const veh = a.vehicleId ? vehicleById.get(a.vehicleId) : undefined;
-      cells[a.date].push({
+      cells[key].push({
         id: a.id,
         slot: a.slot,
         employeeId: a.employeeId,
-        employeeName: emp ? fullName(emp) : null,
+        employeeName: emp ? fullDisplayName(emp) : null,
         vehicleId: a.vehicleId,
         vehicleName: veh?.displayName ?? null,
-        startTime: a.startTime,
-        endTime: a.endTime,
         note: a.note,
+        source: a.source,
         conflicts: index.byAssignment.get(a.id) ?? [],
       });
     }
-    for (const date of dates) cells[date].sort((x, y) => x.slot - y.slot);
+    for (const key of Object.keys(cells)) cells[key].sort((x, y) => x.slot - y.slot);
 
     const def = r.defaultVehicleId ? vehicleById.get(r.defaultVehicleId) : undefined;
     return {
@@ -184,74 +210,105 @@ export async function getBoardWeek(slug: string, year: number, week: number): Pr
       defaultVehicleId: r.defaultVehicleId,
       defaultVehicleName: def?.displayName ?? null,
       cells,
-      inactiveDates: dates.filter((d) => !isRowActive({ id: r.id, validFrom: r.validFrom, validTo: r.validTo }, d)),
+      inactiveDates: dates.filter(
+        (d) => !isRowActive({ id: r.id, validFrom: r.validFrom, validTo: r.validTo }, d),
+      ),
     };
   });
 
-  /* Personvyn — samma data, personerna som rader. */
+  /* Arbetsdagar för tavlans bemanning. */
+  const crewIds = crewRows.map((c) => c.employeeId);
+  const provider = getWorkDayProvider();
+  const workDayResult =
+    crewIds.length > 0
+      ? await provider.getWorkDays(crewIds, first, last)
+      : { workDays: [] as WorkDay[], covered: [] as string[] };
+
+  const placedOn = new Set(
+    boardAssignments
+      .filter((a) => a.employeeId)
+      .map((a) => `${a.employeeId}|${a.date}|${a.shift}`),
+  );
+
+  const crew: CrewMember[] = crewRows
+    .map((c) => {
+      const emp = employeeById.get(c.employeeId);
+      const mine = workDayResult.workDays
+        .filter((w) => w.employeeId === c.employeeId)
+        .map((w) => ({ date: w.date, shift: w.shift }));
+      const mineAbsences = rawAbsences.filter((a) => a.employeeId === c.employeeId);
+      const abs = mineAbsences[0];
+      const isAway = (date: string) =>
+        mineAbsences.some((a) => date >= a.fromDate && date <= a.toDate);
+      return {
+        employeeId: c.employeeId,
+        name: emp ? fullDisplayName(emp) : "Okänd",
+        stationPlace: emp?.stationPlaceId ? (stationById.get(emp.stationPlaceId)?.name ?? null) : null,
+        workDays: mine,
+        // Ledig är inte samma sak som ej utlagd — annars tjatar listan om
+        // semester och slutar fungera som veckans kvitto.
+        unplaced: mine.filter(
+          (w) => !placedOn.has(`${c.employeeId}|${w.date}|${w.shift}`) && !isAway(w.date),
+        ),
+        absence: abs ? { type: abs.type, fromDate: abs.fromDate, toDate: abs.toDate } : null,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "sv"));
+
+  /* Personvyn — samma pass, personerna som rader. Bemanningen finns
+     med även utan pass, så det syns vem som saknar utläggning. */
   const personIds = [
-    ...new Set(boardAssignments.map((a) => a.employeeId).filter((v): v is string => v !== null)),
+    ...new Set([
+      ...crewIds,
+      ...boardAssignments.map((a) => a.employeeId).filter((v): v is string => v !== null),
+    ]),
   ];
-  const absenceByEmployee = new Map<string, typeof rawAbsences>();
-  for (const a of rawAbsences) {
-    absenceByEmployee.set(a.employeeId, [...(absenceByEmployee.get(a.employeeId) ?? []), a]);
-  }
+  const worksOn = new Set(workDayResult.workDays.map((w) => `${w.employeeId}|${w.date}`));
 
   const personRows = personIds
     .map((employeeId) => {
       const emp = employeeById.get(employeeId);
       const days: PersonDay[] = dates.map((date) => {
         const entries = rawAssignments
-          .filter((a) => a.employeeId === employeeId && a.date === date && boardRowIds.has(a.boardRowId))
+          .filter(
+            (a) => a.employeeId === employeeId && a.date === date && boardRowIds.has(a.boardRowId),
+          )
           .map((a) => {
             const row = rowInfo.get(a.boardRowId);
-            const veh = a.vehicleId ? vehicleById.get(a.vehicleId) : undefined;
+            // Passets egen bil vinner, annars radens standardbil.
+            const vehicleId = a.vehicleId ?? row?.defaultVehicleId ?? null;
             return {
               rowLabel: row?.label ?? "",
-              vehicleName: veh?.displayName ?? null,
+              vehicleName: vehicleId ? (vehicleById.get(vehicleId)?.displayName ?? null) : null,
+              shift: a.shift,
               note: a.note,
             };
           });
-        const abs = (absenceByEmployee.get(employeeId) ?? []).find(
-          (x) => date >= x.fromDate && date <= x.toDate,
+        const abs = rawAbsences.find(
+          (x) => x.employeeId === employeeId && date >= x.fromDate && date <= x.toDate,
         );
-        return { date, entries, absence: abs ? { type: abs.type, note: abs.note } : null };
+        return {
+          date,
+          entries,
+          absence: abs ? { type: abs.type, note: abs.note } : null,
+          worksButUnplaced:
+            entries.length === 0 && !abs && worksOn.has(`${employeeId}|${date}`),
+        };
       });
-      return { employeeId, name: emp ? fullName(emp) : "Okänd", days };
+      return { employeeId, name: emp ? fullDisplayName(emp) : "Okänd", days };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
-
-  /* Sidopanelen: vilka som är lediga respektive frånvarande per dag. */
-  const availableByDate: BoardWeek["availableByDate"] = {};
-  const activeEmployees = employees.filter((e) => e.isActive);
-  for (const date of dates) {
-    const booked = new Set(
-      globalAssignments.filter((a) => a.date === date).map((a) => a.employeeId),
-    );
-    const away = new Set(
-      absenceLikes.filter((a) => date >= a.fromDate && date <= a.toDate).map((a) => a.employeeId),
-    );
-    availableByDate[date] = activeEmployees
-      .filter((e) => !booked.has(e.id) && !away.has(e.id))
-      .map((e) => ({ id: e.id, name: fullName(e) }))
-      .sort((a, b) => a.name.localeCompare(b.name, "sv"));
-  }
 
   return {
     board,
     year,
     week,
     dates,
+    shifts,
     rows: weekRows,
     personRows,
     conflicts,
-    absences: rawAbsences.map((a) => ({
-      employeeId: a.employeeId,
-      name: employeeById.has(a.employeeId) ? fullName(employeeById.get(a.employeeId)!) : "Okänd",
-      type: a.type,
-      fromDate: a.fromDate,
-      toDate: a.toDate,
-    })),
-    availableByDate,
+    crew,
+    workDaySource: provider.name,
   };
 }

@@ -12,6 +12,7 @@ function a(over: Partial<AssignmentLike> & Pick<AssignmentLike, "id">): Assignme
   return {
     boardRowId: "row-1",
     date: DATES[0],
+    shift: "day",
     slot: 0,
     employeeId: null,
     vehicleId: null,
@@ -92,6 +93,56 @@ describe("detectBookingConflicts", () => {
 
 });
 
+describe("skift", () => {
+  it("räknar inte samma bil på dag och natt som krock — det är poängen med skiften", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", vehicleId: "v1", shift: "day", boardRowId: "row-1" }),
+        a({ id: "2", vehicleId: "v1", shift: "night", boardRowId: "row-2" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c.filter((x) => x.kind === "vehicle-clash")).toHaveLength(0);
+  });
+
+  it("hittar samma bil på två rader inom samma skift", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", vehicleId: "v1", shift: "night", boardRowId: "row-1" }),
+        a({ id: "2", vehicleId: "v1", shift: "night", boardRowId: "row-2" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c[0]).toMatchObject({ kind: "vehicle-clash", vehicleId: "v1" });
+  });
+
+  it("varnar mildare när en person har både dag- och nattpass samma dygn", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", employeeId: "e1", shift: "day" }),
+        a({ id: "2", employeeId: "e1", shift: "night", boardRowId: "row-2" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c.map((x) => x.kind)).toEqual(["day-and-night"]);
+  });
+
+  it("men två pass på samma skift är fortfarande en dubbelbokning", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", employeeId: "e1", shift: "night" }),
+        a({ id: "2", employeeId: "e1", shift: "night", boardRowId: "row-2" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c.map((x) => x.kind)).toEqual(["double-booked"]);
+  });
+});
+
 describe("detectUnmanned", () => {
   it("pekar ut tomma celler men inte rader som slutat gälla", () => {
     const c = detectUnmanned([
@@ -101,18 +152,24 @@ describe("detectUnmanned", () => {
           { id: "row-2", validFrom: null, validTo: DATES[0] },
         ],
         dates: DATES,
+        shifts: ["day"],
         assignments: [a({ id: "1", boardRowId: "row-1", date: DATES[0] })],
       },
     ]);
     expect(c).toEqual([
-      { kind: "unmanned", date: DATES[0], boardRowId: "row-2" },
-      { kind: "unmanned", date: DATES[1], boardRowId: "row-1" },
+      { kind: "unmanned", date: DATES[0], boardRowId: "row-2", shift: "day" },
+      { kind: "unmanned", date: DATES[1], boardRowId: "row-1", shift: "day" },
     ]);
   });
 
   it("larmar bara för de datum tavlan visar", () => {
     const c = detectUnmanned([
-      { rows: [{ id: "row-1", validFrom: null, validTo: null }], dates: [DATES[0]], assignments: [] },
+      {
+        rows: [{ id: "row-1", validFrom: null, validTo: null }],
+        dates: [DATES[0]],
+        shifts: ["day"],
+        assignments: [],
+      },
     ]);
     expect(c).toHaveLength(1);
   });
@@ -133,6 +190,7 @@ describe("indexConflicts", () => {
         {
           rows: [{ id: "row-3", validFrom: null, validTo: null }],
           dates: [DATES[0]],
+          shifts: ["day"],
           assignments: [],
         },
       ]),
@@ -140,6 +198,6 @@ describe("indexConflicts", () => {
     const idx = indexConflicts(conflicts);
     expect(idx.byAssignment.get("1")?.[0].kind).toBe("double-booked");
     expect(idx.byAssignment.get("2")?.[0].kind).toBe("double-booked");
-    expect(idx.byCell.get(`row-3|${DATES[0]}`)?.[0].kind).toBe("unmanned");
+    expect(idx.byCell.get(`row-3|${DATES[0]}|day`)?.[0].kind).toBe("unmanned");
   });
 });

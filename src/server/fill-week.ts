@@ -19,6 +19,12 @@ export interface ExistingAssignment {
   source: "generated" | "manual";
 }
 
+export interface AbsenceRange {
+  employeeId: string;
+  fromDate: string;
+  toDate: string;
+}
+
 export interface PlannedAssignment {
   boardRowId: string;
   date: string;
@@ -55,6 +61,7 @@ export function planWeek(input: {
   workDays: WorkDay[];
   baseSchedule: BaseScheduleEntry[];
   existing: ExistingAssignment[];
+  absences?: AbsenceRange[];
   dates: string[];
 }): WeekPlan {
   const inWeek = new Set(input.dates);
@@ -95,6 +102,13 @@ export function planWeek(input: {
 
   for (const wd of workDays) {
     if (placedManually.has(`${wd.employeeId}|${wd.date}|${wd.shift}`)) continue;
+
+    /* Den som är ledig bemannas inte, och räknas inte heller som ej
+       utlagd — annars skulle semester se ut som en lucka att fylla. */
+    const away = (input.absences ?? []).some(
+      (a) => a.employeeId === wd.employeeId && wd.date >= a.fromDate && wd.date <= a.toDate,
+    );
+    if (away) continue;
 
     const rows = input.baseSchedule
       .filter((e) => e.employeeId === wd.employeeId && e.shift === wd.shift && covers(e, wd.date))

@@ -154,9 +154,13 @@ export function expandPatterns(
  * mönster. Ingen behöver vänta på att alla är på plats.
  */
 export class CompositeWorkDayProvider implements WorkDayProvider {
-  readonly name = "composite";
+  readonly name: string;
 
-  constructor(private readonly providers: WorkDayProvider[]) {}
+  constructor(private readonly providers: WorkDayProvider[]) {
+    // Namnge efter källorna, inte efter konstruktionen — det som ska
+    // synas i appen är varifrån arbetsdagarna faktiskt kom.
+    this.name = providers.map((p) => p.name).join(" → ") || "ingen källa";
+  }
 
   async getWorkDays(employeeIds: string[], from: string, to: string): Promise<WorkDayResult> {
     const workDays: WorkDay[] = [];

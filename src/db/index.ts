@@ -27,12 +27,21 @@ export function createDb(url = process.env.DATABASE_URL): Db {
   return drizzlePglite(new PGlite(dataDir), { schema }) as unknown as Db;
 }
 
-let cached: Db | undefined;
+/**
+ * Delad koppling för hela processen.
+ *
+ * Ligger på globalThis, inte i en modulvariabel. Next bygger sidor och
+ * server-actions i skilda modulgrafer, så en modullokal cache ger dem
+ * varsin PGlite mot samma katalog — skrivningar i den ena syns då aldrig
+ * i den andra. Samma knep överlever dessutom omladdningen i utveckling.
+ */
+const DB_KEY = Symbol.for("schema.db");
+type GlobalWithDb = typeof globalThis & { [DB_KEY]?: Db };
 
-/** Delad koppling för Next-processen. */
 export function getDb(): Db {
-  cached ??= createDb();
-  return cached;
+  const g = globalThis as GlobalWithDb;
+  g[DB_KEY] ??= createDb();
+  return g[DB_KEY];
 }
 
 export { schema };

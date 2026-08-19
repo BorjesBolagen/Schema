@@ -177,3 +177,17 @@ describe("planWeek", () => {
     expect(plan.create.map((c) => c.date)).toEqual([MON]);
   });
 });
+
+describe("frånvaro", () => {
+  it("bemannar inte den som är ledig, och kallar hen inte ej utlagd", () => {
+    const plan = planWeek({
+      workDays: work("johan", [MON, TUE, WED]),
+      baseSchedule: [base({ boardRowId: "bt2426", employeeId: "johan" })],
+      existing: [],
+      absences: [{ employeeId: "johan", fromDate: TUE, toDate: WED }],
+      dates: WEEK,
+    });
+    expect(plan.create.map((c) => c.date)).toEqual([MON]);
+    expect(plan.unplaced).toEqual([]);
+  });
+});

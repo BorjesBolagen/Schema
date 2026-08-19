@@ -1,31 +1,24 @@
 import type { BoardWeek } from "@/server/board-week";
 import { shortDayLabel } from "@/lib/week";
-
-const ABSENCE_ICON: Record<string, string> = {
-  semester: "🏖",
-  sjuk: "🤒",
-  vab: "🧒",
-  tjanstledig: "📄",
-  foraldraledig: "🍼",
-  kompledig: "⏱",
-  ovrig: "•",
-};
+import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
 
 /**
  * Samma vecka med personerna som rader.
  *
- * Det är vad trafikledningens och Hudiksvalls Excel-blad gör i dag —
- * men här är det en vy av samma tilldelningar, inte en andra kopia som
- * någon måste hålla i takt.
+ * Det är vad Excel-bladen TRAFIKLEDNING och Hudiksvall underhåller som
+ * separata kopior i dag — här är det en vy av samma pass, inte en andra
+ * sanning att hålla i takt.
  */
 export function PersonGrid({ data }: { data: BoardWeek }) {
   if (data.personRows.length === 0) {
     return (
       <p className="rounded border border-(--color-line) bg-white p-6 text-sm text-(--color-muted)">
-        Inga bokade förare den här veckan.
+        Ingen bemanning vald för den här tavlan ännu.
       </p>
     );
   }
+
+  const showShift = data.shifts.length > 1;
 
   return (
     <div className="grid-scroll rounded border border-(--color-line) bg-white">
@@ -60,17 +53,22 @@ export function PersonGrid({ data }: { data: BoardWeek }) {
                     <span className="text-(--color-warn)">
                       {ABSENCE_ICON[d.absence.type] ?? "•"} {d.absence.type}
                     </span>
-                  ) : d.entries.length === 0 ? (
-                    <span className="text-(--color-muted)">▢</span>
-                  ) : (
+                  ) : d.entries.length > 0 ? (
                     d.entries.map((e, i) => (
                       <span key={i} className="block">
+                        {showShift && <span className="mr-1">{SHIFT_ICON[e.shift]}</span>}
                         {e.rowLabel}
-                        {e.vehicleName && (
+                        {e.vehicleName && e.vehicleName !== e.rowLabel && (
                           <span className="ml-1 text-xs text-(--color-muted)">{e.vehicleName}</span>
                         )}
                       </span>
                     ))
+                  ) : d.worksButUnplaced ? (
+                    <span className="text-(--color-warn)" title="Jobbar men står inte på någon bil">
+                      ⚠ ej utlagd
+                    </span>
+                  ) : (
+                    <span className="text-(--color-muted)">▢</span>
                   )}
                 </td>
               ))}
