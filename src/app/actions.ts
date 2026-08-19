@@ -278,3 +278,209 @@ export async function removeBaseScheduleEntry(id: string, boardSlug: string): Pr
   await db.delete(schema.baseSchedule).where(eq(schema.baseSchedule.id, id));
   refresh(boardSlug);
 }
+
+/* ------------------------------------------------------------------ *
+ * Tavelredigering
+ *
+ * Allt utseende ägs av trafikansvarig: radernas namn, ordning,
+ * gruppering, vilka veckodagar och skift tavlan visar. Ingen av de
+ * ändringarna ska kräva en utvecklare.
+ * ------------------------------------------------------------------ */
+
+export async function updateBoard(input: {
+  boardId: string;
+  boardSlug: string;
+  name?: string;
+  weekStartsOn?: number;
+  visibleWeekdays?: number[];
+  visibleShifts?: string[];
+  cellFields?: string[];
+}): Promise<void> {
+  const db = getDb();
+  const { boardId, boardSlug, ...rest } = input;
+  const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+  if (Object.keys(patch).length === 0) return;
+
+  // En tavla utan veckodagar eller skift skulle visa ingenting alls.
+  if (Array.isArray(patch.visibleWeekdays) && patch.visibleWeekdays.length === 0) return;
+  if (Array.isArray(patch.visibleShifts) && patch.visibleShifts.length === 0) return;
+
+  await db
+    .update(schema.board)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(schema.board.id, boardId));
+  refresh(boardSlug);
+}
+
+export async function addBoardRow(input: {
+  boardId: string;
+  boardSlug: string;
+  label: string;
+  sublabel?: string | null;
+  groupId?: string | null;
+  defaultVehicleId?: string | null;
+}): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select({ sortOrder: schema.boardRow.sortOrder })
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, input.boardId));
+  const next = rows.reduce((max, r) => Math.max(max, r.sortOrder), -1) + 1;
+
+  await db.insert(schema.boardRow).values({
+    boardId: input.boardId,
+    label: input.label.trim() || "Ny rad",
+    sublabel: input.sublabel?.trim() || null,
+    groupId: input.groupId ?? null,
+    defaultVehicleId: input.defaultVehicleId ?? null,
+    sortOrder: next,
+  });
+  refresh(input.boardSlug);
+}
+
+export async function updateBoardRow(input: {
+  rowId: string;
+  boardSlug: string;
+  label?: string;
+  sublabel?: string | null;
+  groupId?: string | null;
+  color?: string | null;
+  defaultVehicleId?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+}): Promise<void> {
+  const db = getDb();
+  const { rowId, boardSlug, ...rest } = input;
+  const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+  if (Object.keys(patch).length === 0) return;
+
+  await db
+    .update(schema.boardRow)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(eq(schema.boardRow.id, rowId));
+  refresh(boardSlug);
+}
+
+/**
+ * Avslutar en rad i stället för att radera den.
+ *
+ * En inställd linje ska inte ta sin historik med sig — passen som redan
+ * körts finns kvar, raden slutar bara visas framåt.
+ */
+export async function endBoardRow(rowId: string, lastDate: string, boardSlug: string): Promise<void> {
+  const db = getDb();
+  await db
+    .update(schema.boardRow)
+    .set({ validTo: lastDate, updatedAt: new Date() })
+    .where(eq(schema.boardRow.id, rowId));
+  refresh(boardSlug);
+}
+
+export async function deleteBoardRow(rowId: string, boardSlug: string): Promise<void> {
+  const db = getDb();
+  await db.delete(schema.boardRow).where(eq(schema.boardRow.id, rowId));
+  refresh(boardSlug);
+}
+
+/** Sätter radernas ordning efter att de dragits om. */
+export async function reorderBoardRows(rowIds: string[], boardSlug: string): Promise<void> {
+  const db = getDb();
+  for (const [i, id] of rowIds.entries()) {
+    await db.update(schema.boardRow).set({ sortOrder: i }).where(eq(schema.boardRow.id, id));
+  }
+  refresh(boardSlug);
+}
+
+export async function addBoardGroup(
+  boardId: string,
+  label: string,
+  boardSlug: string,
+): Promise<void> {
+  const db = getDb();
+  const groups = await db
+    .select({ sortOrder: schema.boardGroup.sortOrder })
+    .from(schema.boardGroup)
+    .where(eq(schema.boardGroup.boardId, boardId));
+  const next = groups.reduce((max, g) => Math.max(max, g.sortOrder), -1) + 1;
+
+  await db
+    .insert(schema.boardGroup)
+    .values({ boardId, label: label.trim() || "Ny grupp", sortOrder: next });
+  refresh(boardSlug);
+}
+
+export async function renameBoardGroup(
+  groupId: string,
+  label: string,
+  boardSlug: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(schema.boardGroup)
+    .set({ label: label.trim() || "Ny grupp" })
+    .where(eq(schema.boardGroup.id, groupId));
+  refresh(boardSlug);
+}
+
+/** Tar bort en grupprubrik. Raderna blir kvar, utan gruppering. */
+export async function deleteBoardGroup(groupId: string, boardSlug: string): Promise<void> {
+  const db = getDb();
+  await db.delete(schema.boardGroup).where(eq(schema.boardGroup.id, groupId));
+  refresh(boardSlug);
+}
+
+/* ------------------------------------------------------------------ *
+ * Arbetsmönster
+ * ------------------------------------------------------------------ */
+
+export interface PatternDayInput {
+  cycleWeek: number;
+  weekday: number;
+  shift: Shift;
+}
+
+/**
+ * Sparar en persons arbetsmönster.
+ *
+ * Ett mönster per person i taget — det tidigare ersätts. Historiska
+ * mönster med giltighetsperiod hanteras när TransPA-hämtningen finns;
+ * tills dess är det här reservkällan och ska vara enkel att rätta.
+ */
+export async function saveWorkPattern(input: {
+  employeeId: string;
+  cycleWeeks: number;
+  anchorDate: string;
+  weekStartsOn: number;
+  days: PatternDayInput[];
+  boardSlug: string;
+}): Promise<void> {
+  const db = getDb();
+  const cycleWeeks = Math.min(8, Math.max(1, Math.round(input.cycleWeeks)));
+
+  await db.delete(schema.workPattern).where(eq(schema.workPattern.employeeId, input.employeeId));
+
+  if (input.days.length === 0) {
+    refresh(input.boardSlug);
+    return;
+  }
+
+  const [pattern] = await db
+    .insert(schema.workPattern)
+    .values({
+      employeeId: input.employeeId,
+      cycleWeeks,
+      anchorDate: input.anchorDate,
+      weekStartsOn: input.weekStartsOn,
+    })
+    .returning();
+
+  // Dagar utanför cykeln skulle aldrig kunna träffa och filtreras bort.
+  const days = input.days.filter((d) => d.cycleWeek < cycleWeeks);
+  if (days.length) {
+    await db
+      .insert(schema.workPatternDay)
+      .values(days.map((d) => ({ ...d, workPatternId: pattern.id })))
+      .onConflictDoNothing();
+  }
+  refresh(input.boardSlug);
+}

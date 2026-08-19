@@ -16,6 +16,9 @@ import { WeekGrid } from "./WeekGrid";
 import { CrewPanel } from "./CrewPanel";
 import { CrewPicker, type PickerEmployee } from "./CrewPicker";
 import { AssignmentEditor } from "./AssignmentEditor";
+import { BoardEditor } from "./BoardEditor";
+import { BaseScheduleEditor } from "./BaseScheduleEditor";
+import { WorkPatternEditor } from "./WorkPatternEditor";
 import { parseDragId, parseDropId } from "./dnd";
 
 interface Props {
@@ -27,6 +30,8 @@ export function BoardWorkspace({ data, allEmployees }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [open, setOpen] = useState<CellAssignment | null>(null);
   const [picker, setPicker] = useState(false);
+  type Panel = "board" | "base" | "patterns" | null;
+  const [panel, setPanel] = useState<Panel>(null);
   const [fillReport, setFillReport] = useState<FillResult | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -173,6 +178,30 @@ export function BoardWorkspace({ data, allEmployees }: Props) {
               `, ${new Set(fillReport.unplaced.map((u) => u.employeeId)).size} personer utan bil`}
           </span>
         )}
+
+        <span className="ml-auto flex gap-2">
+          <button
+            type="button"
+            onClick={() => setPanel("base")}
+            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+          >
+            Bas-schema
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanel("patterns")}
+            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+          >
+            Arbetsmönster
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanel("board")}
+            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+          >
+            ⚙ Tavla
+          </button>
+        </span>
       </div>
 
       <div className="flex gap-4">
@@ -203,6 +232,35 @@ export function BoardWorkspace({ data, allEmployees }: Props) {
       {open && (
         <AssignmentEditor cell={open} boardSlug={data.board.slug} onClose={() => setOpen(null)} />
       )}
+
+      {panel === "board" && (
+        <BoardEditor
+          board={{
+            id: data.board.id,
+            slug: data.board.slug,
+            name: data.board.name,
+            weekStartsOn: data.board.weekStartsOn,
+            visibleWeekdays: data.board.visibleWeekdays,
+            visibleShifts: data.board.visibleShifts,
+            cellFields: data.board.cellFields,
+          }}
+          rows={data.rows.map((r) => ({
+            id: r.id,
+            label: r.label,
+            sublabel: r.sublabel,
+            groupId: r.groupId,
+            color: r.color,
+            defaultVehicleId: r.defaultVehicleId,
+            validTo: r.validTo,
+          }))}
+          groups={data.groups}
+          vehicles={data.vehicles}
+          onClose={() => setPanel(null)}
+        />
+      )}
+
+      {panel === "base" && <BaseScheduleEditor data={data} onClose={() => setPanel(null)} />}
+      {panel === "patterns" && <WorkPatternEditor data={data} onClose={() => setPanel(null)} />}
     </DndContext>
   );
 }

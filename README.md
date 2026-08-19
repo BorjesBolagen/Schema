@@ -42,6 +42,23 @@ npm run db:generate   # ny migration efter ändring i src/db/schema.ts
 npm run typecheck
 ```
 
+## Vad en trafikansvarig sätter upp själv
+
+Tre knappar i verktygsraden, ingen av dem kräver en utvecklare:
+
+**⚙ Tavla** — radernas namn, ordning (dra), gruppering, färg och vilken
+bil varje rad står för, samt vilka veckodagar och skift tavlan visar och
+vilka fält som syns i cellen. En rad kan *avslutas* med ett datum i
+stället för att raderas, så en inställd linje inte tar sin historik med
+sig.
+
+**Bas-schema** — kopplar person till bil. Inga dagar anges här; flera
+personer får kopplas till samma rad och deras arbetsdagar avgör vem som
+står där vilken dag.
+
+**Arbetsmönster** — vilka dagar och skift en person jobbar, som en cykel
+på 1–8 veckor. Ersätts av TransPA-hämtningen per person när den finns.
+
 ## Att arbeta i veckovyn
 
 - Dra en person från sidopanelen till en cell för att lägga ut ett pass.
@@ -83,8 +100,12 @@ läsas innan `TranspaWorkDayProvider` skrivs.
 npm test                                   # enhetstester
 npx tsx scripts/e2e-fill.ts                # fyll veckan i en riktig webbläsare
 npx tsx scripts/e2e-drag.ts                # dra ut och flytta pass
+npx tsx scripts/e2e-editor.ts              # bygg om tavlan, mönster, bas-schema
 npx tsx scripts/screenshot.ts <url> <fil>  # bild av en vy
 ```
 
 E2E-skripten kräver att utvecklingsservern kör; sätt `BASE_URL` om den
-ligger på en annan port än 3211.
+ligger på en annan port. `e2e-editor.ts` är acceptanstestet för
+layoutfriheten: det bygger om tavlan, ger en person ett mönster, kopplar
+hen till en ny rad och kontrollerar att veckan bemannas — allt genom
+gränssnittet, utan kodändring.

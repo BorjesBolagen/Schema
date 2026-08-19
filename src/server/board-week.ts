@@ -31,7 +31,9 @@ export interface WeekRow {
   label: string;
   sublabel: string | null;
   color: string | null;
+  groupId: string | null;
   groupLabel: string | null;
+  validTo: string | null;
   defaultVehicleId: string | null;
   defaultVehicleName: string | null;
   /** Nyckel `datum|skift` → passen i cellen, sorterade på slot. */
@@ -71,6 +73,26 @@ export interface BoardWeek {
   crew: CrewMember[];
   /** Namnet på källan som gav arbetsdagarna, för att visa var de kommer ifrån. */
   workDaySource: string;
+
+  /* Underlag för redigeringsvyerna. */
+  groups: Array<{ id: string; label: string }>;
+  vehicles: Array<{ id: string; name: string }>;
+  baseSchedule: Array<{
+    id: string;
+    boardRowId: string;
+    employeeId: string;
+    shift: Shift;
+    validFrom: string | null;
+    validTo: string | null;
+  }>;
+  /** Arbetsmönstren för bemanningen, för mönsterredigeraren. */
+  patterns: Array<{
+    employeeId: string;
+    cycleWeeks: number;
+    anchorDate: string;
+    weekStartsOn: number;
+    days: Array<{ cycleWeek: number; weekday: number; shift: Shift }>;
+  }>;
 }
 
 export async function getBoardBySlug(slug: string) {
@@ -98,7 +120,7 @@ export async function getBoardWeek(
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  const [rows, groups, employees, vehicles, stations, crewRows] = await Promise.all([
+  const [rows, groups, employees, vehicles, stations, crewRows, baseRows] = await Promise.all([
     db
       .select()
       .from(schema.boardRow)
@@ -113,6 +135,7 @@ export async function getBoardWeek(
       .from(schema.boardCrew)
       .where(eq(schema.boardCrew.boardId, board.id))
       .orderBy(asc(schema.boardCrew.sortOrder)),
+    db.select().from(schema.baseSchedule).where(eq(schema.baseSchedule.boardId, board.id)),
   ]);
 
   const employeeById = new Map(employees.map((e) => [e.id, e]));
@@ -206,7 +229,9 @@ export async function getBoardWeek(
       label: r.label,
       sublabel: r.sublabel,
       color: r.color,
+      groupId: r.groupId,
       groupLabel: r.groupId ? (groupById.get(r.groupId)?.label ?? null) : null,
+      validTo: r.validTo,
       defaultVehicleId: r.defaultVehicleId,
       defaultVehicleName: def?.displayName ?? null,
       cells,
@@ -299,6 +324,25 @@ export async function getBoardWeek(
     })
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 
+  /* Arbetsmönstren för bemanningen, till mönsterredigeraren. */
+  const patternRows = crewIds.length
+    ? await db
+        .select()
+        .from(schema.workPattern)
+        .where(inArray(schema.workPattern.employeeId, crewIds))
+    : [];
+  const patternDays = patternRows.length
+    ? await db
+        .select()
+        .from(schema.workPatternDay)
+        .where(
+          inArray(
+            schema.workPatternDay.workPatternId,
+            patternRows.map((p) => p.id),
+          ),
+        )
+    : [];
+
   return {
     board,
     year,
@@ -310,5 +354,29 @@ export async function getBoardWeek(
     conflicts,
     crew,
     workDaySource: provider.name,
+    groups: groups
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((g) => ({ id: g.id, label: g.label })),
+    vehicles: vehicles
+      .filter((v) => v.isActive)
+      .map((v) => ({ id: v.id, name: v.displayName }))
+      .sort((a, b) => a.name.localeCompare(b.name, "sv")),
+    baseSchedule: baseRows.map((b) => ({
+      id: b.id,
+      boardRowId: b.boardRowId,
+      employeeId: b.employeeId,
+      shift: b.shift,
+      validFrom: b.validFrom,
+      validTo: b.validTo,
+    })),
+    patterns: patternRows.map((p) => ({
+      employeeId: p.employeeId,
+      cycleWeeks: p.cycleWeeks,
+      anchorDate: p.anchorDate,
+      weekStartsOn: p.weekStartsOn,
+      days: patternDays
+        .filter((d) => d.workPatternId === p.id)
+        .map((d) => ({ cycleWeek: d.cycleWeek, weekday: d.weekday, shift: d.shift })),
+    })),
   };
 }
