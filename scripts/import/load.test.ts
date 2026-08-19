@@ -30,7 +30,9 @@ function row(label: string, sublabel: string | null, cells: Array<[string, strin
 function block(week: number, day: ScheduleRow[], far: ScheduleRow[] = []): WeekBlock {
   return {
     week,
+    year: 2025,
     headerRow: 0,
+    dateMismatches: 0,
     day: { dates: ["2025-06-30", "2025-07-01"], rows: day },
     far: { dates: ["2025-06-29"], rows: far },
     absences: [],

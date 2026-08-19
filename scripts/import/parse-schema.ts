@@ -1,25 +1,33 @@
+import { isoWeek, mondayOfWeek, addDays as addIsoDays } from "../../src/lib/week";
 import { type Grid, isoDate, text } from "./xlsx";
 
 /* Kolumnindex (nollbaserade) i bladet "Schema NYBHLF". */
 const DAY_LABEL = 0; // A
 const DAY_SUBLABEL = 1; // B
-const DAY_FIRST = 2; // C — måndag
-const DAY_LAST = 6; // G — fredag
+const DAY_FIRST_HEADER = 2; // C — första veckodagskolumnen
 const FAR_LABEL = 8; // I
-const FAR_FIRST = 9; // J — söndag
-const FAR_LAST = 14; // O — fredag
 
-const WEEK_HEADER = /^Vecka\s+(\d+)$/i;
+const WEEK_HEADER = /^Vecka\s*:?\s*(\d+)$/i;
 
 /**
  * Semesterrutan är olika rubricerad i olika veckor — "Semester",
- * "Semester/Lediga", "Lediga/Semester", "Semester:". Bara 14 av 82
- * veckoblock har någon rubrik alls.
+ * "Semester/Lediga", "Lediga/Semester". Bara 14 av 82 veckoblock har
+ * någon rubrik alls.
  */
 const ABSENCE_HEADING = /semester|lediga/i;
 
 /** Årtalsrader ("2025", "2025/2026") delar av bladet och är inte turer. */
 const YEAR_SEPARATOR = /^\d{4}(\s*\/\s*\d{4})?$/;
+
+const WEEKDAY_NAMES: Record<string, number> = {
+  söndag: 0, sondag: 0,
+  måndag: 1, mandag: 1,
+  tisdag: 2,
+  onsdag: 3,
+  torsdag: 4,
+  fredag: 5,
+  lördag: 6, lordag: 6,
+};
 
 export interface ScheduleCell {
   date: string;
@@ -50,18 +58,51 @@ export interface AbsenceEntry {
 
 export interface WeekBlock {
   week: number;
+  year: number;
   headerRow: number;
-  /** Vänsterblocket: rader = bil/linje, kolumner = måndag–fredag. */
+  /** Vänsterblocket: rader = bil/linje, veckodagarna enligt rubrikraden. */
   day: SubBoard;
-  /** Högerblocket: rader = bil/linje, kolumner = söndag–fredag. */
+  /** Högerblocket: rader = bil/linje, inleds med helgen före måndagen. */
   far: SubBoard;
   /** Poster ur semesterrutan som gick att tyda entydigt. */
   absences: AbsenceEntry[];
   /** Text ur semesterrutan som inte gick att tyda — går till granskning. */
   unparsedAbsenceText: string[];
+  /** Datumceller i bladet som inte stämmer med veckonummer och veckodag. */
+  dateMismatches: number;
 }
 
-const WEEKDAYS: Record<string, number> = {
+/**
+ * Datumet för en veckodag i en given ISO-vecka.
+ *
+ * Fjärrblocket inleder veckan med helgen *före* måndagen, så lördag och
+ * söndag ligger före veckans måndag, inte efter.
+ */
+export function dateForWeekday(year: number, week: number, weekday: number): string {
+  const monday = mondayOfWeek(year, week);
+  const offset = weekday === 0 ? -1 : weekday === 6 ? -2 : weekday - 1;
+  return addIsoDays(monday, offset);
+}
+
+/** Läser veckodagsrubrikerna från och med en kolumn, tills en okänd cell. */
+function readWeekdayHeader(
+  grid: Grid,
+  row: number,
+  firstCol: number,
+): Array<{ col: number; weekday: number }> {
+  const out: Array<{ col: number; weekday: number }> = [];
+  for (let c = firstCol; c < firstCol + 10; c++) {
+    const wd = WEEKDAY_NAMES[text(grid, row, c).toLowerCase()];
+    if (wd === undefined) {
+      if (out.length) break;
+      continue;
+    }
+    out.push({ col: c, weekday: wd });
+  }
+  return out;
+}
+
+const WEEKDAY_ABBR: Record<string, number> = {
   sön: 0, son: 0, sö: 0,
   mån: 1, man: 1, må: 1, ma: 1,
   tis: 2, ti: 2,
@@ -71,13 +112,7 @@ const WEEKDAYS: Record<string, number> = {
   lör: 6, lor: 6, lö: 6,
 };
 
-function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function weekdayOf(iso: string): number {
+function weekdayOfIso(iso: string): number {
   return new Date(`${iso}T00:00:00Z`).getUTCDay();
 }
 
@@ -92,7 +127,7 @@ function weekdayOf(iso: string): number {
  */
 export function parseAbsenceText(raw: string, weekDates: string[]): AbsenceEntry | null {
   const s = raw.trim();
-  if (!s) return null;
+  if (!s || weekDates.length === 0) return null;
 
   const whole = s.match(/^(.+?)\s+hela\s+veckan\.?$/i);
   if (whole) {
@@ -106,9 +141,9 @@ export function parseAbsenceText(raw: string, weekDates: string[]): AbsenceEntry
 
   const day = s.match(/^(.+?)\s+([A-Za-zÅÄÖåäö]{2,4})\.?$/);
   if (day) {
-    const wd = WEEKDAYS[day[2].toLowerCase()];
+    const wd = WEEKDAY_ABBR[day[2].toLowerCase()];
     if (wd !== undefined) {
-      const hit = weekDates.find((d) => weekdayOf(d) === wd);
+      const hit = weekDates.find((d) => weekdayOfIso(d) === wd);
       if (hit) return { raw: s, alias: day[1].trim(), fromDate: hit, toDate: hit };
     }
   }
@@ -116,26 +151,16 @@ export function parseAbsenceText(raw: string, weekDates: string[]): AbsenceEntry
   return null;
 }
 
-function readSubBoard(
-  grid: Grid,
-  opts: {
-    labelCol: number;
-    firstCol: number;
-    lastCol: number;
-    dateRow: number;
-    startRow: number;
-    endRow: number;
-    isStopLabel?: (label: string) => boolean;
-    subLabelCol?: number;
-  },
-): { board: SubBoard; stoppedAtRow: number | null } {
-  const dates: string[] = [];
-  for (let c = opts.firstCol; c <= opts.lastCol; c++) {
-    const d = isoDate(grid, opts.dateRow, c);
-    if (d) dates.push(d);
-    else dates.push("");
-  }
+interface SubBoardOpts {
+  labelCol: number;
+  subLabelCol?: number;
+  columns: Array<{ col: number; date: string }>;
+  startRow: number;
+  endRow: number;
+  isStopLabel?: (label: string) => boolean;
+}
 
+function readSubBoard(grid: Grid, opts: SubBoardOpts): { board: SubBoard; stoppedAtRow: number | null } {
   const rows: ScheduleRow[] = [];
   let stoppedAtRow: number | null = null;
   let lastReal: ScheduleRow | undefined;
@@ -149,10 +174,9 @@ function readSubBoard(
     if (YEAR_SEPARATOR.test(label)) continue;
 
     const cells: ScheduleCell[] = [];
-    for (let c = opts.firstCol; c <= opts.lastCol; c++) {
-      const t = text(grid, r, c);
-      const date = dates[c - opts.firstCol];
-      if (t && date) cells.push({ date, text: t });
+    for (const { col, date } of opts.columns) {
+      const t = text(grid, r, col);
+      if (t) cells.push({ date, text: t });
     }
 
     const isContinuation = label === "" || label === ".";
@@ -170,38 +194,76 @@ function readSubBoard(
     lastReal = row;
   }
 
-  return { board: { dates: dates.filter(Boolean), rows }, stoppedAtRow };
+  return { board: { dates: opts.columns.map((c) => c.date), rows }, stoppedAtRow };
 }
 
-/** Delar upp bladet i veckoblock och läser båda tavlorna i varje block. */
+/**
+ * Delar upp bladet i veckoblock.
+ *
+ * Datumen räknas ur veckonummer och veckodagsrubrik i stället för att
+ * läsas ur datumcellerna. Bladets 2026-avsnitt är nämligen kopierat
+ * från 2025 utan att datumen uppdaterades — där står "Vecka 27" med
+ * datumen 2025-06-29 och framåt, en dag fel och ett år fel. Rubrikerna
+ * och veckonumren stämmer däremot, och de går att räkna på.
+ * dateMismatches räknar avvikelserna så de går att rapportera.
+ */
 export function parseScheduleSheet(grid: Grid): WeekBlock[] {
   const headers: Array<{ row: number; week: number }> = [];
   for (let r = 0; r < grid.length; r++) {
     const m = text(grid, r, DAY_LABEL).match(WEEK_HEADER);
     if (m) headers.push({ row: r, week: Number(m[1]) });
   }
+  if (headers.length === 0) return [];
+
+  // Startåret tas från det första blockets datumcell; därefter ökas
+  // året varje gång veckonumret vänder (53 → 1).
+  const firstDate = isoDate(grid, headers[0].row + 1, DAY_FIRST_HEADER);
+  let year = firstDate ? isoWeek(firstDate).year : new Date().getUTCFullYear();
 
   return headers.map(({ row: headerRow, week }, i) => {
+    if (i > 0 && week < headers[i - 1].week) year++;
     const endRow = (headers[i + 1]?.row ?? grid.length) - 1;
     const dateRow = headerRow + 1;
+
+    const dayHeader = readWeekdayHeader(grid, headerRow, DAY_FIRST_HEADER);
+    const dayColumns = dayHeader.map(({ col, weekday }) => ({
+      col,
+      date: dateForWeekday(year, week, weekday),
+    }));
+
+    // Högerblockets veckodagsrad står under datumraden och inleds med
+    // etiketten "Ort". Antalet dagar varierar mellan bladets avsnitt.
+    let farHeaderRow = -1;
+    for (let r = headerRow + 1; r <= Math.min(headerRow + 4, endRow); r++) {
+      if (text(grid, r, FAR_LABEL).toLowerCase() === "ort") {
+        farHeaderRow = r;
+        break;
+      }
+    }
+    const farHeader = farHeaderRow >= 0 ? readWeekdayHeader(grid, farHeaderRow, FAR_LABEL + 1) : [];
+    const farColumns = farHeader.map(({ col, weekday }) => ({
+      col,
+      date: dateForWeekday(year, week, weekday),
+    }));
+
+    let dateMismatches = 0;
+    for (const { col, date } of dayColumns) {
+      const inSheet = isoDate(grid, dateRow, col);
+      if (inSheet && inSheet !== date) dateMismatches++;
+    }
 
     const day = readSubBoard(grid, {
       labelCol: DAY_LABEL,
       subLabelCol: DAY_SUBLABEL,
-      firstCol: DAY_FIRST,
-      lastCol: DAY_LAST,
-      dateRow,
+      columns: dayColumns,
       startRow: headerRow + 2,
       endRow,
     }).board;
 
-    // Högerblocket har en extra rubrikrad med veckodagsnamn under datumraden.
     const far = readSubBoard(grid, {
       labelCol: FAR_LABEL,
-      firstCol: FAR_FIRST,
-      lastCol: FAR_LAST,
-      dateRow,
-      startRow: headerRow + 3,
+      columns: farColumns,
+      startRow: farHeaderRow >= 0 ? farHeaderRow + 1 : headerRow + 3,
       endRow,
       isStopLabel: (l) => ABSENCE_HEADING.test(l),
     });
@@ -210,11 +272,13 @@ export function parseScheduleSheet(grid: Grid): WeekBlock[] {
     const absences: AbsenceEntry[] = [];
     const unparsedAbsenceText: string[] = [];
 
-    if (far.stoppedAtRow !== null) {
+    if (far.stoppedAtRow !== null && farColumns.length) {
+      const firstCol = farColumns[0].col;
+      const lastCol = farColumns[farColumns.length - 1].col;
       for (let r = far.stoppedAtRow; r <= endRow; r++) {
         // En ny etikett i etikettkolumnen betyder att semesterrutan är slut.
         if (r > far.stoppedAtRow && text(grid, r, FAR_LABEL) !== "") break;
-        for (let c = FAR_FIRST; c <= FAR_LAST; c++) {
+        for (let c = firstCol; c <= lastCol; c++) {
           const t = text(grid, r, c);
           if (!t) continue;
           const parsed = parseAbsenceText(t, weekDates);
@@ -224,8 +288,15 @@ export function parseScheduleSheet(grid: Grid): WeekBlock[] {
       }
     }
 
-    return { week, headerRow, day, far: far.board, absences, unparsedAbsenceText };
+    return {
+      week,
+      year,
+      headerRow,
+      day,
+      far: far.board,
+      absences,
+      unparsedAbsenceText,
+      dateMismatches,
+    };
   });
 }
-
-export { addDays, weekdayOf };

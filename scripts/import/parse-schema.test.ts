@@ -38,6 +38,7 @@ function fixture(): Grid {
 
   put(1, 0, "Vecka 27");
   put(1, 1, "Linje");
+  ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag"].forEach((n, i) => put(1, 2 + i, n));
   put(1, 8, "Veckoschema Fjärr Nybro");
   put(2, 0, "Datum");
   ["2025-06-30", "2025-07-01", "2025-07-02", "2025-07-03", "2025-07-04"].forEach((s, i) =>
@@ -46,6 +47,7 @@ function fixture(): Grid {
   put(2, 8, "Datum");
   WEEK.forEach((s, i) => put(2, 9 + i, d(s)));
   put(3, 8, "Ort");
+  ["Söndag", "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag"].forEach((n, i) => put(3, 9 + i, n));
 
   // Vänsterblock
   put(3, 0, "BT08/09");
@@ -114,5 +116,61 @@ describe("parseScheduleSheet", () => {
   it("tyder semesterrutan och lämnar resten till granskning", () => {
     expect(blocks[0].absences.map((a) => a.alias)).toEqual(["Alex S", "Albin L"]);
     expect(blocks[0].unparsedAbsenceText).toEqual(["MARCUS W"]);
+  });
+});
+
+describe("datum räknas ur veckonummer, inte ur datumcellerna", () => {
+  /** Speglar bladets 2026-avsnitt: rätt vecka och veckodag, fel datum. */
+  function copiedBlock(): Grid {
+    const g: Grid = [];
+    const put = (r: number, c: number, v: string | Date) => {
+      g[r] ??= [];
+      g[r][c] = v;
+    };
+    put(0, 0, "Vecka 27");
+    ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag"].forEach((n, i) => put(0, 2 + i, n));
+    put(1, 0, "Datum");
+    // Kopierade datum från 2025 — ett år och en dag fel.
+    ["2025-06-29", "2025-06-30", "2025-07-01", "2025-07-02", "2025-07-03"].forEach((s, i) =>
+      put(1, 2 + i, new Date(`${s}T00:00:00Z`)),
+    );
+    put(2, 0, "BT08/09");
+    put(2, 2, "Elle");
+    return g;
+  }
+
+  it("ger 2026 års datum och räknar avvikelserna", () => {
+    // Startåret tas ur första blocket; här finns bara det kopierade.
+    const blocks = parseScheduleSheet(copiedBlock());
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].week).toBe(27);
+    // Måndagen i vecka 27 det år bladet påstår sig gälla.
+    expect(blocks[0].day.dates[0]).toBe("2025-06-30");
+    expect(blocks[0].dateMismatches).toBe(5);
+    expect(blocks[0].day.rows[0].cells[0]).toEqual({ date: "2025-06-30", text: "Elle" });
+  });
+
+  it("ökar året när veckonumret vänder", () => {
+    const g: Grid = [];
+    const put = (r: number, c: number, v: string | Date) => {
+      g[r] ??= [];
+      g[r][c] = v;
+    };
+    put(0, 0, "Vecka 52");
+    put(0, 2, "Måndag");
+    put(1, 0, "Datum");
+    put(1, 2, new Date("2025-12-22T00:00:00Z"));
+    put(2, 0, "BT08/09");
+    put(3, 0, "Vecka 1");
+    put(3, 2, "Måndag");
+    put(4, 0, "Datum");
+    put(5, 0, "BT08/09");
+
+    const blocks = parseScheduleSheet(g);
+    expect(blocks.map((b) => [b.year, b.week])).toEqual([
+      [2025, 52],
+      [2026, 1],
+    ]);
+    expect(blocks[1].day.dates[0]).toBe("2025-12-29");
   });
 });

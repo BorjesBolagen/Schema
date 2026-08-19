@@ -1,0 +1,145 @@
+import { describe, expect, it } from "vitest";
+import {
+  type AssignmentLike,
+  detectBookingConflicts,
+  detectUnmanned,
+  indexConflicts,
+} from "./conflicts";
+
+const DATES = ["2026-08-03", "2026-08-04"];
+
+function a(over: Partial<AssignmentLike> & Pick<AssignmentLike, "id">): AssignmentLike {
+  return {
+    boardRowId: "row-1",
+    date: DATES[0],
+    slot: 0,
+    employeeId: null,
+    vehicleId: null,
+    boardId: "b1",
+    boardName: "Fjärr",
+    rowLabel: "BT08/09",
+    ...over,
+  };
+}
+
+describe("detectBookingConflicts", () => {
+  it("hittar samma förare på två rader samma dag", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", employeeId: "e1" }),
+        a({ id: "2", employeeId: "e1", boardRowId: "row-2", rowLabel: "BT13/14" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c).toEqual([
+      {
+        kind: "double-booked",
+        date: DATES[0],
+        employeeId: "e1",
+        assignmentIds: ["1", "2"],
+        places: ["Fjärr: BT08/09", "Fjärr: BT13/14"],
+      },
+    ]);
+  });
+
+  it("hittar krocken även när raderna ligger på olika tavlor", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", employeeId: "e1" }),
+        a({ id: "2", employeeId: "e1", boardId: "b2", boardName: "Lots", boardRowId: "row-9" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c[0]).toMatchObject({ kind: "double-booked", places: ["Fjärr: BT08/09", "Lots: BT08/09"] });
+  });
+
+  it("räknar inte delad tur som bilkrock — båda förarna kör samma bil", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", employeeId: "e1", vehicleId: "v1", slot: 0 }),
+        a({ id: "2", employeeId: "e2", vehicleId: "v1", slot: 1 }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c.filter((x) => x.kind === "vehicle-clash")).toHaveLength(0);
+  });
+
+  it("hittar samma bil på två olika rader", () => {
+    const c = detectBookingConflicts({
+      assignments: [
+        a({ id: "1", vehicleId: "v1" }),
+        a({ id: "2", vehicleId: "v1", boardRowId: "row-2", rowLabel: "BT13/14" }),
+      ],
+      absences: [],
+      dates: DATES,
+    });
+    expect(c[0]).toMatchObject({ kind: "vehicle-clash", vehicleId: "v1" });
+  });
+
+  it("flaggar förare som är inplanerad under sin frånvaro", () => {
+    const c = detectBookingConflicts({
+      assignments: [a({ id: "1", employeeId: "e1", date: DATES[1] })],
+      absences: [{ employeeId: "e1", fromDate: DATES[0], toDate: DATES[1], type: "semester" }],
+      dates: DATES,
+    });
+    expect(c).toEqual([
+      { kind: "absent", date: DATES[1], employeeId: "e1", assignmentId: "1", absenceType: "semester" },
+    ]);
+  });
+
+});
+
+describe("detectUnmanned", () => {
+  it("pekar ut tomma celler men inte rader som slutat gälla", () => {
+    const c = detectUnmanned([
+      {
+        rows: [
+          { id: "row-1", validFrom: null, validTo: null },
+          { id: "row-2", validFrom: null, validTo: DATES[0] },
+        ],
+        dates: DATES,
+        assignments: [a({ id: "1", boardRowId: "row-1", date: DATES[0] })],
+      },
+    ]);
+    expect(c).toEqual([
+      { kind: "unmanned", date: DATES[0], boardRowId: "row-2" },
+      { kind: "unmanned", date: DATES[1], boardRowId: "row-1" },
+    ]);
+  });
+
+  it("larmar bara för de datum tavlan visar", () => {
+    const c = detectUnmanned([
+      { rows: [{ id: "row-1", validFrom: null, validTo: null }], dates: [DATES[0]], assignments: [] },
+    ]);
+    expect(c).toHaveLength(1);
+  });
+});
+
+describe("indexConflicts", () => {
+  it("gör konflikterna uppslagbara per tilldelning och per tom cell", () => {
+    const conflicts = [
+      ...detectBookingConflicts({
+        assignments: [
+          a({ id: "1", employeeId: "e1" }),
+          a({ id: "2", employeeId: "e1", boardRowId: "row-2" }),
+        ],
+        absences: [],
+        dates: [DATES[0]],
+      }),
+      ...detectUnmanned([
+        {
+          rows: [{ id: "row-3", validFrom: null, validTo: null }],
+          dates: [DATES[0]],
+          assignments: [],
+        },
+      ]),
+    ];
+    const idx = indexConflicts(conflicts);
+    expect(idx.byAssignment.get("1")?.[0].kind).toBe("double-booked");
+    expect(idx.byAssignment.get("2")?.[0].kind).toBe("double-booked");
+    expect(idx.byCell.get(`row-3|${DATES[0]}`)?.[0].kind).toBe("unmanned");
+  });
+});

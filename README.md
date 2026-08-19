@@ -65,6 +65,31 @@ antal förekomster, för manuell koppling i appen. Ingen celltext kastas
 bort: texten sparas som notering på tilldelningen även när namnet inte
 kunde tydas.
 
+### Datumen i bladet stämmer inte
+
+55 av 82 veckoblock har datumceller som inte hör ihop med sitt eget
+veckonummer. Blocken har kopierats framåt utan att datumraden
+uppdaterades — 2026-avsnittet står med "Vecka 27" men datumen
+2025-06-29 och framåt, ett år och en dag fel.
+
+Importen läser därför inte datumcellerna. Den räknar datumet ur
+veckonumret och veckodagsrubriken, som båda stämmer, och rapporterar
+hur många block som avvek. Samma sak gör att högerblockets varierande
+bredd hanteras: 2026-avsnittet har en extra kolumn och inleds på
+lördag i stället för söndag, vilket läses av rubrikraden i stället för
+att antas.
+
+Verifiera underlaget med:
+
+```bash
+npx tsx scripts/verify-import.ts --file /sökväg/till/Schema.xlsx
+```
+
+Skriptet visar konflikter i den importerade perioden. På veckorna 27–32
+2025 ger det ett tiotal dubbelbokningar — bland dem linjen `BT24/26`,
+som visar sig finnas på *båda* Excel-blocken. Samma tur underhålls
+alltså på två ställen i dag.
+
 Semesterrutan i Excel är inte ett tillförlitligt underlag — bara 14 av
 82 veckoblock har någon rubrik alls, och rutan innehåller ibland listor
 över *tillgänglig* personal. Därför importeras bara de entydiga

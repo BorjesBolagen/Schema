@@ -74,4 +74,15 @@ report("Veckoschema", veckoschema);
 
 const weeks = blocks.length;
 const unparsed = blocks.reduce((n, b) => n + b.unparsedAbsenceText.length, 0);
+const mismatch = blocks.filter((b) => b.dateMismatches > 0);
 console.log(`\nVeckoblock: ${weeks}. Otydd text i semesterrutan: ${unparsed} (lämnas till granskning).`);
+if (mismatch.length) {
+  console.log(
+    `\nVARNING: ${mismatch.length} veckoblock har datumceller som inte stämmer med` +
+      ` veckonumret. Datumen har räknats ur vecka och veckodag i stället.`,
+  );
+  console.log(
+    `  Berörda veckor: ${mismatch.slice(0, 12).map((b) => `${b.year} v.${b.week}`).join(", ")}` +
+      (mismatch.length > 12 ? ` … (+${mismatch.length - 12})` : ""),
+  );
+}

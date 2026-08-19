@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../src/db/index";
 import { schema } from "../../src/db/index";
 import { aliasCandidates, normalizeAlias } from "../../src/lib/alias";
@@ -203,6 +203,8 @@ export async function loadScheduleBoard(
   });
 
   const assignments: Array<typeof schema.assignment.$inferInsert> = [];
+  /** Första och sista datum varje rad faktiskt användes. */
+  const activeSpan = new Map<string, { from: string; to: string }>();
   const unresolved = new Map<string, { alias: string; count: number; sampleDate: string }>();
   const usedSlots = new Map<string, number>();
   let resolved = 0;
@@ -215,6 +217,12 @@ export async function loadScheduleBoard(
       if (!boardRowId) continue;
 
       for (const cell of row.cells) {
+        const span = activeSpan.get(boardRowId);
+        activeSpan.set(boardRowId, {
+          from: span && span.from < cell.date ? span.from : cell.date,
+          to: span && span.to > cell.date ? span.to : cell.date,
+        });
+
         // En delad tur blir två tilldelningar på samma cell.
         for (const part of splitPair(cell.text) ?? [cell.text]) {
           const r = resolveCellText(part, opts.index);
@@ -252,6 +260,15 @@ export async function loadScheduleBoard(
   await insertChunked(assignments, (chunk) =>
     db.insert(schema.assignment).values(chunk).onConflictDoNothing(),
   );
+
+  // Rader gäller från första till sista dagen de användes. Utan det
+  // larmar en linje som bara gick under 2026 som obemannad hela 2025.
+  for (const [rowId, span] of activeSpan) {
+    await db
+      .update(schema.boardRow)
+      .set({ validFrom: span.from, validTo: span.to })
+      .where(eq(schema.boardRow.id, rowId));
+  }
 
   let absenceCount = 0;
   if (opts.importAbsences) {
