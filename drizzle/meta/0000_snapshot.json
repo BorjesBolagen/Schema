@@ -1,5 +1,5 @@
 {
-  "id": "b898f137-f83e-4465-92c9-517fc562784b",
+  "id": "93950b60-be74-49eb-aa3e-4475c13a5336",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -230,6 +230,14 @@
           "primaryKey": false,
           "notNull": true
         },
+        "shift": {
+          "name": "shift",
+          "type": "shift",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'day'"
+        },
         "slot": {
           "name": "slot",
           "type": "integer",
@@ -249,23 +257,19 @@
           "primaryKey": false,
           "notNull": false
         },
-        "start_time": {
-          "name": "start_time",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_time": {
-          "name": "end_time",
-          "type": "time",
-          "primaryKey": false,
-          "notNull": false
-        },
         "note": {
           "name": "note",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "assignment_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
         },
         "updated_by": {
           "name": "updated_by",
@@ -402,10 +406,154 @@
           "columns": [
             "board_row_id",
             "date",
+            "shift",
             "slot"
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.base_schedule": {
+      "name": "base_schedule",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "board_id": {
+          "name": "board_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "board_row_id": {
+          "name": "board_row_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift": {
+          "name": "shift",
+          "type": "shift",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'day'"
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "base_schedule_board_idx": {
+          "name": "base_schedule_board_idx",
+          "columns": [
+            {
+              "expression": "board_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "base_schedule_employee_idx": {
+          "name": "base_schedule_employee_idx",
+          "columns": [
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "base_schedule_board_id_board_id_fk": {
+          "name": "base_schedule_board_id_board_id_fk",
+          "tableFrom": "base_schedule",
+          "tableTo": "board",
+          "columnsFrom": [
+            "board_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "base_schedule_board_row_id_board_row_id_fk": {
+          "name": "base_schedule_board_row_id_board_row_id_fk",
+          "tableFrom": "base_schedule",
+          "tableTo": "board_row",
+          "columnsFrom": [
+            "board_row_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "base_schedule_employee_id_employee_id_fk": {
+          "name": "base_schedule_employee_id_employee_id_fk",
+          "tableFrom": "base_schedule",
+          "tableTo": "employee",
+          "columnsFrom": [
+            "employee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -458,6 +606,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{1,2,3,4,5}'"
+        },
+        "visible_shifts": {
+          "name": "visible_shifts",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"day\"}'"
         },
         "default_view_mode": {
           "name": "default_view_mode",
@@ -535,6 +690,73 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.board_crew": {
+      "name": "board_crew",
+      "schema": "",
+      "columns": {
+        "board_id": {
+          "name": "board_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "board_crew_board_id_board_id_fk": {
+          "name": "board_crew_board_id_board_id_fk",
+          "tableFrom": "board_crew",
+          "tableTo": "board",
+          "columnsFrom": [
+            "board_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "board_crew_employee_id_employee_id_fk": {
+          "name": "board_crew_employee_id_employee_id_fk",
+          "tableFrom": "board_crew",
+          "tableTo": "employee",
+          "columnsFrom": [
+            "employee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "board_crew_board_id_employee_id_pk": {
+          "name": "board_crew_board_id_employee_id_pk",
+          "columns": [
+            "board_id",
+            "employee_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -908,56 +1130,14 @@
           "notNull": true,
           "default": true
         },
-        "traffic_area_text": {
-          "name": "traffic_area_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "station_place_text": {
-          "name": "station_place_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "vacation_group": {
-          "name": "vacation_group",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "work_group": {
-          "name": "work_group",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "supervisor": {
-          "name": "supervisor",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "phone": {
-          "name": "phone",
-          "type": "text",
+        "station_place_id": {
+          "name": "station_place_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
         "traffic_area_id": {
           "name": "traffic_area_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "station_place_id": {
-          "name": "station_place_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -992,15 +1172,30 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "employee_station_idx": {
+          "name": "employee_station_idx",
+          "columns": [
+            {
+              "expression": "station_place_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
-        "employee_traffic_area_id_traffic_area_id_fk": {
-          "name": "employee_traffic_area_id_traffic_area_id_fk",
+        "employee_station_place_id_station_place_id_fk": {
+          "name": "employee_station_place_id_station_place_id_fk",
           "tableFrom": "employee",
-          "tableTo": "traffic_area",
+          "tableTo": "station_place",
           "columnsFrom": [
-            "traffic_area_id"
+            "station_place_id"
           ],
           "columnsTo": [
             "id"
@@ -1008,12 +1203,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "employee_station_place_id_station_place_id_fk": {
-          "name": "employee_station_place_id_station_place_id_fk",
+        "employee_traffic_area_id_traffic_area_id_fk": {
+          "name": "employee_traffic_area_id_traffic_area_id_fk",
           "tableFrom": "employee",
-          "tableTo": "station_place",
+          "tableTo": "traffic_area",
           "columnsFrom": [
-            "station_place_id"
+            "traffic_area_id"
           ],
           "columnsTo": [
             "id"
@@ -1036,117 +1231,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "employee_number"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.employee_alias": {
-      "name": "employee_alias",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "alias": {
-          "name": "alias",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "alias_normalized": {
-          "name": "alias_normalized",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "board_id": {
-          "name": "board_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source": {
-          "name": "source",
-          "type": "alias_source",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "employee_alias_employee_idx": {
-          "name": "employee_alias_employee_idx",
-          "columns": [
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "employee_alias_employee_id_employee_id_fk": {
-          "name": "employee_alias_employee_id_employee_id_fk",
-          "tableFrom": "employee_alias",
-          "tableTo": "employee",
-          "columnsFrom": [
-            "employee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "employee_alias_board_id_board_id_fk": {
-          "name": "employee_alias_board_id_board_id_fk",
-          "tableFrom": "employee_alias",
-          "tableTo": "board",
-          "columnsFrom": [
-            "board_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "employee_alias_scope_uq": {
-          "name": "employee_alias_scope_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "alias_normalized",
-            "board_id"
           ]
         }
       },
@@ -1299,106 +1383,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "transpa_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.unresolved_alias": {
-      "name": "unresolved_alias",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "alias": {
-          "name": "alias",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "alias_normalized": {
-          "name": "alias_normalized",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "board_id": {
-          "name": "board_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "occurrences": {
-          "name": "occurrences",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "sample_date": {
-          "name": "sample_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_employee_id": {
-          "name": "resolved_employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "unresolved_alias_board_id_board_id_fk": {
-          "name": "unresolved_alias_board_id_board_id_fk",
-          "tableFrom": "unresolved_alias",
-          "tableTo": "board",
-          "columnsFrom": [
-            "board_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "unresolved_alias_resolved_employee_id_employee_id_fk": {
-          "name": "unresolved_alias_resolved_employee_id_employee_id_fk",
-          "tableFrom": "unresolved_alias",
-          "tableTo": "employee",
-          "columnsFrom": [
-            "resolved_employee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "unresolved_alias_uq": {
-          "name": "unresolved_alias_uq",
-          "nullsNotDistinct": false,
-          "columns": [
-            "alias_normalized",
-            "board_id"
           ]
         }
       },
@@ -1576,6 +1560,186 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.work_pattern": {
+      "name": "work_pattern",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_weeks": {
+          "name": "cycle_weeks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "anchor_date": {
+          "name": "anchor_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "week_starts_on": {
+          "name": "week_starts_on",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "work_pattern_employee_idx": {
+          "name": "work_pattern_employee_idx",
+          "columns": [
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "work_pattern_employee_id_employee_id_fk": {
+          "name": "work_pattern_employee_id_employee_id_fk",
+          "tableFrom": "work_pattern",
+          "tableTo": "employee",
+          "columnsFrom": [
+            "employee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.work_pattern_day": {
+      "name": "work_pattern_day",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "work_pattern_id": {
+          "name": "work_pattern_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_week": {
+          "name": "cycle_week",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "weekday": {
+          "name": "weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "shift": {
+          "name": "shift",
+          "type": "shift",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'day'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "work_pattern_day_work_pattern_id_work_pattern_id_fk": {
+          "name": "work_pattern_day_work_pattern_id_work_pattern_id_fk",
+          "tableFrom": "work_pattern_day",
+          "tableTo": "work_pattern",
+          "columnsFrom": [
+            "work_pattern_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "work_pattern_day_uq": {
+          "name": "work_pattern_day_uq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "work_pattern_id",
+            "cycle_week",
+            "weekday",
+            "shift"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -1600,13 +1764,12 @@
         "ovrig"
       ]
     },
-    "public.alias_source": {
-      "name": "alias_source",
+    "public.assignment_source": {
+      "name": "assignment_source",
       "schema": "public",
       "values": [
-        "excel",
-        "manual",
-        "transpa"
+        "generated",
+        "manual"
       ]
     },
     "public.board_role": {
@@ -1623,6 +1786,14 @@
       "values": [
         "resource",
         "person"
+      ]
+    },
+    "public.shift": {
+      "name": "shift",
+      "schema": "public",
+      "values": [
+        "day",
+        "night"
       ]
     },
     "public.sync_status": {

@@ -7,7 +7,6 @@ import {
   pgTable,
   primaryKey,
   text,
-  time,
   timestamp,
   unique,
   uuid,
@@ -17,11 +16,20 @@ import {
  * Enums
  * ------------------------------------------------------------------ */
 
+/** Ett pass är antingen dag eller natt. */
+export const shift = pgEnum("shift", ["day", "night"]);
+
 /** Om en tavelrad står för en resurs (bil/linje) eller för en person. */
 export const rowKind = pgEnum("row_kind", ["resource", "person"]);
 
 /** Vilken vy en tavla öppnas i. Samma data, olika axlar. */
 export const viewMode = pgEnum("view_mode", ["resource", "person"]);
+
+/**
+ * Var ett pass kommer ifrån. "Fyll veckan" skriver bara om sina egna
+ * pass, så handpåläggning aldrig försvinner när knappen trycks igen.
+ */
+export const assignmentSource = pgEnum("assignment_source", ["generated", "manual"]);
 
 export const absenceType = pgEnum("absence_type", [
   "semester",
@@ -38,8 +46,6 @@ export const absenceStatus = pgEnum("absence_status", ["requested", "approved"])
 export const boardRole = pgEnum("board_role", ["editor", "viewer"]);
 
 export const userRole = pgEnum("user_role", ["admin", "planner"]);
-
-export const aliasSource = pgEnum("alias_source", ["excel", "manual", "transpa"]);
 
 export const syncStatus = pgEnum("sync_status", ["running", "ok", "failed"]);
 
@@ -59,9 +65,9 @@ export const appUser = pgTable("app_user", {
 /* ------------------------------------------------------------------ *
  * Masterdata från TransPA
  *
- * Dessa tabeller speglar TransPA och skrivs bara av synken. Lokala
- * tillägg (t.ex. vehicle.displayName) ligger i samma tabell men rörs
- * aldrig av synken — se lib/transpa/sync.ts.
+ * Skrivs av synken. Lokala tillägg (vehicle.displayName,
+ * employee.stationPlaceId när TransPA inte bär den) ligger i samma
+ * tabell men rörs aldrig av synken — se lib/transpa/sync.ts.
  * ------------------------------------------------------------------ */
 
 export const trafficArea = pgTable("traffic_area", {
@@ -89,30 +95,26 @@ export const employee = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     transpaId: text("transpa_id").unique(),
-    /** Anställningsnummer — nyckeln som Personallista och TransPA delar. */
     employeeNumber: text("employee_number").unique(),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     signature: text("signature"),
     isActive: boolean("is_active").notNull().default(true),
 
-    /** Textvärden ur Personallista. Behålls även efter TransPA-synk. */
-    trafficAreaText: text("traffic_area_text"),
-    stationPlaceText: text("station_place_text"),
-    vacationGroup: text("vacation_group"),
-    workGroup: text("work_group"),
-    supervisor: text("supervisor"),
-    email: text("email"),
-    phone: text("phone"),
-
-    /** Kopplingar som fylls först när TransPA-synken körts. */
-    trafficAreaId: uuid("traffic_area_id").references(() => trafficArea.id),
+    /**
+     * Det stationsortsfiltret i personalväljaren går på. Sätts av synken
+     * om TransPA bär uppgiften, annars en gång per person i appen.
+     */
     stationPlaceId: uuid("station_place_id").references(() => stationPlace.id),
+    trafficAreaId: uuid("traffic_area_id").references(() => trafficArea.id),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("employee_active_idx").on(t.isActive)],
+  (t) => [
+    index("employee_active_idx").on(t.isActive),
+    index("employee_station_idx").on(t.stationPlaceId),
+  ],
 );
 
 export const vehicle = pgTable("vehicle", {
@@ -132,40 +134,53 @@ export const vehicle = pgTable("vehicle", {
 });
 
 /* ------------------------------------------------------------------ *
- * Smeknamn
+ * Arbetsmönster
  *
- * Planerarna skriver "Elle", "Mylla", "Per H" — aldrig fullständiga
- * namn. Ett smeknamn kan betyda olika personer på olika tavlor
- * ("Anders" finns i flera trafikområden), därför är aliaset unikt per
- * tavla. boardId = null betyder att aliaset gäller överallt.
+ * Hur en person jobbar ska komma från TransPA. Tills det går läses det
+ * härifrån. En cykel på 1 vecka är ett vanligt veckoschema; Värnamos
+ * roterande upplägg med pass 1–4 är en cykel på 4. Ankardatumet avgör
+ * var i cykeln en given vecka hamnar.
  * ------------------------------------------------------------------ */
 
-export const employeeAlias = pgTable(
-  "employee_alias",
+export const workPattern = pgTable(
+  "work_pattern",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     employeeId: uuid("employee_id")
       .notNull()
       .references(() => employee.id, { onDelete: "cascade" }),
-    alias: text("alias").notNull(),
-    /** Gemener + trimmad. Uppslag sker alltid mot den här. */
-    aliasNormalized: text("alias_normalized").notNull(),
-    boardId: uuid("board_id").references((): any => board.id, { onDelete: "cascade" }),
-    source: aliasSource("source").notNull().default("manual"),
+    cycleWeeks: integer("cycle_weeks").notNull().default(1),
+    /** Måndagen i den vecka som är cykelvecka 0. */
+    anchorDate: date("anchor_date").notNull(),
+    /** 0 = söndagen hör till veckan som följer, som Värnamos rullschema. */
+    weekStartsOn: integer("week_starts_on").notNull().default(1),
+    validFrom: date("valid_from"),
+    validTo: date("valid_to"),
+    note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    unique("employee_alias_scope_uq").on(t.aliasNormalized, t.boardId),
-    index("employee_alias_employee_idx").on(t.employeeId),
-  ],
+  (t) => [index("work_pattern_employee_idx").on(t.employeeId)],
+);
+
+export const workPatternDay = pgTable(
+  "work_pattern_day",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workPatternId: uuid("work_pattern_id")
+      .notNull()
+      .references(() => workPattern.id, { onDelete: "cascade" }),
+    /** 0 … cycleWeeks-1 */
+    cycleWeek: integer("cycle_week").notNull().default(0),
+    /** 0 = söndag … 6 = lördag */
+    weekday: integer("weekday").notNull(),
+    shift: shift("shift").notNull().default("day"),
+  },
+  (t) => [unique("work_pattern_day_uq").on(t.workPatternId, t.cycleWeek, t.weekday, t.shift)],
 );
 
 /* ------------------------------------------------------------------ *
  * Tavlan
- *
- * Tavlan är den konfigurerbara vyn som en trafikansvarig äger. Rader,
- * namn, gruppering, ordning och vilka fält en cell visar styrs härifrån
- * — inte i koden.
  * ------------------------------------------------------------------ */
 
 export const board = pgTable("board", {
@@ -175,12 +190,14 @@ export const board = pgTable("board", {
   trafficAreaId: uuid("traffic_area_id").references(() => trafficArea.id),
   ownerId: uuid("owner_id").references(() => appUser.id),
 
-  /** 1 = måndag, 0 = söndag. Fjärrbladen börjar på söndag, lots på måndag. */
+  /** 1 = måndag, 0 = söndag. Fjärrbladen inleder veckan med söndagen. */
   weekStartsOn: integer("week_starts_on").notNull().default(1),
   /** Vilka veckodagar som visas, 0=sön … 6=lör. */
   visibleWeekdays: integer("visible_weekdays").array().notNull().default([1, 2, 3, 4, 5]),
+  /** Vilka skift tavlan visar. En bil som bara går dagtid visar bara dagraden. */
+  visibleShifts: text("visible_shifts").array().notNull().default(["day"]),
   defaultViewMode: viewMode("default_view_mode").notNull().default("resource"),
-  /** Delmängd av driver | vehicle | time | note. */
+  /** Delmängd av driver | vehicle | note. */
   cellFields: text("cell_fields").array().notNull().default(["driver", "vehicle"]),
 
   sortOrder: integer("sort_order").notNull().default(0),
@@ -224,7 +241,7 @@ export const boardRow = pgTable(
       .references(() => board.id, { onDelete: "cascade" }),
     groupId: uuid("group_id").references(() => boardGroup.id, { onDelete: "set null" }),
 
-    /** Trafikansvariges eget namn på raden. Fritt — ingen koppling till bilnamnet. */
+    /** Trafikansvariges eget namn på raden — fritt, oberoende av bilnamnet. */
     label: text("label").notNull(),
     /** Andra kolumnen, typiskt linje eller ort. */
     sublabel: text("sublabel"),
@@ -232,16 +249,12 @@ export const boardRow = pgTable(
     color: text("color"),
 
     kind: rowKind("kind").notNull().default("resource"),
-    /** Föreslås i cellen, kan bytas per dag. */
+    /** Bilen raden står för. Föreslås i cellen och kan bytas per dag. */
     defaultVehicleId: uuid("default_vehicle_id").references(() => vehicle.id),
     /** Sätts bara för person-rader. */
     employeeId: uuid("employee_id").references(() => employee.id),
 
-    /**
-     * Inställda linjer avslutas med validTo i stället för att raderas,
-     * så historiken finns kvar. Rader utanför sitt intervall visas inte
-     * i veckovyn men deras gamla tilldelningar finns kvar.
-     */
+    /** Inställda linjer avslutas med validTo i stället för att raderas. */
     validFrom: date("valid_from"),
     validTo: date("valid_to"),
 
@@ -251,16 +264,64 @@ export const boardRow = pgTable(
   (t) => [index("board_row_board_idx").on(t.boardId, t.sortOrder)],
 );
 
+/**
+ * Tavlans bemanning — vilka personer den här trafikansvarige hanterar.
+ * Väljs ur hela TransPA-listan, filtrerad på stationsort.
+ */
+export const boardCrew = pgTable(
+  "board_crew",
+  {
+    boardId: uuid("board_id")
+      .notNull()
+      .references(() => board.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employee.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.boardId, t.employeeId] })],
+);
+
+/**
+ * Bas-schemat: den stående kopplingen person ↔ bil.
+ *
+ * Anger *inte* vilka dagar personen kör — det avgörs av personens
+ * arbetsdagar. Flera personer får kopplas till samma rad; deras
+ * arbetsdagar avgör vem som står där vilken dag.
+ */
+export const baseSchedule = pgTable(
+  "base_schedule",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    boardId: uuid("board_id")
+      .notNull()
+      .references(() => board.id, { onDelete: "cascade" }),
+    boardRowId: uuid("board_row_id")
+      .notNull()
+      .references(() => boardRow.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employee.id, { onDelete: "cascade" }),
+    shift: shift("shift").notNull().default("day"),
+    validFrom: date("valid_from"),
+    validTo: date("valid_to"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("base_schedule_board_idx").on(t.boardId),
+    index("base_schedule_employee_idx").on(t.employeeId),
+  ],
+);
+
 /* ------------------------------------------------------------------ *
  * Planeringsdata
  * ------------------------------------------------------------------ */
 
 /**
- * En tilldelning = en förare på en rad en dag.
+ * Ett pass: en person på en rad, en dag, ett skift.
  *
- * slot finns för att en rad kan ha flera förare samma dag — era
- * fjärrblad har "NT/FIB", "Dahl/Leffe", "JOHAN/FANNY" där två personer
- * delar turen. Slot 0 är den första.
+ * slot finns för att en tur kan delas av två personer på samma skift.
  */
 export const assignment = pgTable(
   "assignment",
@@ -270,20 +331,20 @@ export const assignment = pgTable(
       .notNull()
       .references(() => boardRow.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
+    shift: shift("shift").notNull().default("day"),
     slot: integer("slot").notNull().default(0),
 
     employeeId: uuid("employee_id").references(() => employee.id),
     vehicleId: uuid("vehicle_id").references(() => vehicle.id),
-    startTime: time("start_time"),
-    endTime: time("end_time"),
     note: text("note"),
+    source: assignmentSource("source").notNull().default("manual"),
 
     updatedBy: uuid("updated_by").references(() => appUser.id),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique("assignment_cell_uq").on(t.boardRowId, t.date, t.slot),
-    /* Konfliktdetektering slår mot de här två, tvärs över alla tavlor. */
+    unique("assignment_cell_uq").on(t.boardRowId, t.date, t.shift, t.slot),
+    /* Konfliktdetektering slår mot de här, tvärs över alla tavlor. */
     index("assignment_employee_date_idx").on(t.employeeId, t.date),
     index("assignment_vehicle_date_idx").on(t.vehicleId, t.date),
     index("assignment_date_idx").on(t.date),
@@ -304,11 +365,7 @@ export const absence = pgTable(
     status: absenceStatus("status").notNull().default("approved"),
     note: text("note"),
 
-    /**
-     * Kvittensen på att frånvaron är inlagd i TransPA. Så länge
-     * TransPA saknar frånvaro-endpoints sätts den manuellt av den som
-     * knappat in den — se lib/transpa/absence-export.ts.
-     */
+    /** Kvittensen på att frånvaron är inlagd i TransPA. */
     transpaSyncedAt: timestamp("transpa_synced_at", { withTimezone: true }),
     transpaSyncedBy: uuid("transpa_synced_by").references(() => appUser.id),
 
@@ -331,23 +388,3 @@ export const syncRun = pgTable("sync_run", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 });
-
-/**
- * Namn ur importen som inte gick att koppla till en person. Kastas inte
- * bort — de listas i appen för manuell koppling, och när någon väljer
- * person skapas ett employee_alias.
- */
-export const unresolvedAlias = pgTable(
-  "unresolved_alias",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    alias: text("alias").notNull(),
-    aliasNormalized: text("alias_normalized").notNull(),
-    boardId: uuid("board_id").references(() => board.id, { onDelete: "cascade" }),
-    occurrences: integer("occurrences").notNull().default(1),
-    sampleDate: date("sample_date"),
-    resolvedEmployeeId: uuid("resolved_employee_id").references(() => employee.id),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [unique("unresolved_alias_uq").on(t.aliasNormalized, t.boardId)],
-);
