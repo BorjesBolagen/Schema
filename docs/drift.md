@@ -99,6 +99,18 @@ Uppgifterna fås från Visma Developer Portal efter att organisationen
 registrerats och access begärts. Scopen appen ber om står i
 `src/lib/transpa/auth.ts`.
 
+## Skript mot en riktig databas
+
+`npm run seed` och `npm run db:migrate` läser `DATABASE_URL`. Sätt den i
+kommandot, annars går de mot den lokala `.pgdata`-katalogen:
+
+```bash
+DATABASE_URL='postgresql://…pooler.supabase.com:6543/postgres?pgbouncer=true' npm run seed
+```
+
+Demounderlaget läggs bara i en tom databas. Innehåller den redan personal
+avbryter skriptet i stället för att krocka med befintliga rader.
+
 ## När schemat ändras
 
 ```bash

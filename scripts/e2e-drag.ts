@@ -1,5 +1,6 @@
 /** Fyller veckan och drar sedan pass med musen. */
 import { chromium, type Page } from "playwright-core";
+import { signIn } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3211";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -28,6 +29,7 @@ const centre = async (p: Page, selector: string, nth = 0) => {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 };
 
+await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "Fyll veckan" }).click();
 await page.waitForTimeout(2500);

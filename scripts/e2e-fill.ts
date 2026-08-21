@@ -1,5 +1,6 @@
 /** Kör igenom flödet i en riktig webbläsare: fyll veckan och flytta ett pass. */
 import { chromium } from "playwright-core";
+import { signIn } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3210";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -8,6 +9,7 @@ const errors: string[] = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
+await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
 await page.getByRole("button", { name: "Fyll veckan" }).click();
 await page.waitForTimeout(2500);

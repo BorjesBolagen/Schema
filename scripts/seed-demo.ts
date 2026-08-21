@@ -8,7 +8,8 @@
  *   npx tsx scripts/seed-demo.ts --db ./.pgdata
  */
 import { parseArgs } from "node:util";
-import { createDb, schema } from "../src/db/index";
+import { count } from "drizzle-orm";
+import { closeDb, createDb, schema } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 import { addDays, isoWeek, mondayOfWeek, toIso, weekDates } from "../src/lib/week";
 import { hashPassword } from "../src/lib/password";
@@ -20,8 +21,24 @@ const { values } = parseArgs({
   // npm skickar med ett ensamt "--" när man kör `npm run seed -- …`.
   allowPositionals: true,
 });
-const db = createDb(values.db ?? process.env.PGLITE_DIR ?? "./.pgdata");
+/* Ordningen spelar roll: --db vinner, sedan DATABASE_URL, sedan den
+   lokala katalogen. Utan DATABASE_URL i kedjan skulle skriptet tyst
+   skriva till .pgdata trots att man pekat ut en riktig databas. */
+const db = createDb(values.db ?? process.env.DATABASE_URL ?? process.env.PGLITE_DIR ?? "./.pgdata");
 await runMigrations(db);
+
+/* Demounderlaget läggs bara i en tom databas. Att köra om det mot en
+   databas som redan används skulle antingen krascha på en unik nyckel
+   eller dubblera tavlorna. */
+const existing = await db.select({ n: count() }).from(schema.employee);
+if ((existing[0]?.n ?? 0) > 0) {
+  console.error(
+    "Databasen innehåller redan personal — demounderlaget läggs bara i en tom databas.\n" +
+      "Töm tabellerna först, eller peka DATABASE_URL på en tom databas.",
+  );
+  await closeDb(db);
+  process.exit(1);
+}
 
 const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.se";
 const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "schema1234";
@@ -228,3 +245,5 @@ console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${tod
 console.log(`Semesterplanering       →  /tavla/${board.slug}/semester?ar=2026`);
 console.log(`Personal: ${employees.length}, bemanning: ${crew.length}, rader: ${rows.length}`);
 console.log(`Bas-schema, arbetsmönster och ${filled} utlagda pass inlagda.`);
+
+await closeDb(db);

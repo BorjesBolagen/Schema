@@ -174,6 +174,19 @@ stationsort ägs lokalt och skrivs aldrig över av synken.
 ger planerade pass — om någon gör det — avgörs av diagnostiken, och först
 då går det att skriva den mot något verkligt.
 
+## Test mot riktig Postgres
+
+PGlite räcker för utveckling, men drivrutinen är en annan än i drift.
+Hela flödet är verifierat mot PostgreSQL 16 via postgres-js — inloggning,
+uppsättning, bemanning, dra och släpp, semestervyn och exporten.
+
+```bash
+./scripts/local-postgres.sh start     # skriver ut en DATABASE_URL
+DATABASE_URL='...' npm run seed
+DATABASE_URL='...' npm run dev
+./scripts/local-postgres.sh stop
+```
+
 ## Test
 
 ```bash

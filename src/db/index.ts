@@ -25,6 +25,23 @@ function isPooled(url: string): boolean {
 }
 
 /**
+ * TLS-läge.
+ *
+ * `sslmode` i URL:en vinner om den är satt. Utan den krävs TLS mot allt
+ * som inte är localhost: hostad Postgres har det alltid, en databas man
+ * kör själv under utveckling har det sällan.
+ */
+function sslSetting(url: string): "require" | "verify-full" | boolean {
+  const mode = new URL(url).searchParams.get("sslmode");
+  if (mode === "disable" || mode === "allow") return false;
+  if (mode === "verify-full" || mode === "verify-ca") return "verify-full";
+  if (mode === "require" || mode === "prefer") return "require";
+
+  const host = new URL(url).hostname;
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+}
+
+/**
  * Databaskoppling.
  *
  * DATABASE_URL som pekar på en postgres-server används i drift. Saknas
@@ -39,8 +56,11 @@ export function createDb(url = process.env.DATABASE_URL): Db {
       max: pooled ? 1 : 10,
       prepare: !pooled,
       idle_timeout: pooled ? 20 : undefined,
-      // Hostad Postgres kräver TLS men använder ofta ett internt cert.
-      ssl: url!.includes("sslmode=disable") ? false : "require",
+      ssl: sslSetting(url!),
+      // Migreringen mot en databas som redan fått schemat utlagt via
+      // SQL-filen ger "already exists, skipping" — väntat, och inget
+      // som ska dumpa ett objekt i terminalen.
+      onnotice: () => {},
     });
     return drizzlePg(client, { schema }) as unknown as Db;
   }
@@ -64,6 +84,20 @@ export function getDb(): Db {
   const g = globalThis as GlobalWithDb;
   g[DB_KEY] ??= createDb();
   return g[DB_KEY];
+}
+
+/**
+ * Stänger kopplingen.
+ *
+ * postgres-js håller anslutningen öppen tills den stängs, så ett skript
+ * som glömmer det ser ut att hänga för evigt trots att arbetet är klart.
+ * Webbappen ska inte anropa den — där ska kopplingen leva vidare.
+ */
+export async function closeDb(db: Db): Promise<void> {
+  const client = (db as { $client?: { end?: () => Promise<void>; close?: () => Promise<void> } })
+    .$client;
+  await client?.end?.();
+  await client?.close?.();
 }
 
 /** True när appen kör mot en riktig Postgres och inte den inbäddade. */

@@ -4,6 +4,7 @@
  * till en bil i bas-schemat och se att veckan bemannas.
  */
 import { chromium } from "playwright-core";
+import { signIn } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3212";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -11,6 +12,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors: string[] = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 
+await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
 
 const headers = async () =>

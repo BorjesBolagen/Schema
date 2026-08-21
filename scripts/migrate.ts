@@ -7,7 +7,7 @@
  *
  *   DATABASE_URL=... npm run db:migrate
  */
-import { createDb, isHostedDatabase } from "../src/db/index";
+import { closeDb, createDb, isHostedDatabase } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 
 const target = process.env.DATABASE_URL
@@ -15,6 +15,7 @@ const target = process.env.DATABASE_URL
   : "lokal PGlite (.pgdata)";
 
 console.log(`Migrerar ${target}…`);
-await runMigrations(createDb());
+const db = createDb();
+await runMigrations(db);
 console.log(isHostedDatabase() ? "Klart." : "Klart (lokal databas).");
-process.exit(0);
+await closeDb(db);

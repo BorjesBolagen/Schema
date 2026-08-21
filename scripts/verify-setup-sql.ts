@@ -5,7 +5,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { sql } from "drizzle-orm";
-import { createDb, schema } from "../src/db/index";
+import { closeDb, createDb, schema } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 
 const db = createDb("memory://");
@@ -41,3 +41,5 @@ console.log("Skrivning fungerar:", !!user.id);
 // Migreraren ska nu se allt som redan kört.
 await runMigrations(db);
 console.log("db:migrate efteråt: inga fel, inget kördes om.");
+
+await closeDb(db);
