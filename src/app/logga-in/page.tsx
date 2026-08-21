@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, signIn } from "@/server/auth";
 import { needsSetup } from "@/server/setup";
-import { LoginForm } from "@/components/LoginForm";
+import { LoginForm, type LoginState } from "@/components/LoginForm";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +22,11 @@ export default async function LoginPage({
    * därmed i serverloggar och webbläsarhistorik. En server-action gör
    * det till en POST redan från början.
    */
-  async function attempt(_prev: string | null, formData: FormData): Promise<string | null> {
+  async function attempt(_prev: LoginState | null, formData: FormData): Promise<LoginState | null> {
     "use server";
-    const result = await signIn(String(formData.get("email") ?? ""), String(formData.get("password") ?? ""));
-    if (!result.ok) return result.error;
+    const email = String(formData.get("email") ?? "");
+    const result = await signIn(email, String(formData.get("password") ?? ""));
+    if (!result.ok) return { error: result.error, email };
 
     // Bara interna vägar, annars går inloggningen att använda för att
     // skicka någon vidare till en annan sajt.

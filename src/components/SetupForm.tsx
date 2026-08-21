@@ -9,6 +9,10 @@ export function SetupForm({
   action: (prev: string | null, formData: FormData) => Promise<string | null>;
 }) {
   const [error, formAction, pending] = useActionState(action, null);
+  // Styrda fält: React 19 nollställer formuläret efter en action, och
+  // efter ett fel ska man slippa skriva in allt en gång till.
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   // Samma regel som servern använder, så felet syns innan man skickar.
@@ -23,6 +27,8 @@ export function SetupForm({
           required
           autoFocus
           autoComplete="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           className="mt-1 w-full rounded border border-(--color-line) bg-white px-3 py-2 text-sm text-(--color-ink)"
         />
       </label>
@@ -34,6 +40,8 @@ export function SetupForm({
           type="email"
           required
           autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="mt-1 w-full rounded border border-(--color-line) bg-white px-3 py-2 text-sm text-(--color-ink)"
         />
       </label>

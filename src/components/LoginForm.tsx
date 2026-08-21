@@ -1,13 +1,34 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+
+/** Felet och den e-post som försöktes — se varför nedan. */
+export interface LoginState {
+  error: string;
+  email: string;
+}
 
 export function LoginForm({
   action,
 }: {
-  action: (prev: string | null, formData: FormData) => Promise<string | null>;
+  action: (prev: LoginState | null, formData: FormData) => Promise<LoginState | null>;
 }) {
-  const [error, formAction, pending] = useActionState(action, null);
+  const [state, formAction, pending] = useActionState(action, null);
+  // Utgångsvärdet gäller sidladdningen utan JavaScript, där sidan
+  // renderas om från servern med actionens resultat i handen.
+  const [email, setEmail] = useState(state?.email ?? "");
+
+  /**
+   * React 19 nollställer formuläret när en action gått igenom, så efter
+   * ett felaktigt försök skulle e-postfältet stå tomt och adressen få
+   * skrivas in en gång till. Fältet är därför styrt, och servern
+   * skickar tillbaka adressen så den finns kvar även utan JavaScript,
+   * där sidan renderas om från början. Lösenordet skickas aldrig
+   * tillbaka — det ska skrivas in på nytt.
+   */
+  useEffect(() => {
+    if (state?.email) setEmail(state.email);
+  }, [state]);
 
   return (
     <form action={formAction} className="mt-8 flex flex-col gap-4">
@@ -19,6 +40,8 @@ export function LoginForm({
           autoComplete="username"
           required
           autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="mt-1 w-full rounded border border-(--color-line) bg-white px-3 py-2 text-sm text-(--color-ink)"
         />
       </label>
@@ -34,9 +57,9 @@ export function LoginForm({
         />
       </label>
 
-      {error && (
+      {state && (
         <p role="alert" className="rounded bg-red-50 px-3 py-2 text-sm text-(--color-danger)">
-          {error}
+          {state.error}
         </p>
       )}
 

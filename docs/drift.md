@@ -75,7 +75,24 @@ klartext hamnar aldrig i databasen och aldrig i SQL-filen. Satsen
 uppdaterar ett befintligt konto med samma adress, så den fungerar även
 för att återställa ett lösenord.
 
-## 4. Användare och behörighet
+## 4. Första tavlan och grunddatan
+
+Databasen är tom efter uppsättningen — TransPA-synken är inte på plats
+än, och inget demounderlag följer med till drift.
+
+1. **Grunddata** (adminmenyn på startsidan) → *Stationsorter*: lägg upp
+   orterna. Det är dem personalväljaren filtrerar på.
+2. **Grunddata → Personal** och **→ Fordon**: lägg upp dem som ska med.
+   När TransPA-synken finns tar den över listorna; det som lagts in för
+   hand ligger kvar vid sidan av.
+3. Startsidan → **Ny tavla**: välj *Fjärr* eller *Distribution*, som är
+   utgångslägen för veckodagar, skift och rader. Allt går att ändra
+   efteråt under **⚙ Tavla**.
+4. I tavlan: **👥 Bemanning** väljer vilka personer tavlan hanterar,
+   **Bas-schema** kopplar person till bil, och **Arbetsmönster** anger
+   vilka dagar var och en jobbar tills TransPA levererar det.
+
+## 5. Användare och behörighet
 
 Under **Användare** lägger en administratör upp konton.
 

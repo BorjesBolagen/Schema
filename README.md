@@ -60,6 +60,14 @@ npm run db:generate   # ny migration efter ändring i src/db/schema.ts
 
 ## Vad en trafikansvarig sätter upp själv
 
+Tavlorna skapas från startsidan med **Ny tavla** — namn plus ett av två
+utgångslägen, *Fjärr* (söndag–fredag, dag och natt) eller *Distribution*
+(måndag–fredag, bara dag). Utgångsläget bestämmer bara vad tavlan börjar
+med; därefter styr tavelredigeraren allt.
+
+Personal, fordon och stationsorter ska komma från TransPA-synken. Tills
+den finns lägger en administratör upp dem under **Grunddata**.
+
 Tre knappar i verktygsraden, ingen av dem kräver en utvecklare:
 
 **⚙ Tavla** — radernas namn, ordning (dra), gruppering, färg och vilken
@@ -194,6 +202,7 @@ npm test                                   # enhetstester
 npx tsx scripts/e2e-fill.ts                # fyll veckan i en riktig webbläsare
 npx tsx scripts/e2e-drag.ts                # dra ut och flytta pass
 npx tsx scripts/e2e-editor.ts              # bygg om tavlan, mönster, bas-schema
+npx tsx scripts/e2e-tomstart.ts            # tom databas → tavla, personal, fordon
 npx tsx scripts/screenshot.ts <url> <fil>  # bild av en vy
 ```
 
