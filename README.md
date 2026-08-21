@@ -24,6 +24,14 @@ både vanliga veckoscheman och roterande upplägg. `CompositeWorkDayProvider`
 faller tillbaka **per person**, så övergången till TransPA kan ske en
 person i taget.
 
+## Testa designen utan att installera något
+
+[`docs/prototyp/veckotavlan.html`](docs/prototyp/veckotavlan.html) är en
+fristående klickbar förhandsvisning av gränssnittet — en HTML-fil som
+öppnas direkt i en webbläsare. Den delar ingen kod med appen och är en
+skiss vid en viss tidpunkt, inte en andra sanning. Se
+[`docs/prototyp/README.md`](docs/prototyp/README.md).
+
 ## Kom igång
 
 ```bash

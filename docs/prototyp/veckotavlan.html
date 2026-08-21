@@ -1,0 +1,1647 @@
+<title>Veckotavlan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --ground: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --ink: #14181f;
+  --muted: #667085;
+  --line: #dde2e9;
+  --line-strong: #c3cbd6;
+  --accent: #1a5c9e;
+  --accent-soft: #e3edf7;
+  --warn: #b25a00;
+  --warn-soft: #fdf3e6;
+  --danger: #b42318;
+  --danger-soft: #fdeceb;
+  --night: #4c4a9e;
+  --night-soft: #ecebf7;
+  --shadow: 0 1px 2px rgba(20, 24, 31, .06), 0 8px 24px rgba(20, 24, 31, .08);
+
+  --font-code: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #11151b;
+    --surface: #1a1f28;
+    --surface-2: #222834;
+    --ink: #e7ecf3;
+    --muted: #94a1b3;
+    --line: #2c343f;
+    --line-strong: #3d4753;
+    --accent: #6aa8e4;
+    --accent-soft: #1c2c3d;
+    --warn: #e0a04a;
+    --warn-soft: #2e2413;
+    --danger: #f08b82;
+    --danger-soft: #33191a;
+    --night: #9c9aec;
+    --night-soft: #23223a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #11151b;
+  --surface: #1a1f28;
+  --surface-2: #222834;
+  --ink: #e7ecf3;
+  --muted: #94a1b3;
+  --line: #2c343f;
+  --line-strong: #3d4753;
+  --accent: #6aa8e4;
+  --accent-soft: #1c2c3d;
+  --warn: #e0a04a;
+  --warn-soft: #2e2413;
+  --danger: #f08b82;
+  --danger-soft: #33191a;
+  --night: #9c9aec;
+  --night-soft: #23223a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap { max-width: 1680px; margin: 0 auto; padding: 20px 20px 64px; }
+
+.masthead {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px;
+  padding-bottom: 14px; border-bottom: 2px solid var(--line-strong);
+}
+.masthead h1 {
+  margin: 0; font-family: var(--font-code); font-weight: 700;
+  font-size: 28px; letter-spacing: .01em; text-wrap: balance;
+}
+.masthead .board {
+  font-family: var(--font-code); font-weight: 600; font-size: 20px; color: var(--muted);
+}
+.tag {
+  margin-left: auto; font-size: 11px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 8px;
+}
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0; }
+.toolbar .spacer { flex: 1 1 auto; }
+
+button {
+  font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 3px; padding: 6px 11px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button + button { border-left: 1px solid var(--line-strong); }
+
+.weeknav { display: inline-flex; align-items: center; gap: 8px; }
+.weeknav .label {
+  font-family: var(--font-code); font-weight: 600; font-size: 17px;
+  min-width: 200px; text-align: center;
+}
+
+.hint { font-size: 12px; color: var(--muted); }
+
+.alerts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.alert {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; border-radius: 3px; padding: 5px 10px; border: 1px solid transparent;
+}
+.alert.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.alert.bad { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.alert.calm { background: var(--surface-2); color: var(--muted); border-color: var(--line); }
+.alert .n { font-family: var(--font-code); font-weight: 700; font-size: 15px; }
+
+.stage { display: flex; gap: 16px; align-items: flex-start; }
+.board-wrap {
+  flex: 1 1 auto; min-width: 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: var(--shadow); overflow-x: auto;
+}
+
+/* Växer efter innehållet och rullar i sin egen behållare, i stället
+   för att pressas ihop och kapa sista dagen. */
+table.grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+
+.grid thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface-2); border-bottom: 1px solid var(--line-strong);
+  padding: 8px 10px; text-align: left; white-space: nowrap;
+  font-family: var(--font-code); font-weight: 600; font-size: 14px; letter-spacing: .02em;
+}
+.grid thead th:first-child { z-index: 5; left: 0; }
+.grid tbody th.rowhead { position: sticky; left: 0; z-index: 4; }
+
+.grouprow td {
+  background: var(--surface-2); border-bottom: 1px solid var(--line); padding: 4px 10px;
+  font-family: var(--font-code); font-weight: 700; font-size: 12px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+
+.grid tbody th.rowhead {
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  padding: 6px 10px 6px 12px; text-align: left; vertical-align: top; white-space: nowrap;
+  border-left: 3px solid var(--line-strong);
+}
+.rowhead .code { font-family: var(--font-code); font-weight: 700; font-size: 16px; letter-spacing: .01em; }
+.rowhead .sub { display: block; font-size: 11.5px; color: var(--muted); font-family: var(--font-code); font-weight: 600; }
+.rowhead.person .code { font-family: var(--font-ui); font-size: 13px; font-weight: 500; }
+
+.linecell {
+  padding: 6px 10px; color: var(--muted); font-size: 12px;
+  border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap;
+}
+
+.grid td.day {
+  border-left: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  padding: 0; vertical-align: top; min-width: 150px;
+}
+
+.cell {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 5px 8px; min-height: 32px; border-bottom: 1px dashed var(--line);
+}
+.cell:last-child { border-bottom: 0; }
+.cell.night { background: color-mix(in srgb, var(--night-soft) 55%, transparent); }
+.cell.drop-ok { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.cell.drop-bad { background: var(--danger-soft); box-shadow: inset 0 0 0 2px var(--danger); }
+.cell .sicon {
+  font-family: var(--font-code); font-weight: 700; font-size: 11px; letter-spacing: .06em;
+  color: var(--muted); padding-top: 3px; min-width: 26px;
+}
+.cell.night .sicon { color: var(--night); }
+.cell .stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; align-items: flex-start; }
+.cell .empty { color: var(--muted); font-size: 12px; }
+.cell .why { font-size: 11px; color: var(--danger); }
+
+.pass {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  border-radius: 3px; padding: 1px 6px 1px 5px; cursor: grab;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  font-size: 13px;
+}
+.pass.manual { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn-soft) 70%, transparent); }
+.pass.clash { border-left-color: var(--danger); background: var(--danger-soft); }
+.pass.away { border-left-color: var(--muted); background: transparent; color: var(--muted); }
+.pass .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pass .veh { font-family: var(--font-code); font-weight: 600; font-size: 12px; color: var(--muted); }
+.pass .mark { color: var(--danger); font-size: 11px; }
+
+.panel {
+  flex: 0 0 246px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: var(--shadow); padding: 12px;
+}
+.panel.drop-ok { border-color: var(--danger); background: var(--danger-soft); }
+.panel h2 {
+  margin: 0; font-family: var(--font-code); font-weight: 700; font-size: 13px;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.panel .sect {
+  margin-top: 14px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+.panel .sect.alarm { color: var(--warn); }
+
+.crew { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.crew li { border: 1px solid var(--line); border-radius: 3px; padding: 5px 7px; cursor: grab; background: var(--surface); }
+.crew li:hover { border-color: var(--accent); }
+.crew li.away { opacity: .6; }
+.crew .top { display: flex; align-items: baseline; gap: 6px; }
+.crew .nm { font-size: 13px; font-weight: 500; flex: 1; }
+.crew .st { font-size: 10.5px; color: var(--muted); }
+.crew .dots { display: flex; gap: 3px; margin-top: 4px; }
+.crew .dot {
+  width: 16px; height: 14px; border-radius: 2px; border: 1px solid var(--line);
+  font-family: var(--font-code); font-size: 10px; font-weight: 700; line-height: 12px;
+  text-align: center; color: transparent;
+}
+.crew .dot.d { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--accent); }
+.crew .dot.n { background: var(--night-soft); border-color: color-mix(in srgb, var(--night) 35%, transparent); color: var(--night); }
+.crew .dot.open { box-shadow: inset 0 0 0 2px var(--warn); }
+
+.year-wrap {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: var(--shadow); overflow-x: auto;
+}
+table.year { border-collapse: separate; border-spacing: 0; user-select: none; touch-action: none; }
+.year th, .year td { border-bottom: 1px solid var(--line); }
+.year thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 2; font-family: var(--font-code); font-weight: 600; }
+.year th.name {
+  position: sticky; left: 0; background: var(--surface); z-index: 3; text-align: left;
+  padding: 4px 10px; white-space: nowrap; font-weight: 500; font-family: var(--font-ui); font-size: 13px;
+}
+.year thead th.name { background: var(--surface-2); z-index: 4; }
+.year th.month { font-size: 11px; color: var(--muted); font-weight: 500; padding: 3px 0; border-left: 1px solid var(--line); }
+.year th.wk { width: 22px; font-size: 10px; color: var(--muted); font-weight: 500; padding: 3px 0; border-left: 1px solid var(--line); }
+.year td.wcell { width: 22px; height: 21px; border-left: 1px solid var(--line); cursor: crosshair; }
+.year td.wcell.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.year tr.staff th.name { border-top: 2px solid var(--line-strong); }
+.year tr.staff td {
+  border-top: 2px solid var(--line-strong); text-align: center;
+  font-family: var(--font-code); font-weight: 600; font-size: 12px; color: var(--muted);
+}
+.year tr.staff td.low { background: var(--danger-soft); color: var(--danger); }
+.year .st { color: var(--muted); font-size: 11px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+dialog {
+  border: 1px solid var(--line-strong); border-radius: 5px; padding: 0;
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
+  max-width: 760px; width: calc(100vw - 40px);
+}
+dialog::backdrop { background: rgba(10, 14, 20, .45); }
+dialog .head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line);
+}
+dialog .head h2 { margin: 0; font-family: var(--font-code); font-weight: 700; font-size: 18px; }
+dialog .body { padding: 14px 16px; max-height: 64vh; overflow-y: auto; }
+dialog .note { font-size: 12px; color: var(--muted); margin: 0 0 12px; max-width: 62ch; }
+
+.field {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+}
+.field input, .field select {
+  font: inherit; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 3px; padding: 5px 7px;
+}
+.fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+
+.rowlist { list-style: none; margin: 10px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 3px; }
+.rowlist li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.rowlist li:last-child { border-bottom: 0; }
+.rowlist .grip { cursor: grab; color: var(--muted); font-size: 15px; }
+.rowlist input.lbl { flex: 0 0 128px; font-family: var(--font-code); font-weight: 600; font-size: 15px; }
+.rowlist input.sublbl { flex: 0 0 120px; font-size: 12.5px; }
+.rowlist select { font: inherit; font-size: 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 3px; padding: 4px; }
+.rowlist input { background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 3px; padding: 4px 6px; }
+.rowlist li.dragging { opacity: .4; }
+.rowlist li.over { box-shadow: inset 0 2px 0 var(--accent); }
+.rowlist .del { margin-left: auto; color: var(--danger); }
+
+.toggles { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
+.toggles button { min-width: 34px; padding: 5px 9px; font-family: var(--font-code); font-weight: 600; }
+
+.simple { width: 100%; border-collapse: collapse; }
+.simple th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); font-weight: 600;
+}
+.simple td { padding: 5px 6px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.simple td.right { text-align: right; }
+
+.patgrid { border-collapse: collapse; margin-top: 6px; }
+.patgrid th {
+  font-size: 11px; color: var(--muted); font-weight: 500; padding: 0 4px 4px;
+}
+.patgrid th.sh { text-align: right; padding-right: 8px; }
+.patgrid td { padding: 2px; }
+.patgrid button { min-width: 40px; }
+
+.about {
+  margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--muted); max-width: 68ch;
+}
+.about strong { color: var(--ink); font-weight: 600; }
+.about p { margin: 0 0 8px; }
+kbd {
+  font: inherit; font-size: 11px; border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--surface);
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <h1>Veckotavlan</h1>
+    <span class="board" id="boardName">Fjärr Nybro/Hultsfred</span>
+    <span class="tag">Designförhandsvisning</span>
+  </header>
+
+  <div class="toolbar">
+    <div class="weeknav">
+      <button id="prevWeek" aria-label="Föregående">◀</button>
+      <span class="label" id="weekLabel"></span>
+      <button id="nextWeek" aria-label="Nästa">▶</button>
+    </div>
+
+    <div class="seg" role="group" aria-label="Vy">
+      <button id="viewVehicles" aria-pressed="true">Bilar</button>
+      <button id="viewPeople" aria-pressed="false">Personer</button>
+      <button id="viewYear" aria-pressed="false">Semester</button>
+    </div>
+
+    <button class="primary" id="fillWeek">Fyll veckan</button>
+    <span class="hint" id="fillNote"></span>
+
+    <span class="spacer"></span>
+    <button id="openBase">Bas-schema</button>
+    <button id="openPatterns">Arbetsmönster</button>
+    <button id="openBoard">Tavla</button>
+    <button id="reset">Återställ</button>
+  </div>
+
+  <div class="alerts" id="alerts"></div>
+
+  <div class="stage" id="stage">
+    <div class="board-wrap" id="boardWrap"></div>
+    <aside class="panel" id="panel"></aside>
+  </div>
+
+  <section id="yearSection" hidden>
+    <div class="toolbar">
+      <div class="fields">
+        <label class="field">Typ
+          <select id="absType">
+            <option value="semester">Semester</option>
+            <option value="sjuk">Sjuk</option>
+            <option value="vab">VAB</option>
+            <option value="tjanstledig">Tjänstledig</option>
+            <option value="foraldraledig">Föräldraledig</option>
+            <option value="kompledig">Kompledig</option>
+          </select>
+        </label>
+        <label class="field">Status
+          <select id="absStatus">
+            <option value="approved">Beviljad</option>
+            <option value="requested">Önskemål</option>
+          </select>
+        </label>
+        <label class="field">Varna under
+          <input type="number" id="minStaff" min="0" max="20" value="4" style="width:74px">
+        </label>
+      </div>
+      <span class="hint">Dra över veckor för att markera. Dra över markerade veckor igen för att ta bort.</span>
+    </div>
+    <div class="year-wrap" id="yearWrap"></div>
+    <div class="legend" id="yearLegend"></div>
+  </section>
+
+  <section class="about">
+    <p><strong>Så fungerar tavlan.</strong> Bas-schemat kopplar en person till en bil — aldrig till dagar. Vilka dagar personen står där avgörs av personens arbetsdagar. Därför bemannas BT13/14 av Björn måndag, tisdag, torsdag och fredag och av Roger onsdag, utan att någon skrivit in det per dag.</p>
+    <p><strong>Fyll veckan</strong> sätter ihop de två. Handpålagda pass rörs aldrig, och ingen som är ledig bemannas. Dra en person ur panelen till en cell, dra ett pass mellan celler för att flytta det, eller tillbaka till panelen för att ta bort det. Håll <kbd>Skift</kbd> medan du drar för att kopiera i stället.</p>
+    <p>Arbetsdagarna ska hämtas från TransPA. Här kommer de från arbetsmönster i verktyget — samma reservkälla som appen använder tills API-kopplingen är på plats. Ändringar sparas i din webbläsare, och <em>Återställ</em> tar dig tillbaka till utgångsläget.</p>
+  </section>
+</div>
+
+<dialog id="dlgBoard"></dialog>
+<dialog id="dlgBase"></dialog>
+<dialog id="dlgPatterns"></dialog>
+
+<script>
+"use strict";
+
+/* ================= Datum och ISO-veckor ================= */
+const DAY = 86400000;
+const iso = d => d.toISOString().slice(0, 10);
+const parse = s => new Date(s + "T00:00:00Z");
+const addDays = (s, n) => iso(new Date(parse(s).getTime() + n * DAY));
+const dow = s => parse(s).getUTCDay();
+
+function isoMonday(s) {
+  const d = parse(s);
+  return iso(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY));
+}
+function mondayOfWeek(year, week) {
+  return addDays(isoMonday(iso(new Date(Date.UTC(year, 0, 4)))), (week - 1) * 7);
+}
+function isoWeek(s) {
+  const mon = parse(isoMonday(s));
+  const year = new Date(mon.getTime() + 3 * DAY).getUTCFullYear();
+  const firstMon = parse(isoMonday(iso(new Date(Date.UTC(year, 0, 4)))));
+  return { year, week: Math.round((mon - firstMon) / (7 * DAY)) + 1 };
+}
+const weeksInYear = y => isoWeek(iso(new Date(Date.UTC(y, 11, 28)))).week;
+
+/** Datumen tavlan visar. weekStartsOn 0 lägger söndagen före måndagen. */
+function weekDates(year, week, weekStartsOn, visible) {
+  const monday = mondayOfWeek(year, week);
+  const start = weekStartsOn === 0 ? addDays(monday, -1) : monday;
+  const set = new Set(visible);
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i)).filter(d => set.has(dow(d)));
+}
+
+const DOW_SHORT = ["Sön", "Mån", "Tis", "Ons", "Tors", "Fre", "Lör"];
+const MONTHS = ["jan", "feb", "mars", "april", "maj", "juni", "juli", "aug", "sep", "okt", "nov", "dec"];
+const dayLabel = s => DOW_SHORT[dow(s)] + " " + parse(s).getUTCDate();
+
+function rangeLabel(dates) {
+  if (!dates.length) return "";
+  const a = parse(dates[0]), b = parse(dates[dates.length - 1]);
+  const same = a.getUTCMonth() === b.getUTCMonth();
+  const left = same ? a.getUTCDate() : a.getUTCDate() + " " + MONTHS[a.getUTCMonth()];
+  return left + "–" + b.getUTCDate() + " " + MONTHS[b.getUTCMonth()] + " " + b.getUTCFullYear();
+}
+
+/* ================= Utgångsläge ================= */
+const ABSENCE = {
+  semester:      { label: "Semester",      color: "#1a5c9e" },
+  sjuk:          { label: "Sjuk",          color: "#b42318" },
+  vab:           { label: "VAB",           color: "#b25a00" },
+  tjanstledig:   { label: "Tjänstledig",   color: "#667085" },
+  foraldraledig: { label: "Föräldraledig", color: "#7c3aed" },
+  kompledig:     { label: "Kompledig",     color: "#0f766e" },
+};
+
+function seed() {
+  const now = isoWeek(iso(new Date()));
+  const y = now.year;
+  const anchor = mondayOfWeek(y, 1);
+  const wk = (w, len = 1) => ({ from: mondayOfWeek(y, w), to: addDays(mondayOfWeek(y, w + len - 1), 6) });
+  const days = (list, shift = "day", cw = 0) => list.map(weekday => ({ cycleWeek: cw, weekday, shift }));
+
+  return {
+    year: y,
+    week: now.week,
+    view: "vehicles",
+    board: {
+      name: "Fjärr Nybro/Hultsfred",
+      weekStartsOn: 1,
+      visibleWeekdays: [1, 2, 3, 4, 5],
+      visibleShifts: ["day", "night"],
+      showVehicle: true,
+    },
+    employees: [
+      { id: "e1", name: "Elin Karlsson", station: "Nybro" },
+      { id: "e2", name: "Peter Mauritzson", station: "Nybro" },
+      { id: "e3", name: "Björn Westman", station: "Nybro" },
+      { id: "e4", name: "Roger Bergström", station: "Nybro" },
+      { id: "e5", name: "Johan Olsson", station: "Nybro" },
+      { id: "e6", name: "Max Kellgren", station: "Nybro" },
+      { id: "e7", name: "Alma Persson", station: "Hultsfred" },
+      { id: "e8", name: "Fredrik Axelsson", station: "Hultsfred" },
+      { id: "e9", name: "Anna Hällblad", station: "Hultsfred" },
+      { id: "e10", name: "Jerry Scherman", station: "Gävle" },
+    ],
+    vehicles: [
+      { id: "v1", name: "BT08" }, { id: "v2", name: "BT09" },
+      { id: "v3", name: "BT13" }, { id: "v4", name: "BT14" },
+      { id: "v5", name: "BT24" }, { id: "v6", name: "HF03" },
+    ],
+    groups: [{ id: "g1", label: "Stockholm" }, { id: "g2", label: "Västerås" }],
+    rows: [
+      { id: "r1", label: "BT08/09", sublabel: "Stockholm", groupId: "g1", vehicleId: "v1" },
+      { id: "r2", label: "BT13/14", sublabel: "Västerås", groupId: "g2", vehicleId: "v3" },
+      { id: "r3", label: "BT24/26", sublabel: "Västerås", groupId: "g2", vehicleId: "v5" },
+      { id: "r4", label: "HF03", sublabel: "Hudiksvall", groupId: null, vehicleId: "v6" },
+    ],
+    crew: ["e1", "e2", "e3", "e4", "e5", "e6", "e7"],
+    baseSchedule: [
+      { id: "b1", rowId: "r1", employeeId: "e1", shift: "day" },
+      { id: "b2", rowId: "r1", employeeId: "e2", shift: "night" },
+      { id: "b3", rowId: "r2", employeeId: "e3", shift: "day" },
+      { id: "b4", rowId: "r2", employeeId: "e4", shift: "day" },
+      { id: "b5", rowId: "r3", employeeId: "e5", shift: "day" },
+      { id: "b6", rowId: "r4", employeeId: "e7", shift: "day" },
+    ],
+    patterns: [
+      { employeeId: "e1", cycleWeeks: 1, anchor, days: days([1, 2, 3, 4, 5]) },
+      { employeeId: "e2", cycleWeeks: 1, anchor, days: days([1, 2, 3, 4], "night") },
+      { employeeId: "e3", cycleWeeks: 1, anchor, days: days([1, 2, 4, 5]) },
+      { employeeId: "e4", cycleWeeks: 1, anchor, days: days([3]) },
+      { employeeId: "e5", cycleWeeks: 1, anchor, days: days([1, 2, 3, 4, 5]) },
+      { employeeId: "e6", cycleWeeks: 1, anchor, days: days([1, 2, 3, 4, 5]) },
+      { employeeId: "e7", cycleWeeks: 4, anchor, days: [
+        ...days([1, 2, 3], "day", 0), ...days([4, 5], "day", 1),
+        ...days([1, 3, 5], "night", 2), ...days([2, 4], "day", 3)] },
+      { employeeId: "e8", cycleWeeks: 1, anchor, days: days([1, 2, 3, 4, 5]) },
+    ],
+    assignments: [],
+    absences: [
+      { id: "a1", employeeId: "e1", ...wk(28, 3), type: "semester", status: "approved" },
+      { id: "a2", employeeId: "e3", ...wk(29, 3), type: "semester", status: "approved" },
+      { id: "a3", employeeId: "e4", ...wk(30, 2), type: "semester", status: "approved" },
+      { id: "a4", employeeId: "e2", ...wk(29, 2), type: "semester", status: "approved" },
+      { id: "a5", employeeId: "e7", ...wk(31, 3), type: "semester", status: "requested" },
+      { id: "a6", employeeId: "e6", ...wk(30, 3), type: "semester", status: "requested" },
+      { id: "a7", employeeId: "e5", ...wk(12), type: "foraldraledig", status: "approved" },
+      { id: "a8", employeeId: "e6", ...wk(6), type: "sjuk", status: "approved" },
+      { id: "a9", employeeId: "e4", ...wk(9), type: "vab", status: "approved" },
+    ],
+  };
+}
+
+/* ================= Tillstånd ================= */
+const KEY = "veckotavlan.v1";
+let S;
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) { S = JSON.parse(raw); return; }
+  } catch (e) { /* blockerad lagring — kör på minnet */ }
+  S = seed();
+  fillWeek(true);
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* strunt samma */ }
+}
+
+let counter = 0;
+const newId = p => p + "_" + Date.now().toString(36) + (counter++).toString(36);
+
+const empById = id => S.employees.find(e => e.id === id);
+const rowById = id => S.rows.find(r => r.id === id);
+const vehName = id => (S.vehicles.find(v => v.id === id) || {}).name || null;
+const currentDates = () => weekDates(S.year, S.week, S.board.weekStartsOn, S.board.visibleWeekdays);
+
+/* ================= Arbetsdagar ur mönstren ================= */
+function cycleWeekFor(anchor, cycleWeeks, date) {
+  if (cycleWeeks <= 1) return 0;
+  const weeks = Math.round((parse(isoMonday(date)) - parse(isoMonday(anchor))) / (7 * DAY));
+  return ((weeks % cycleWeeks) + cycleWeeks) % cycleWeeks;
+}
+
+function workDays(ids, from, to) {
+  const out = [];
+  for (const id of ids) {
+    const p = S.patterns.find(x => x.employeeId === id);
+    if (!p) continue;
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      const cw = cycleWeekFor(p.anchor, p.cycleWeeks, d);
+      for (const pd of p.days) {
+        if (pd.cycleWeek === cw && pd.weekday === dow(d)) out.push({ employeeId: id, date: d, shift: pd.shift });
+      }
+    }
+  }
+  return out;
+}
+
+const absenceAt = (id, date) => S.absences.find(a => a.employeeId === id && date >= a.from && date <= a.to);
+const isAway = (id, date) => !!absenceAt(id, date);
+
+/* ================= Fyll veckan ================= */
+function fillWeek(silent) {
+  const dates = currentDates();
+  const inWeek = new Set(dates);
+  const manual = S.assignments.filter(a => a.source === "manual");
+
+  S.assignments = S.assignments.filter(a => !(a.source === "generated" && inWeek.has(a.date)));
+
+  const placed = new Set(manual.filter(a => inWeek.has(a.date)).map(a => a.employeeId + "|" + a.date + "|" + a.shift));
+  const used = new Map();
+  for (const a of manual) {
+    if (!inWeek.has(a.date)) continue;
+    const k = a.rowId + "|" + a.date + "|" + a.shift;
+    used.set(k, (used.get(k) || new Set()).add(a.slot));
+  }
+  const takeSlot = k => {
+    const set = used.get(k) || new Set();
+    let s = 0;
+    while (set.has(s)) s++;
+    set.add(s); used.set(k, set);
+    return s;
+  };
+
+  const wd = workDays(S.crew, dates[0], dates[dates.length - 1])
+    .filter(w => inWeek.has(w.date))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.employeeId.localeCompare(b.employeeId));
+
+  let created = 0;
+  const unplaced = new Set();
+
+  for (const w of wd) {
+    if (placed.has(w.employeeId + "|" + w.date + "|" + w.shift)) continue;
+    if (isAway(w.employeeId, w.date)) continue;
+
+    const base = S.baseSchedule.filter(b => b.employeeId === w.employeeId && b.shift === w.shift);
+    if (!base.length) { unplaced.add(w.employeeId); continue; }
+
+    S.assignments.push({
+      id: newId("as"), rowId: base[0].rowId, date: w.date, shift: w.shift,
+      slot: takeSlot(base[0].rowId + "|" + w.date + "|" + w.shift),
+      employeeId: w.employeeId, source: "generated",
+    });
+    created++;
+  }
+
+  if (!silent) {
+    const el = document.getElementById("fillNote");
+    el.textContent = created + " pass utlagda" + (unplaced.size ? ", " + unplaced.size + " utan bil" : "");
+    setTimeout(() => { el.textContent = ""; }, 6000);
+  }
+  save();
+}
+
+/* ================= Konflikter ================= */
+function conflicts() {
+  const dates = currentDates();
+  const byAssignment = new Map();
+  const counts = { clash: 0, absent: 0, empty: 0 };
+  const add = (id, text) => byAssignment.set(id, [...(byAssignment.get(id) || []), text]);
+
+  for (const date of dates) {
+    const onDate = S.assignments.filter(a => a.date === date);
+
+    for (const shift of S.board.visibleShifts) {
+      const byShift = onDate.filter(a => a.shift === shift);
+
+      const byEmp = new Map();
+      for (const a of byShift) byEmp.set(a.employeeId, [...(byEmp.get(a.employeeId) || []), a]);
+      for (const [, list] of byEmp) {
+        if (list.length > 1) {
+          counts.clash++;
+          const where = [...new Set(list.map(a => rowById(a.rowId).label))].join(", ");
+          for (const a of list) add(a.id, "Står även på " + where);
+        }
+      }
+
+      const byVeh = new Map();
+      for (const a of byShift) {
+        const v = rowById(a.rowId).vehicleId;
+        if (v) byVeh.set(v, [...(byVeh.get(v) || []), a]);
+      }
+      for (const [v, list] of byVeh) {
+        if (new Set(list.map(a => a.rowId)).size > 1) {
+          counts.clash++;
+          for (const a of list) add(a.id, "Bilen " + vehName(v) + " står på flera rader");
+        }
+      }
+
+      for (const r of S.rows) if (!byShift.some(a => a.rowId === r.id)) counts.empty++;
+    }
+
+    for (const a of onDate) {
+      const hit = absenceAt(a.employeeId, date);
+      if (hit) { counts.absent++; add(a.id, "Inplanerad under " + ABSENCE[hit.type].label.toLowerCase()); }
+    }
+  }
+  return { byAssignment, counts };
+}
+
+/* ================= Rendering ================= */
+const SHIFT_CODE = { day: "DAG", night: "NATT" };
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function unplacedDaysFor(id) {
+  const dates = currentDates();
+  return workDays([id], dates[0], dates[dates.length - 1])
+    .filter(w => dates.includes(w.date))
+    .filter(w => !isAway(id, w.date) &&
+      !S.assignments.some(a => a.employeeId === id && a.date === w.date && a.shift === w.shift));
+}
+
+function renderAlerts(c) {
+  const box = document.getElementById("alerts");
+  box.replaceChildren();
+  const open = S.crew.filter(id => unplacedDaysFor(id).length > 0).length;
+  const chip = (cls, n, label) => {
+    const a = el("span", "alert " + cls);
+    a.append(el("span", "n", String(n)), document.createTextNode(label));
+    box.append(a);
+  };
+  if (c.counts.clash) chip("bad", c.counts.clash, c.counts.clash === 1 ? "krock" : "krockar");
+  if (c.counts.absent) chip("bad", c.counts.absent, "inplanerade under frånvaro");
+  if (open) chip("warn", open, open === 1 ? "person jobbar men saknar bil" : "personer jobbar men saknar bil");
+  chip("calm", c.counts.empty, "tomma pass");
+}
+
+function shiftCell(row, date, shift, c) {
+  const cell = el("div", "cell" + (shift === "night" ? " night" : ""));
+  cell.dataset.drop = row.id + "|" + date + "|" + shift;
+  if (S.board.visibleShifts.length > 1) cell.append(el("span", "sicon", SHIFT_CODE[shift]));
+
+  const stack = el("div", "stack");
+  const passes = S.assignments
+    .filter(a => a.rowId === row.id && a.date === date && a.shift === shift)
+    .sort((a, b) => a.slot - b.slot);
+
+  if (!passes.length) {
+    stack.append(el("span", "empty", "▢"));
+  } else {
+    for (const a of passes) {
+      const issues = c.byAssignment.get(a.id) || [];
+      const p = el("span", "pass" + (a.source === "manual" ? " manual" : "") + (issues.length ? " clash" : ""));
+      p.draggable = true;
+      p.dataset.pass = a.id;
+      p.title = (issues.length ? issues.join("\n") + "\n" : "") +
+        (a.source === "manual" ? "Ändrat för hand" : "Från bas-schemat");
+      p.append(el("span", "nm", (empById(a.employeeId) || {}).name || "—"));
+      if (S.board.showVehicle && row.vehicleId) p.append(el("span", "veh", vehName(row.vehicleId)));
+      if (issues.length) p.append(el("span", "mark", "▲"));
+      stack.append(p);
+    }
+  }
+  cell.append(stack);
+  return cell;
+}
+
+function vehicleTable(dates, c) {
+  const table = el("table", "grid");
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.append(el("th", null, "Bil"), el("th", null, "Linje"));
+  for (const d of dates) hr.append(el("th", null, dayLabel(d)));
+  thead.append(hr);
+  table.append(thead);
+
+  const tbody = el("tbody");
+  let lastGroup = " ";
+  for (const row of S.rows) {
+    const g = row.groupId ? (S.groups.find(x => x.id === row.groupId) || {}).label : null;
+    if (g && g !== lastGroup) {
+      const gr = el("tr", "grouprow");
+      const td = el("td", null, g);
+      td.colSpan = 2 + dates.length;
+      gr.append(td);
+      tbody.append(gr);
+    }
+    lastGroup = g;
+
+    const tr = el("tr");
+    const th = el("th", "rowhead");
+    th.scope = "row";
+    th.style.borderLeftColor =
+      row.groupId === "g1" ? "var(--accent)" : row.groupId === "g2" ? "var(--night)" : "var(--line-strong)";
+    th.append(el("span", "code", row.label));
+    if (S.board.showVehicle && row.vehicleId) th.append(el("span", "sub", vehName(row.vehicleId)));
+    tr.append(th);
+    tr.append(el("td", "linecell", row.sublabel || ""));
+
+    for (const date of dates) {
+      const td = el("td", "day");
+      for (const shift of S.board.visibleShifts) td.append(shiftCell(row, date, shift, c));
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  return table;
+}
+
+function peopleTable(dates) {
+  const table = el("table", "grid");
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.append(el("th", null, "Person"));
+  for (const d of dates) hr.append(el("th", null, dayLabel(d)));
+  thead.append(hr);
+  table.append(thead);
+
+  const tbody = el("tbody");
+  const ids = [...new Set([...S.crew, ...S.assignments.map(a => a.employeeId)])]
+    .filter(id => empById(id))
+    .sort((a, b) => empById(a).name.localeCompare(empById(b).name, "sv"));
+
+  for (const id of ids) {
+    const tr = el("tr");
+    const th = el("th", "rowhead person");
+    th.scope = "row";
+    th.append(el("span", "code", empById(id).name));
+    tr.append(th);
+
+    for (const date of dates) {
+      const td = el("td", "day");
+      const inner = el("div", "cell");
+      const stack = el("div", "stack");
+      const away = absenceAt(id, date);
+      const mine = S.assignments.filter(a => a.employeeId === id && a.date === date);
+
+      if (away) {
+        const s = el("span", "pass away");
+        s.style.borderLeftColor = ABSENCE[away.type].color;
+        s.append(el("span", "nm", ABSENCE[away.type].label));
+        stack.append(s);
+      } else if (mine.length) {
+        for (const a of mine) {
+          const s = el("span", "pass" + (a.source === "manual" ? " manual" : ""));
+          s.append(el("span", "nm", rowById(a.rowId).label));
+          if (S.board.visibleShifts.length > 1) s.append(el("span", "veh", SHIFT_CODE[a.shift]));
+          stack.append(s);
+        }
+      } else if (unplacedDaysFor(id).some(w => w.date === date)) {
+        stack.append(el("span", "why", "▲ ej utlagd"));
+      } else {
+        stack.append(el("span", "empty", "▢"));
+      }
+      inner.append(stack);
+      td.append(inner);
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  return table;
+}
+
+function renderPanel() {
+  const panel = document.getElementById("panel");
+  panel.replaceChildren();
+  panel.append(el("h2", null, "Bemanning"));
+
+  const dates = currentDates();
+  const members = S.crew.filter(id => empById(id)).map(id => {
+    const emp = empById(id);
+    const mine = workDays([id], dates[0], dates[dates.length - 1]).filter(w => dates.includes(w.date));
+    return {
+      emp, days: mine, open: unplacedDaysFor(id),
+      away: S.absences.find(a => a.employeeId === id && a.from <= dates[dates.length - 1] && a.to >= dates[0]),
+    };
+  });
+
+  const section = (label, list, alarm) => {
+    if (!list.length) return;
+    panel.append(el("div", "sect" + (alarm ? " alarm" : ""), label + " (" + list.length + ")"));
+    const ul = el("ul", "crew");
+    for (const m of list) {
+      const li = el("li", m.away ? "away" : "");
+      li.draggable = true;
+      li.dataset.crew = m.emp.id;
+      const top = el("div", "top");
+      top.append(el("span", "nm", m.emp.name),
+        el("span", "st", m.away ? ABSENCE[m.away.type].label : m.emp.station));
+      li.append(top);
+
+      const dots = el("div", "dots");
+      const open = new Set(m.open.map(w => w.date));
+      for (const d of dates) {
+        const w = m.days.find(x => x.date === d);
+        const dot = el("div",
+          "dot" + (w ? " " + (w.shift === "day" ? "d" : "n") : "") + (open.has(d) ? " open" : ""),
+          w ? (w.shift === "day" ? "D" : "N") : "");
+        dot.title = dayLabel(d) + (w ? " · " + (w.shift === "day" ? "dag" : "natt") : " · ledig");
+        dots.append(dot);
+      }
+      li.append(dots);
+      ul.append(li);
+    }
+    panel.append(ul);
+  };
+
+  section("Ej utlagda", members.filter(m => m.open.length), true);
+  section("Utlagda", members.filter(m => !m.open.length), false);
+  if (!members.length) panel.append(el("p", "hint", "Ingen personal vald."));
+}
+
+function renderBoard() {
+  const wrap = document.getElementById("boardWrap");
+  const dates = currentDates();
+  const c = conflicts();
+  renderAlerts(c);
+  wrap.replaceChildren(S.view === "people" ? peopleTable(dates) : vehicleTable(dates, c));
+  renderPanel();
+}
+
+/* ================= Dra och släpp ================= */
+let dragging = null;
+let copyMode = false;
+addEventListener("keydown", e => { copyMode = e.shiftKey; });
+addEventListener("keyup", e => { copyMode = e.shiftKey; });
+
+document.addEventListener("dragstart", e => {
+  const pass = e.target.closest && e.target.closest("[data-pass]");
+  const crew = e.target.closest && e.target.closest("[data-crew]");
+  if (pass) {
+    const a = S.assignments.find(x => x.id === pass.dataset.pass);
+    if (!a) return;
+    dragging = { kind: "pass", assignmentId: a.id, employeeId: a.employeeId };
+  } else if (crew) {
+    dragging = { kind: "crew", employeeId: crew.dataset.crew };
+  } else return;
+  e.dataTransfer.effectAllowed = "copyMove";
+  e.dataTransfer.setData("text/plain", dragging.employeeId);
+});
+
+function clearDropMarks() {
+  document.querySelectorAll(".drop-ok, .drop-bad").forEach(n => n.classList.remove("drop-ok", "drop-bad"));
+  document.querySelectorAll(".cell .why").forEach(n => n.remove());
+}
+
+document.addEventListener("dragend", () => { dragging = null; clearDropMarks(); });
+
+/** Varför en släppning skulle bli fel — visas medan man drar. */
+function dropProblem(rowId, date, shift) {
+  if (!dragging) return null;
+  const id = dragging.employeeId;
+  const away = absenceAt(id, date);
+  if (away) return ABSENCE[away.type].label;
+
+  const elsewhere = S.assignments.find(a =>
+    a.employeeId === id && a.date === date && a.shift === shift && a.id !== dragging.assignmentId);
+  if (elsewhere) return "Står redan på " + rowById(elsewhere.rowId).label;
+
+  if (!workDays([id], date, date).some(w => w.shift === shift)) {
+    return "Jobbar inte " + (shift === "day" ? "dag" : "natt") + " den dagen";
+  }
+  return null;
+}
+
+document.addEventListener("dragover", e => {
+  if (!dragging) return;
+  const cell = e.target.closest && e.target.closest("[data-drop]");
+  const panel = e.target.closest && e.target.closest("#panel");
+
+  if (cell) {
+    e.preventDefault();
+    const parts = cell.dataset.drop.split("|");
+    const problem = dropProblem(parts[0], parts[1], parts[2]);
+    cell.classList.toggle("drop-bad", !!problem);
+    cell.classList.toggle("drop-ok", !problem);
+    let why = cell.querySelector(".why");
+    if (problem) {
+      if (!why) { why = el("div", "why"); cell.querySelector(".stack").append(why); }
+      why.textContent = problem;
+    } else if (why) why.remove();
+  } else if (panel && dragging.kind === "pass") {
+    e.preventDefault();
+    panel.classList.add("drop-ok");
+  }
+});
+
+document.addEventListener("dragleave", e => {
+  const cell = e.target.closest && e.target.closest("[data-drop]");
+  if (cell) {
+    cell.classList.remove("drop-ok", "drop-bad");
+    const why = cell.querySelector(".why");
+    if (why) why.remove();
+  }
+  const panel = e.target.closest && e.target.closest("#panel");
+  if (panel && !panel.contains(e.relatedTarget)) panel.classList.remove("drop-ok");
+});
+
+document.addEventListener("drop", e => {
+  if (!dragging) return;
+  const cell = e.target.closest && e.target.closest("[data-drop]");
+  const panel = e.target.closest && e.target.closest("#panel");
+  e.preventDefault();
+
+  if (panel && dragging.kind === "pass") {
+    S.assignments = S.assignments.filter(a => a.id !== dragging.assignmentId);
+  } else if (cell) {
+    const [rowId, date, shift] = cell.dataset.drop.split("|");
+    const taken = S.assignments.filter(a => a.rowId === rowId && a.date === date && a.shift === shift);
+    if (!taken.some(a => a.employeeId === dragging.employeeId)) {
+      const used = new Set(taken.filter(a => a.id !== dragging.assignmentId).map(a => a.slot));
+      let slot = 0;
+      while (used.has(slot)) slot++;
+
+      if (dragging.kind === "crew" || copyMode) {
+        S.assignments.push({ id: newId("as"), rowId, date, shift, slot, employeeId: dragging.employeeId, source: "manual" });
+      } else {
+        const a = S.assignments.find(x => x.id === dragging.assignmentId);
+        Object.assign(a, { rowId, date, shift, slot, source: "manual" });
+      }
+    }
+  } else return;
+
+  dragging = null;
+  clearDropMarks();
+  save();
+  renderAll();
+});
+
+/* ================= Semestervyn ================= */
+let yearDrag = null;
+
+function weeksOfSpan(year, from, to) {
+  const out = [];
+  for (let w = 1; w <= weeksInYear(year); w++) {
+    const start = mondayOfWeek(year, w), end = addDays(start, 6);
+    if (from <= end && to >= start) out.push(w);
+  }
+  return out;
+}
+
+function renderYear() {
+  const wrap = document.getElementById("yearWrap");
+  const year = S.year;
+  const weeks = Array.from({ length: weeksInYear(year) }, (_, i) => i + 1);
+  const minStaff = Number(document.getElementById("minStaff").value) || 0;
+
+  const table = el("table", "year");
+  const thead = el("thead");
+
+  const mr = el("tr");
+  mr.append(el("th", "name month"));
+  let run = null;
+  for (const w of weeks) {
+    const m = MONTHS[parse(mondayOfWeek(year, w)).getUTCMonth()];
+    if (run && run.label === m) { run.th.colSpan++; continue; }
+    const th = el("th", "month", m);
+    run = { label: m, th };
+    mr.append(th);
+  }
+  thead.append(mr);
+
+  const wr = el("tr");
+  wr.append(el("th", "name", "Person"));
+  for (const w of weeks) wr.append(el("th", "wk", w % 2 === 1 ? String(w) : ""));
+  thead.append(wr);
+  table.append(thead);
+
+  const tbody = el("tbody");
+  const rows = S.crew.filter(id => empById(id)).map(empById)
+    .sort((a, b) => a.name.localeCompare(b.name, "sv"));
+
+  for (const emp of rows) {
+    const tr = el("tr");
+    const th = el("th", "name");
+    th.append(document.createTextNode(emp.name), el("span", "st", " " + emp.station));
+    tr.append(th);
+
+    for (const w of weeks) {
+      const td = el("td", "wcell");
+      td.dataset.emp = emp.id;
+      td.dataset.week = String(w);
+      const hit = S.absences.find(a => a.employeeId === emp.id && weeksOfSpan(year, a.from, a.to).includes(w));
+      if (hit) {
+        td.style.background = ABSENCE[hit.type].color;
+        td.style.opacity = hit.status === "requested" ? ".35" : "1";
+        td.title = ABSENCE[hit.type].label + " v." + w + (hit.status === "requested" ? " (önskemål)" : "");
+      } else {
+        td.title = "Vecka " + w;
+      }
+      if (yearDrag && yearDrag.emp === emp.id &&
+        w >= Math.min(yearDrag.a, yearDrag.b) && w <= Math.max(yearDrag.a, yearDrag.b)) {
+        td.classList.add("sel");
+      }
+      tr.append(td);
+    }
+    tbody.append(tr);
+  }
+
+  const sr = el("tr", "staff");
+  sr.append(el("th", "name", "Bemanning kvar"));
+  for (const w of weeks) {
+    const away = rows.filter(e => S.absences.some(a =>
+      a.employeeId === e.id && a.status === "approved" && weeksOfSpan(year, a.from, a.to).includes(w))).length;
+    const n = rows.length - away;
+    const td = el("td", n < minStaff ? "low" : "", String(n));
+    td.title = "Vecka " + w + ": " + n + " tillgängliga";
+    sr.append(td);
+  }
+  tbody.append(sr);
+  table.append(tbody);
+  wrap.replaceChildren(table);
+
+  const legend = document.getElementById("yearLegend");
+  legend.replaceChildren();
+  for (const key of Object.keys(ABSENCE)) {
+    const s = el("span");
+    const sw = el("span", "sw");
+    sw.style.background = ABSENCE[key].color;
+    s.append(sw, document.createTextNode(ABSENCE[key].label));
+    legend.append(s);
+  }
+  const req = el("span");
+  const rsw = el("span", "sw");
+  rsw.style.background = "var(--accent)";
+  rsw.style.opacity = ".35";
+  req.append(rsw, document.createTextNode("Önskemål"));
+  legend.append(req);
+}
+
+/**
+ * Markering med pekaren.
+ *
+ * Pointer events med pekarfångst i stället för mus-events: cellerna
+ * ritas inte om under dragningen, bara .sel-klassen flyttas. Att rita om
+ * tabellen mitt i en dragning river bort noden under pekaren, och då
+ * uteblir pointerup helt.
+ */
+function paintSelection() {
+  const wrap = document.getElementById("yearWrap");
+  for (const td of wrap.querySelectorAll("td.wcell")) {
+    const inRange = yearDrag &&
+      td.dataset.emp === yearDrag.emp &&
+      Number(td.dataset.week) >= Math.min(yearDrag.a, yearDrag.b) &&
+      Number(td.dataset.week) <= Math.max(yearDrag.a, yearDrag.b);
+    td.classList.toggle("sel", !!inRange);
+  }
+}
+
+document.addEventListener("pointerdown", e => {
+  const td = e.target.closest && e.target.closest("td.wcell");
+  if (!td) return;
+  e.preventDefault();
+  yearDrag = { emp: td.dataset.emp, a: Number(td.dataset.week), b: Number(td.dataset.week) };
+  const table = td.closest("table");
+  if (table && table.setPointerCapture) table.setPointerCapture(e.pointerId);
+  paintSelection();
+});
+
+document.addEventListener("pointermove", e => {
+  if (!yearDrag) return;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const td = under && under.closest && under.closest("td.wcell");
+  if (!td || td.dataset.emp !== yearDrag.emp) return;
+  const w = Number(td.dataset.week);
+  if (w === yearDrag.b) return;
+  yearDrag.b = w;
+  paintSelection();
+});
+
+document.addEventListener("pointerup", () => {
+  if (!yearDrag) return;
+  const { emp, a, b } = yearDrag;
+  yearDrag = null;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  const weeks = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+  const year = S.year;
+  const from = mondayOfWeek(year, lo), to = addDays(mondayOfWeek(year, hi), 6);
+
+  const allMarked = weeks.every(w =>
+    S.absences.some(x => x.employeeId === emp && weeksOfSpan(year, x.from, x.to).includes(w)));
+
+  if (allMarked) {
+    // Dra över markerade veckor igen tar bort dem, och delar spannet om veckan ligger mitt i.
+    const kept = [];
+    for (const x of S.absences) {
+      if (x.employeeId !== emp || x.to < from || x.from > to) { kept.push(x); continue; }
+      if (x.from < from) kept.push({ ...x, id: newId("ab"), to: addDays(from, -1) });
+      if (x.to > to) kept.push({ ...x, id: newId("ab"), from: addDays(to, 1) });
+    }
+    S.absences = kept;
+  } else {
+    const type = document.getElementById("absType").value;
+    const status = document.getElementById("absStatus").value;
+    // Slå ihop med överlappande av samma typ i stället för att stapla småbitar.
+    let lo2 = from, hi2 = to;
+    S.absences = S.absences.filter(x => {
+      const overlaps = x.employeeId === emp && x.type === type && x.from <= to && x.to >= from;
+      if (overlaps) {
+        if (x.from < lo2) lo2 = x.from;
+        if (x.to > hi2) hi2 = x.to;
+      }
+      return !overlaps;
+    });
+    S.absences.push({ id: newId("ab"), employeeId: emp, from: lo2, to: hi2, type, status });
+  }
+  save();
+  renderAll();
+});
+
+/* ================= Dialoger ================= */
+function dialogShell(dlg, title, build) {
+  dlg.replaceChildren();
+  const head = el("div", "head");
+  head.append(el("h2", null, title));
+  const done = el("button", null, "Klar");
+  done.onclick = () => dlg.close();
+  head.append(done);
+  const body = el("div", "body");
+  dlg.append(head, body);
+  build(body);
+  if (!dlg.open) dlg.showModal();
+}
+
+function openBoardEditor() {
+  const dlg = document.getElementById("dlgBoard");
+  const build = body => {
+    body.replaceChildren();
+    body.append(el("p", "note",
+      "Namn, ordning, gruppering och vilka dagar och skift som visas. Ingen av ändringarna kräver en utvecklare."));
+
+    const fields = el("div", "fields");
+
+    const nameF = el("label", "field");
+    nameF.append(document.createTextNode("Namn"));
+    const nameI = el("input");
+    nameI.value = S.board.name;
+    nameI.oninput = () => {
+      S.board.name = nameI.value;
+      document.getElementById("boardName").textContent = nameI.value;
+      save();
+    };
+    nameF.append(nameI);
+
+    const startF = el("label", "field");
+    startF.append(document.createTextNode("Veckan börjar på"));
+    const startS = el("select");
+    for (const [v, t] of [[1, "Måndag"], [0, "Söndag"]]) {
+      const o = el("option", null, t);
+      o.value = String(v);
+      startS.append(o);
+    }
+    startS.value = String(S.board.weekStartsOn);
+    startS.onchange = () => { S.board.weekStartsOn = Number(startS.value); save(); renderAll(); };
+    startF.append(startS);
+
+    fields.append(nameF, startF);
+    body.append(fields);
+
+    const toggleGroup = (label, current, values, labels, apply) => {
+      const w = el("div", "field");
+      w.style.marginTop = "14px";
+      w.append(document.createTextNode(label));
+      const t = el("div", "toggles");
+      values.forEach((v, i) => {
+        const b = el("button", null, labels[i]);
+        b.setAttribute("aria-pressed", current.includes(v) ? "true" : "false");
+        b.onclick = () => {
+          const next = current.includes(v) ? current.filter(x => x !== v) : [...current, v];
+          if (!next.length) return;   // en tavla utan dagar eller skift visar ingenting
+          apply(next);
+          save();
+          renderAll();
+          build(body);
+        };
+        t.append(b);
+      });
+      w.append(t);
+      body.append(w);
+    };
+
+    toggleGroup("Dagar som visas", S.board.visibleWeekdays, [1, 2, 3, 4, 5, 6, 0],
+      ["M", "T", "O", "T", "F", "L", "S"],
+      v => { S.board.visibleWeekdays = v.slice().sort((a, b) => (a || 7) - (b || 7)); });
+
+    toggleGroup("Skift", S.board.visibleShifts, ["day", "night"], ["Dag", "Natt"],
+      v => { S.board.visibleShifts = ["day", "night"].filter(s => v.includes(s)); });
+
+    const vw = el("div", "field");
+    vw.style.marginTop = "14px";
+    vw.append(document.createTextNode("Visas i cellen"));
+    const vt = el("div", "toggles");
+    const vb = el("button", null, "Bilnummer");
+    vb.setAttribute("aria-pressed", S.board.showVehicle ? "true" : "false");
+    vb.onclick = () => { S.board.showVehicle = !S.board.showVehicle; save(); renderAll(); build(body); };
+    vt.append(vb);
+    vw.append(vt);
+    body.append(vw);
+
+    const rl = el("div", "field");
+    rl.style.marginTop = "18px";
+    rl.append(document.createTextNode("Rader — dra i handtaget för att ändra ordning"));
+    body.append(rl);
+
+    const ul = el("ul", "rowlist");
+    for (const row of S.rows) {
+      const li = el("li");
+      li.draggable = true;
+      li.dataset.rowid = row.id;
+
+      li.append(el("span", "grip", "⠿"));
+
+      const lbl = el("input", "lbl");
+      lbl.value = row.label;
+      lbl.oninput = () => { row.label = lbl.value; save(); renderAll(); };
+
+      const sub = el("input", "sublbl");
+      sub.value = row.sublabel || "";
+      sub.placeholder = "linje/ort";
+      sub.oninput = () => { row.sublabel = sub.value; save(); renderAll(); };
+
+      const veh = el("select");
+      const none = el("option", null, "— ingen bil —");
+      none.value = "";
+      veh.append(none);
+      for (const v of S.vehicles) {
+        const o = el("option", null, v.name);
+        o.value = v.id;
+        veh.append(o);
+      }
+      veh.value = row.vehicleId || "";
+      veh.onchange = () => { row.vehicleId = veh.value || null; save(); renderAll(); };
+
+      const del = el("button", "del", "Ta bort");
+      del.onclick = () => {
+        S.rows = S.rows.filter(r => r.id !== row.id);
+        S.assignments = S.assignments.filter(a => a.rowId !== row.id);
+        S.baseSchedule = S.baseSchedule.filter(b => b.rowId !== row.id);
+        save();
+        renderAll();
+        build(body);
+      };
+
+      li.append(lbl, sub, veh, del);
+      ul.append(li);
+    }
+    body.append(ul);
+
+    let from = null;
+    ul.addEventListener("dragstart", e => {
+      const li = e.target.closest("li");
+      if (!li) return;
+      e.stopPropagation();
+      from = li.dataset.rowid;
+      li.classList.add("dragging");
+    });
+    ul.addEventListener("dragover", e => {
+      if (!from) return;
+      const li = e.target.closest("li");
+      if (!li) return;
+      e.preventDefault();
+      e.stopPropagation();
+      ul.querySelectorAll("li").forEach(n => n.classList.remove("over"));
+      li.classList.add("over");
+    });
+    ul.addEventListener("drop", e => {
+      if (!from) return;
+      const li = e.target.closest("li");
+      if (!li) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const order = S.rows.map(r => r.id);
+      const moved = order.splice(order.indexOf(from), 1);
+      order.splice(order.indexOf(li.dataset.rowid), 0, ...moved);
+      S.rows = order.map(id => S.rows.find(r => r.id === id));
+      from = null;
+      save();
+      renderAll();
+      build(body);
+    });
+    ul.addEventListener("dragend", e => {
+      e.stopPropagation();
+      from = null;
+      ul.querySelectorAll("li").forEach(n => n.classList.remove("dragging", "over"));
+    });
+
+    const add = el("div", "fields");
+    add.style.marginTop = "12px";
+    const newI = el("input");
+    newI.placeholder = "Ny rad, t.ex. BT57/58…";
+    newI.style.padding = "5px 7px";
+    newI.style.border = "1px solid var(--line-strong)";
+    newI.style.borderRadius = "3px";
+    newI.style.background = "var(--surface)";
+    newI.style.color = "var(--ink)";
+    newI.style.font = "inherit";
+    const addB = el("button", null, "Lägg till rad");
+    addB.onclick = () => {
+      if (!newI.value.trim()) return;
+      S.rows.push({ id: newId("r"), label: newI.value.trim(), sublabel: "", groupId: null, vehicleId: null });
+      save();
+      renderAll();
+      build(body);
+    };
+    add.append(newI, addB);
+    body.append(add);
+  };
+
+  dialogShell(dlg, "Redigera tavla", build);
+}
+
+function openBaseEditor() {
+  const dlg = document.getElementById("dlgBase");
+  const build = body => {
+    body.replaceChildren();
+    body.append(el("p", "note",
+      "Kopplar person till bil. Inga dagar anges — flera personer får kopplas till samma rad, och deras arbetsdagar avgör vem som står där vilken dag."));
+
+    const table = el("table", "simple");
+    const thead = el("thead");
+    const hr = el("tr");
+    for (const h of ["Rad", "Person", "Skift", ""]) hr.append(el("th", null, h));
+    thead.append(hr);
+    table.append(thead);
+
+    const tb = el("tbody");
+    for (const b of S.baseSchedule) {
+      const tr = el("tr");
+      tr.append(el("td", null, (rowById(b.rowId) || {}).label || "—"));
+      tr.append(el("td", null, (empById(b.employeeId) || {}).name || "—"));
+      tr.append(el("td", null, b.shift === "day" ? "Dag" : "Natt"));
+      const td = el("td", "right");
+      const del = el("button", "del", "Ta bort");
+      del.style.color = "var(--danger)";
+      del.onclick = () => {
+        S.baseSchedule = S.baseSchedule.filter(x => x.id !== b.id);
+        save();
+        renderAll();
+        build(body);
+      };
+      td.append(del);
+      tr.append(td);
+      tb.append(tr);
+    }
+    if (!S.baseSchedule.length) {
+      const tr = el("tr");
+      const td = el("td", null, "Inget bas-schema ännu.");
+      td.colSpan = 4;
+      td.style.color = "var(--muted)";
+      tr.append(td);
+      tb.append(tr);
+    }
+    table.append(tb);
+    body.append(table);
+
+    const f = el("div", "fields");
+    f.style.marginTop = "14px";
+
+    const rowF = el("label", "field");
+    rowF.append(document.createTextNode("Rad"));
+    const rowS = el("select");
+    for (const r of S.rows) {
+      const o = el("option", null, r.label);
+      o.value = r.id;
+      rowS.append(o);
+    }
+    rowF.append(rowS);
+
+    const empF = el("label", "field");
+    empF.append(document.createTextNode("Person"));
+    const empS = el("select");
+    for (const id of S.crew) {
+      if (!empById(id)) continue;
+      const o = el("option", null, empById(id).name);
+      o.value = id;
+      empS.append(o);
+    }
+    empF.append(empS);
+
+    const shF = el("label", "field");
+    shF.append(document.createTextNode("Skift"));
+    const shS = el("select");
+    for (const [v, t] of [["day", "Dag"], ["night", "Natt"]]) {
+      const o = el("option", null, t);
+      o.value = v;
+      shS.append(o);
+    }
+    shF.append(shS);
+
+    const addB = el("button", "primary", "Koppla");
+    addB.onclick = () => {
+      if (!rowS.value || !empS.value) return;
+      const exists = S.baseSchedule.some(b =>
+        b.rowId === rowS.value && b.employeeId === empS.value && b.shift === shS.value);
+      if (exists) return;
+      S.baseSchedule.push({ id: newId("b"), rowId: rowS.value, employeeId: empS.value, shift: shS.value });
+      save();
+      renderAll();
+      build(body);
+    };
+
+    f.append(rowF, empF, shF, addB);
+    body.append(f);
+  };
+
+  dialogShell(dlg, "Bas-schema", build);
+}
+
+function openPatternEditor() {
+  const dlg = document.getElementById("dlgPatterns");
+  let current = S.crew.find(id => empById(id));
+
+  const build = body => {
+    body.replaceChildren();
+    body.append(el("p", "note",
+      "Vilka dagar personen jobbar. Reservkälla tills arbetsdagarna kan hämtas från TransPA — då tar hämtningen över per person."));
+
+    let p = S.patterns.find(x => x.employeeId === current);
+    if (!p) {
+      p = { employeeId: current, cycleWeeks: 1, anchor: mondayOfWeek(S.year, 1), days: [] };
+      S.patterns.push(p);
+    }
+
+    const f = el("div", "fields");
+
+    const pf = el("label", "field");
+    pf.append(document.createTextNode("Person"));
+    const ps = el("select");
+    for (const id of S.crew) {
+      if (!empById(id)) continue;
+      const o = el("option", null, empById(id).name);
+      o.value = id;
+      ps.append(o);
+    }
+    ps.value = current;
+    ps.onchange = () => { current = ps.value; build(body); };
+    pf.append(ps);
+
+    const cf = el("label", "field");
+    cf.append(document.createTextNode("Cykel"));
+    const cs = el("select");
+    for (let n = 1; n <= 8; n++) {
+      const o = el("option", null, n === 1 ? "Samma varje vecka" : n + " veckor");
+      o.value = String(n);
+      cs.append(o);
+    }
+    cs.value = String(p.cycleWeeks);
+    cs.onchange = () => {
+      p.cycleWeeks = Number(cs.value);
+      p.days = p.days.filter(d => d.cycleWeek < p.cycleWeeks);
+      save();
+      renderAll();
+      build(body);
+    };
+    cf.append(cs);
+
+    f.append(pf, cf);
+    body.append(f);
+
+    for (let cw = 0; cw < p.cycleWeeks; cw++) {
+      if (p.cycleWeeks > 1) {
+        const h = el("div", "field", "Vecka " + (cw + 1) + " i cykeln");
+        h.style.marginTop = "16px";
+        body.append(h);
+      }
+      const t = el("table", "patgrid");
+      const hr = el("tr");
+      hr.append(el("th"));
+      for (const d of [1, 2, 3, 4, 5, 6, 0]) hr.append(el("th", null, DOW_SHORT[d]));
+      t.append(hr);
+
+      for (const shift of ["day", "night"]) {
+        const tr = el("tr");
+        tr.append(el("th", "sh", shift === "day" ? "Dag" : "Natt"));
+        for (const d of [1, 2, 3, 4, 5, 6, 0]) {
+          const td = el("td");
+          const on = p.days.some(x => x.cycleWeek === cw && x.weekday === d && x.shift === shift);
+          const b = el("button", null, on ? (shift === "day" ? "D" : "N") : "");
+          b.setAttribute("aria-pressed", on ? "true" : "false");
+          b.setAttribute("aria-label", DOW_SHORT[d] + " " + (shift === "day" ? "dag" : "natt"));
+          b.onclick = () => {
+            if (on) p.days = p.days.filter(x => !(x.cycleWeek === cw && x.weekday === d && x.shift === shift));
+            else p.days.push({ cycleWeek: cw, weekday: d, shift });
+            save();
+            renderAll();
+            build(body);
+          };
+          td.append(b);
+          tr.append(td);
+        }
+        t.append(tr);
+      }
+      body.append(t);
+    }
+  };
+
+  dialogShell(dlg, "Arbetsmönster", build);
+}
+
+/* ================= Sammanbindning ================= */
+function renderAll() {
+  const yearView = S.view === "year";
+  document.getElementById("stage").hidden = yearView;
+  document.getElementById("yearSection").hidden = !yearView;
+  document.getElementById("fillWeek").hidden = yearView;
+  document.getElementById("alerts").hidden = yearView;
+  document.getElementById("boardName").textContent = S.board.name;
+
+  document.getElementById("weekLabel").textContent =
+    yearView ? String(S.year) : "Vecka " + S.week + " · " + rangeLabel(currentDates());
+
+  document.getElementById("viewVehicles").setAttribute("aria-pressed", String(S.view === "vehicles"));
+  document.getElementById("viewPeople").setAttribute("aria-pressed", String(S.view === "people"));
+  document.getElementById("viewYear").setAttribute("aria-pressed", String(yearView));
+
+  if (yearView) renderYear();
+  else renderBoard();
+}
+
+function step(delta) {
+  if (S.view === "year") {
+    S.year += delta;
+  } else {
+    S.week += delta;
+    if (S.week < 1) { S.year -= 1; S.week = weeksInYear(S.year); }
+    else if (S.week > weeksInYear(S.year)) { S.year += 1; S.week = 1; }
+  }
+  save();
+  renderAll();
+}
+
+document.getElementById("prevWeek").onclick = () => step(-1);
+document.getElementById("nextWeek").onclick = () => step(1);
+document.getElementById("viewVehicles").onclick = () => { S.view = "vehicles"; save(); renderAll(); };
+document.getElementById("viewPeople").onclick = () => { S.view = "people"; save(); renderAll(); };
+document.getElementById("viewYear").onclick = () => { S.view = "year"; save(); renderAll(); };
+document.getElementById("fillWeek").onclick = () => { fillWeek(false); renderAll(); };
+document.getElementById("openBoard").onclick = openBoardEditor;
+document.getElementById("openBase").onclick = openBaseEditor;
+document.getElementById("openPatterns").onclick = openPatternEditor;
+document.getElementById("minStaff").oninput = () => { if (S.view === "year") renderYear(); };
+document.getElementById("reset").onclick = () => {
+  if (!confirm("Återställ tavlan till utgångsläget? Dina ändringar försvinner.")) return;
+  S = seed();
+  fillWeek(true);
+  save();
+  renderAll();
+};
+
+load();
+renderAll();
+</script>
