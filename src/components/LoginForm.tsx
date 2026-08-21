@@ -1,26 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState } from "react";
 
 export function LoginForm({
   action,
 }: {
-  action: (email: string, password: string) => Promise<string | undefined>;
+  action: (prev: string | null, formData: FormData) => Promise<string | null>;
 }) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [error, formAction, pending] = useActionState(action, null);
 
   return (
-    <form
-      className="mt-8 flex flex-col gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const data = new FormData(e.currentTarget);
-        startTransition(async () => {
-          setError((await action(String(data.get("email")), String(data.get("password")))) ?? null);
-        });
-      }}
-    >
+    <form action={formAction} className="mt-8 flex flex-col gap-4">
       <label className="text-xs text-(--color-muted)">
         E-post
         <input

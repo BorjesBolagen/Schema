@@ -60,6 +60,21 @@ Sidan går inte att nå igen när kontot finns. **Gör det direkt efter
 första deployen** — fram tills dess kan vem som helst som hittar
 adressen skapa administratörskontot.
 
+### Skapa ett konto direkt i databasen
+
+Går det inte att nå `/kom-igang` — kontot finns redan, eller ni vill lägga
+upp någon utan att logga in — går det att generera SQL i stället:
+
+```bash
+npx tsx scripts/make-user-sql.ts \
+  --email namn@borjeskoncernen.se --name "Namn" --password "…" --role admin
+```
+
+Skriptet skriver ut en `INSERT` med lösenordet redan hashat. Lösenordet i
+klartext hamnar aldrig i databasen och aldrig i SQL-filen. Satsen
+uppdaterar ett befintligt konto med samma adress, så den fungerar även
+för att återställa ett lösenord.
+
 ## 4. Användare och behörighet
 
 Under **Användare** lägger en administratör upp konton.

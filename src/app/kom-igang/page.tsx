@@ -8,10 +8,14 @@ export const dynamic = "force-dynamic";
 export default async function SetupPage() {
   if (!(await needsSetup())) redirect("/logga-in");
 
-  async function create(email: string, name: string, password: string) {
+  /** Server-action av samma skäl som inloggningen — se logga-in/page.tsx. */
+  async function create(_prev: string | null, formData: FormData): Promise<string | null> {
     "use server";
-    const result = await createFirstAdmin(email, name, password);
+    const email = String(formData.get("email") ?? "");
+    const password = String(formData.get("password") ?? "");
+    const result = await createFirstAdmin(email, String(formData.get("name") ?? ""), password);
     if (!result.ok) return result.error;
+
     // Logga in direkt — annars är nästa steg att skriva in samma
     // uppgifter en gång till.
     await signIn(email, password);

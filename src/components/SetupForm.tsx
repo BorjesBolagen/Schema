@@ -1,37 +1,21 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useActionState, useState } from "react";
 import { passwordProblem } from "@/lib/password-rules";
 
 export function SetupForm({
   action,
 }: {
-  action: (email: string, name: string, password: string) => Promise<string | undefined>;
+  action: (prev: string | null, formData: FormData) => Promise<string | null>;
 }) {
-  const [error, setError] = useState<string | null>(null);
+  const [error, formAction, pending] = useActionState(action, null);
   const [password, setPassword] = useState("");
-  const [pending, startTransition] = useTransition();
 
   // Samma regel som servern använder, så felet syns innan man skickar.
   const local = password ? passwordProblem(password) : null;
 
   return (
-    <form
-      className="mt-8 flex flex-col gap-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const data = new FormData(e.currentTarget);
-        startTransition(async () => {
-          setError(
-            (await action(
-              String(data.get("email")),
-              String(data.get("name")),
-              String(data.get("password")),
-            )) ?? null,
-          );
-        });
-      }}
-    >
+    <form action={formAction} className="mt-8 flex flex-col gap-4">
       <label className="text-xs text-(--color-muted)">
         Namn
         <input
@@ -82,7 +66,7 @@ export function SetupForm({
 
       <button
         type="submit"
-        disabled={pending || !!local || !password}
+        disabled={pending || !!local}
         className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
         {pending ? "Skapar…" : "Skapa konto och logga in"}
