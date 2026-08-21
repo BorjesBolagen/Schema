@@ -1,0 +1,124 @@
+/**
+ * Åtkomsttoken från Visma Connect.
+ *
+ * TransPA:s Public API stödjer bara client_credentials, alltså
+ * maskin-till-maskin. Auktorisationen sker per tenant, så en token gäller
+ * en tenant och de scopes den begärdes med.
+ */
+
+export const TOKEN_URL = "https://connect.visma.com/connect/token";
+
+export interface TranspaCredentials {
+  clientId: string;
+  clientSecret: string;
+  tenantId: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  expires_in: number;
+  token_type: string;
+}
+
+/** Grundscope krävs på alla rutter; resten begärs efter behov. */
+export const BASE_SCOPE = "transpaapi:api";
+
+export const READ_SCOPES = [
+  BASE_SCOPE,
+  "transpaapi:employees:read",
+  "transpaapi:vehicles:read",
+  "transpaapi:vehiclegroups:read",
+  "transpaapi:trafficareas:read",
+  "transpaapi:stationplaces:read",
+  "transpaapi:worktasks:read",
+  "transpaapi:trips:read",
+];
+
+interface CachedToken {
+  token: string;
+  expiresAt: number;
+}
+
+/**
+ * Tokens cachas per tenant och scope-uppsättning.
+ *
+ * Ligger på globalThis av samma skäl som databaskopplingen: Next bygger
+ * sidor och server-actions i skilda modulgrafer, och en modullokal cache
+ * skulle betyda en ny token per graf.
+ */
+const CACHE_KEY = Symbol.for("schema.transpa.tokens");
+type GlobalWithCache = typeof globalThis & { [CACHE_KEY]?: Map<string, CachedToken> };
+
+function cache(): Map<string, CachedToken> {
+  const g = globalThis as GlobalWithCache;
+  g[CACHE_KEY] ??= new Map();
+  return g[CACHE_KEY];
+}
+
+export class TranspaAuthError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(message);
+    this.name = "TranspaAuthError";
+  }
+}
+
+/** Läser credentials ur miljön. Null när de inte är satta. */
+export function credentialsFromEnv(): TranspaCredentials | null {
+  const clientId = process.env.TRANSPA_CLIENT_ID;
+  const clientSecret = process.env.TRANSPA_CLIENT_SECRET;
+  const tenantId = process.env.TRANSPA_TENANT_ID;
+  if (!clientId || !clientSecret || !tenantId) return null;
+  return { clientId, clientSecret, tenantId };
+}
+
+export async function getAccessToken(
+  credentials: TranspaCredentials,
+  scopes: string[] = READ_SCOPES,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const scope = [...new Set([BASE_SCOPE, ...scopes])].join(" ");
+  const key = `${credentials.tenantId}|${scope}`;
+
+  const hit = cache().get(key);
+  // Förnya i förtid så en token inte hinner gå ut mitt i ett anrop.
+  if (hit && hit.expiresAt > Date.now() + 60_000) return hit.token;
+
+  const basic = Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString("base64");
+  const response = await fetchImpl(TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${basic}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope,
+      tenant_id: credentials.tenantId,
+    }).toString(),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new TranspaAuthError(
+      `Kunde inte hämta token (${response.status}). Kontrollera client id, secret, tenant och att de begärda scopen är beviljade.`,
+      response.status,
+      text,
+    );
+  }
+
+  const data = JSON.parse(text) as TokenResponse;
+  cache().set(key, {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  });
+  return data.access_token;
+}
+
+/** Töm cachen, t.ex. när credentials bytts. */
+export function clearTokenCache(): void {
+  cache().clear();
+}

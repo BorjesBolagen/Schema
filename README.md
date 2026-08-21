@@ -39,7 +39,9 @@ npm install
 npm run demo
 ```
 
-Öppna sedan <http://localhost:3000>. `npm run demo` lägger upp ett
+Öppna sedan <http://localhost:3000> och logga in med uppgifterna som
+skrivs ut av seed-skriptet (`admin@example.se` / `schema1234` om inget
+annat anges). `npm run demo` lägger upp ett
 demounderlag och startar appen med några veckor redan bemannade, så det
 går att klicka runt direkt. Underlaget är påhittat — skarp personal och
 skarpa fordon kommer från TransPA-synken.
@@ -109,6 +111,31 @@ byggt, i A4 liggande utan sidopanel och knappar.
 `Excel` laddar ner veckan eller semesteråret som `.xlsx` med tavlans egen
 radordning och gruppering.
 
+## Drift
+
+Se [`docs/drift.md`](docs/drift.md) för Supabase och Vercel. Kortversion:
+sätt `DATABASE_URL` till Supabases **poolade** anslutning, kör
+`npm run db:migrate`, och skapa första användaren med `npm run seed`.
+
+## Inloggning
+
+Inloggning per användare med sessioner i databasen. Lösenorden hashas med
+scrypt; sessionstabellen lagrar bara en hash av token.
+
+Mellanvaran skickar utloggade till inloggningen, men kör på Edge och når
+inte databasen — den ser bara *att* en kaka finns. Den är alltså en
+genväg, inte gränsen som håller: varje sida och server-action anropar
+`requireUser()`, och det är där behörigheten kontrolleras.
+
+**Kan man logga in med TransPA-kontot?** Inte via TransPA:s Public API.
+Det stödjer bara `client_credentials`, alltså maskin-till-maskin, och den
+grant-typen har ingen användare. `/v1/connectUsers` finns men är märkt
+"intended for internal Visma use only" och returnerar bara ett
+`ConnectId` — inget namn, ingen e-post. Visma Connect är däremot en riktig
+OIDC-leverantör, så inloggning via den vore i princip möjlig om Visma
+tillåter det. `app_user.connect_user_id` finns redan för den kopplingen.
+Frågan behöver ställas till Visma tillsammans med API-ansökan.
+
 ## TransPA-API:t
 
 Bas-URL `https://api.mytranspa.com/publicApi`. Auth är OAuth2
@@ -124,9 +151,18 @@ Bekräftade endpoints: `/v1/alive`, `/v1/connectUsers`, `/v1/employees`
 
 **Vismas genererade C#-klient är föråldrad** — den saknar `/v1/trips`,
 som deras egna Postman-exempel anropar. Det går därför inte att av
-klienten avgöra om schema- eller frånvaro-endpoints finns. Den levande
-specen ligger på `api.mytranspa.com/doc/openapi/swaggerui/` och behöver
-läsas innan `TranspaWorkDayProvider` skrivs.
+klienten avgöra om schema- eller frånvaro-endpoints finns.
+
+Sidan `/transpa` i appen svarar på den frågan mot er egen tenant: den
+hämtar OpenAPI-specen, provar de dokumenterade endpointsen och provar
+dessutom några gissade namn för pass och frånvaro. Där finns också en
+knapp för att synka grunddata — personal, fordon, fordonsgrupper,
+trafikområden och stationsorter. Bilarnas visningsnamn och personalens
+stationsort ägs lokalt och skrivs aldrig över av synken.
+
+`TranspaWorkDayProvider` är medvetet inte skriven än. Vilken endpoint som
+ger planerade pass — om någon gör det — avgörs av diagnostiken, och först
+då går det att skriva den mot något verkligt.
 
 ## Test
 

@@ -12,7 +12,14 @@ export default async function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold">Schema</h1>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Schema</h1>
+        {user.role === "admin" && (
+          <Link href="/transpa" className="text-sm text-(--color-accent) hover:underline">
+            TransPA-anslutning
+          </Link>
+        )}
+      </div>
       <p className="mt-2 text-sm text-(--color-muted)">
         Välj en tavla. Varje tavla har egen layout, egna rader och egna veckodagar.
       </p>
