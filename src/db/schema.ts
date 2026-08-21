@@ -59,8 +59,40 @@ export const appUser = pgTable("app_user", {
   name: text("name").notNull(),
   role: userRole("role").notNull().default("planner"),
   isActive: boolean("is_active").notNull().default(true),
+
+  /** scrypt-hash med salt och parametrar inbakade. Se lib/password.ts. */
+  passwordHash: text("password_hash"),
+
+  /**
+   * Användarens identitet i Visma Connect, om vi någon gång får logga in
+   * via den. Fältet finns redan nu så kopplingen kan fyllas i efter hand
+   * i stället för att behöva backas in i efterhand.
+   */
+  connectUserId: text("connect_user_id").unique(),
+
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Inloggade sessioner.
+ *
+ * Raden lagrar en hash av sessionstoken, aldrig token själv — läcker
+ * databasen går de gamla sessionerna ändå inte att använda.
+ */
+export const session = pgTable(
+  "session",
+  {
+    /** SHA-256 av kakans värde. */
+    tokenHash: text("token_hash").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUser.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("session_user_idx").on(t.userId)],
+);
 
 /* ------------------------------------------------------------------ *
  * Masterdata från TransPA

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { requireUser } from "@/server/auth";
 import { getBoardWeek } from "@/server/board-week";
 import { fullDisplayName } from "@/lib/name";
 import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
@@ -31,6 +32,7 @@ function step(year: number, week: number, delta: number): { year: number; week: 
 }
 
 export default async function BoardPage({ params, searchParams }: Props) {
+  await requireUser();
   const { slug } = await params;
   const sp = await searchParams;
   const today = isoWeek(toIso(new Date()));

@@ -11,6 +11,7 @@ import { parseArgs } from "node:util";
 import { createDb, schema } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 import { addDays, isoWeek, mondayOfWeek, toIso, weekDates } from "../src/lib/week";
+import { hashPassword } from "../src/lib/password";
 import { getWorkDayProvider } from "../src/server/work-days";
 import { planWeek } from "../src/server/fill-week";
 
@@ -21,6 +22,19 @@ const { values } = parseArgs({
 });
 const db = createDb(values.db ?? process.env.PGLITE_DIR ?? "./.pgdata");
 await runMigrations(db);
+
+const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.se";
+const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "schema1234";
+const [admin] = await db
+  .insert(schema.appUser)
+  .values({
+    email: adminEmail,
+    name: "Administratör",
+    role: "admin",
+    passwordHash: await hashPassword(adminPassword),
+  })
+  .onConflictDoNothing({ target: schema.appUser.email })
+  .returning();
 
 const stations = await db
   .insert(schema.stationPlace)
@@ -208,6 +222,7 @@ for (let i = -1; i <= 3; i++) {
   }
 }
 
+if (admin) console.log(`Inloggning: ${adminEmail} / ${adminPassword}`);
 console.log(`Tavla: ${board.name}  →  /tavla/${board.slug}`);
 console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${today.year}&vecka=${today.week}`);
 console.log(`Semesterplanering       →  /tavla/${board.slug}/semester?ar=2026`);

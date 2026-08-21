@@ -5,6 +5,7 @@ import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import { addDays, mondayOfWeek, weekDates } from "@/lib/week";
+import { requireUser } from "@/server/auth";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 
@@ -18,6 +19,7 @@ export async function assignEmployee(input: {
   employeeId: string;
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const existing = await db
     .select()
@@ -62,6 +64,7 @@ export async function moveAssignment(input: {
   copy?: boolean;
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const [source] = await db
     .select()
@@ -121,6 +124,7 @@ export async function moveAssignment(input: {
 }
 
 export async function removeAssignment(assignmentId: string, boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.delete(schema.assignment).where(eq(schema.assignment.id, assignmentId));
   refresh(boardSlug);
@@ -131,6 +135,7 @@ export async function setAssignmentNote(
   note: string | null,
   boardSlug: string,
 ): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db
     .update(schema.assignment)
@@ -158,6 +163,7 @@ export async function fillWeek(input: {
   year: number;
   week: number;
 }): Promise<FillResult> {
+  await requireUser();
   const db = getDb();
   const [board] = await db.select().from(schema.board).where(eq(schema.board.id, input.boardId));
   if (!board) return { created: 0, removed: 0, unplaced: [] };
@@ -244,6 +250,7 @@ export async function setCrew(
   employeeIds: string[],
   boardSlug: string,
 ): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.delete(schema.boardCrew).where(eq(schema.boardCrew.boardId, boardId));
   if (employeeIds.length) {
@@ -262,6 +269,7 @@ export async function addBaseScheduleEntry(input: {
   validFrom: string | null;
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.insert(schema.baseSchedule).values({
     boardId: input.boardId,
@@ -274,6 +282,7 @@ export async function addBaseScheduleEntry(input: {
 }
 
 export async function removeBaseScheduleEntry(id: string, boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.delete(schema.baseSchedule).where(eq(schema.baseSchedule.id, id));
   refresh(boardSlug);
@@ -296,6 +305,7 @@ export async function updateBoard(input: {
   visibleShifts?: string[];
   cellFields?: string[];
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const { boardId, boardSlug, ...rest } = input;
   const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
@@ -320,6 +330,7 @@ export async function addBoardRow(input: {
   groupId?: string | null;
   defaultVehicleId?: string | null;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const rows = await db
     .select({ sortOrder: schema.boardRow.sortOrder })
@@ -349,6 +360,7 @@ export async function updateBoardRow(input: {
   validFrom?: string | null;
   validTo?: string | null;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const { rowId, boardSlug, ...rest } = input;
   const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
@@ -368,6 +380,7 @@ export async function updateBoardRow(input: {
  * körts finns kvar, raden slutar bara visas framåt.
  */
 export async function endBoardRow(rowId: string, lastDate: string, boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db
     .update(schema.boardRow)
@@ -377,6 +390,7 @@ export async function endBoardRow(rowId: string, lastDate: string, boardSlug: st
 }
 
 export async function deleteBoardRow(rowId: string, boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.delete(schema.boardRow).where(eq(schema.boardRow.id, rowId));
   refresh(boardSlug);
@@ -384,6 +398,7 @@ export async function deleteBoardRow(rowId: string, boardSlug: string): Promise<
 
 /** Sätter radernas ordning efter att de dragits om. */
 export async function reorderBoardRows(rowIds: string[], boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   for (const [i, id] of rowIds.entries()) {
     await db.update(schema.boardRow).set({ sortOrder: i }).where(eq(schema.boardRow.id, id));
@@ -396,6 +411,7 @@ export async function addBoardGroup(
   label: string,
   boardSlug: string,
 ): Promise<void> {
+  await requireUser();
   const db = getDb();
   const groups = await db
     .select({ sortOrder: schema.boardGroup.sortOrder })
@@ -414,6 +430,7 @@ export async function renameBoardGroup(
   label: string,
   boardSlug: string,
 ): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db
     .update(schema.boardGroup)
@@ -424,6 +441,7 @@ export async function renameBoardGroup(
 
 /** Tar bort en grupprubrik. Raderna blir kvar, utan gruppering. */
 export async function deleteBoardGroup(groupId: string, boardSlug: string): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db.delete(schema.boardGroup).where(eq(schema.boardGroup.id, groupId));
   refresh(boardSlug);
@@ -454,6 +472,7 @@ export async function saveWorkPattern(input: {
   days: PatternDayInput[];
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const cycleWeeks = Math.min(8, Math.max(1, Math.round(input.cycleWeeks)));
 
@@ -504,6 +523,7 @@ export async function setAbsenceWeeks(input: {
   status: "requested" | "approved";
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   if (input.weeks.length === 0) return;
   const db = getDb();
 
@@ -557,6 +577,7 @@ export async function clearAbsenceWeek(input: {
   week: number;
   boardSlug: string;
 }): Promise<void> {
+  await requireUser();
   const db = getDb();
   const start = mondayOfWeek(input.year, input.week);
   const end = addDays(start, 6);
@@ -612,6 +633,7 @@ export async function setAbsenceStatus(
   status: "requested" | "approved",
   boardSlug: string,
 ): Promise<void> {
+  await requireUser();
   const db = getDb();
   await db
     .update(schema.absence)

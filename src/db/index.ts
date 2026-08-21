@@ -11,21 +11,40 @@ import * as schema from "./schema";
  */
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
+const isPostgresUrl = (url?: string) =>
+  !!url && (url.startsWith("postgres://") || url.startsWith("postgresql://"));
+
+/**
+ * Supabase och andra hostade Postgres kör anslutningarna genom pgbouncer
+ * i transaction mode. Där lever ingen session mellan frågorna, så
+ * förberedda satser går inte att använda, och varje serverless-instans
+ * ska hålla exakt en anslutning i stället för en egen pool.
+ */
+function isPooled(url: string): boolean {
+  return url.includes("pgbouncer=true") || url.includes("pooler.") || url.includes(":6543");
+}
+
 /**
  * Databaskoppling.
  *
  * DATABASE_URL som pekar på en postgres-server används i drift. Saknas
- * den körs PGlite — en inbäddad Postgres — vilket gör att importskript
- * och tester kan köras utan att någon startar en server. Samma SQL,
- * samma migrationer.
+ * den körs PGlite — en inbäddad Postgres i katalogen .pgdata — så appen
+ * och testerna fungerar utan vare sig databasserver eller
+ * miljövariabler. Samma SQL, samma migrationer.
  */
 export function createDb(url = process.env.DATABASE_URL): Db {
-  if (url?.startsWith("postgres://") || url?.startsWith("postgresql://")) {
-    return drizzlePg(postgres(url, { max: 10 }), { schema }) as unknown as Db;
+  if (isPostgresUrl(url)) {
+    const pooled = isPooled(url!);
+    const client = postgres(url!, {
+      max: pooled ? 1 : 10,
+      prepare: !pooled,
+      idle_timeout: pooled ? 20 : undefined,
+      // Hostad Postgres kräver TLS men använder ofta ett internt cert.
+      ssl: url!.includes("sslmode=disable") ? false : "require",
+    });
+    return drizzlePg(client, { schema }) as unknown as Db;
   }
-  // Utan DATABASE_URL körs en lokal PGlite-katalog, så appen startar
-  // utan vare sig databasserver eller miljövariabler. Tester skickar
-  // "memory://" och får en tom databas per körning.
+
   const dataDir = url?.replace(/^pglite:\/\//, "") ?? process.env.PGLITE_DIR ?? "./.pgdata";
   return drizzlePglite(new PGlite(dataDir), { schema }) as unknown as Db;
 }
@@ -45,6 +64,11 @@ export function getDb(): Db {
   const g = globalThis as GlobalWithDb;
   g[DB_KEY] ??= createDb();
   return g[DB_KEY];
+}
+
+/** True när appen kör mot en riktig Postgres och inte den inbäddade. */
+export function isHostedDatabase(): boolean {
+  return isPostgresUrl(process.env.DATABASE_URL);
 }
 
 export { schema };

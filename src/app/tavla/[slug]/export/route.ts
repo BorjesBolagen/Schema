@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { getCurrentUser } from "@/server/auth";
 import { getBoardWeek } from "@/server/board-week";
 import { getVacationYear } from "@/server/vacation-year";
 import { ABSENCE_LABEL, type AbsenceType } from "@/lib/absence";
@@ -32,6 +33,12 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> },
 ) {
+  // Rutten kan inte omdirigera till inloggningen som en sida gör, så den
+  // svarar 401 i stället.
+  if (!(await getCurrentUser())) {
+    return NextResponse.json({ error: "Inte inloggad" }, { status: 401 });
+  }
+
   const { slug } = await params;
   const url = new URL(request.url);
   const view = url.searchParams.get("vy") ?? "resource";

@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { requireUser } from "@/server/auth";
 import { listBoards } from "@/server/board-week";
 import { isoWeek, toIso } from "@/lib/week";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const user = await requireUser();
   const boards = await listBoards();
   const now = isoWeek(toIso(new Date()));
 

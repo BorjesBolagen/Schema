@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireUser } from "@/server/auth";
 import { getVacationYear } from "@/server/vacation-year";
 import { VacationYear } from "@/components/VacationYear";
 import { isoWeek, toIso } from "@/lib/week";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default async function VacationPage({ params, searchParams }: Props) {
+  await requireUser();
   const { slug } = await params;
   const { ar } = await searchParams;
   const year = Number(ar) || isoWeek(toIso(new Date())).year;

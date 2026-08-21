@@ -27,8 +27,12 @@ CREATE TABLE "app_user" (
 	"name" text NOT NULL,
 	"role" "user_role" DEFAULT 'planner' NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
+	"password_hash" text,
+	"connect_user_id" text,
+	"last_login_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "app_user_email_unique" UNIQUE("email")
+	CONSTRAINT "app_user_email_unique" UNIQUE("email"),
+	CONSTRAINT "app_user_connect_user_id_unique" UNIQUE("connect_user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "assignment" (
@@ -129,6 +133,13 @@ CREATE TABLE "employee" (
 	CONSTRAINT "employee_employee_number_unique" UNIQUE("employee_number")
 );
 --> statement-breakpoint
+CREATE TABLE "session" (
+	"token_hash" text PRIMARY KEY NOT NULL,
+	"user_id" uuid NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "station_place" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"transpa_id" text,
@@ -221,6 +232,7 @@ ALTER TABLE "board_row" ADD CONSTRAINT "board_row_default_vehicle_id_vehicle_id_
 ALTER TABLE "board_row" ADD CONSTRAINT "board_row_employee_id_employee_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employee"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employee" ADD CONSTRAINT "employee_station_place_id_station_place_id_fk" FOREIGN KEY ("station_place_id") REFERENCES "public"."station_place"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employee" ADD CONSTRAINT "employee_traffic_area_id_traffic_area_id_fk" FOREIGN KEY ("traffic_area_id") REFERENCES "public"."traffic_area"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "session" ADD CONSTRAINT "session_user_id_app_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vehicle" ADD CONSTRAINT "vehicle_traffic_area_id_traffic_area_id_fk" FOREIGN KEY ("traffic_area_id") REFERENCES "public"."traffic_area"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vehicle" ADD CONSTRAINT "vehicle_station_place_id_station_place_id_fk" FOREIGN KEY ("station_place_id") REFERENCES "public"."station_place"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "vehicle" ADD CONSTRAINT "vehicle_vehicle_group_id_vehicle_group_id_fk" FOREIGN KEY ("vehicle_group_id") REFERENCES "public"."vehicle_group"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -236,4 +248,5 @@ CREATE INDEX "board_group_board_idx" ON "board_group" USING btree ("board_id","s
 CREATE INDEX "board_row_board_idx" ON "board_row" USING btree ("board_id","sort_order");--> statement-breakpoint
 CREATE INDEX "employee_active_idx" ON "employee" USING btree ("is_active");--> statement-breakpoint
 CREATE INDEX "employee_station_idx" ON "employee" USING btree ("station_place_id");--> statement-breakpoint
+CREATE INDEX "session_user_idx" ON "session" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "work_pattern_employee_idx" ON "work_pattern" USING btree ("employee_id");
