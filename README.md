@@ -81,7 +81,10 @@ personer får kopplas till samma rad och deras arbetsdagar avgör vem som
 står där vilken dag.
 
 **Arbetsmönster** — vilka dagar och skift en person jobbar, som en cykel
-på 1–8 veckor. Ersätts av TransPA-hämtningen per person när den finns.
+på 1–8 veckor. *Använd på N personer* lägger samma mönster på hela
+bemanningen på en gång — normalt bara på dem som saknar ett, så ingens
+rullschema skrivs om av misstag. Ersätts av TransPA-hämtningen per
+person när den finns.
 
 ## Att arbeta i veckovyn
 
@@ -202,7 +205,7 @@ npm test                                   # enhetstester
 npx tsx scripts/e2e-fill.ts                # fyll veckan i en riktig webbläsare
 npx tsx scripts/e2e-drag.ts                # dra ut och flytta pass
 npx tsx scripts/e2e-editor.ts              # bygg om tavlan, mönster, bas-schema
-npx tsx scripts/e2e-tomstart.ts            # tom databas → tavla, personal, fordon
+npx tsx scripts/e2e-tomstart.ts            # tom databas → bemannad vecka
 npx tsx scripts/screenshot.ts <url> <fil>  # bild av en vy
 ```
 

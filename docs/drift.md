@@ -88,9 +88,13 @@ Databasen är tom efter uppsättningen — TransPA-synken är inte på plats
 3. Startsidan → **Ny tavla**: välj *Fjärr* eller *Distribution*, som är
    utgångslägen för veckodagar, skift och rader. Allt går att ändra
    efteråt under **⚙ Tavla**.
-4. I tavlan: **👥 Bemanning** väljer vilka personer tavlan hanterar,
-   **Bas-schema** kopplar person till bil, och **Arbetsmönster** anger
-   vilka dagar var och en jobbar tills TransPA levererar det.
+4. I tavlan: **👥 Bemanning** väljer vilka personer tavlan hanterar —
+   filtrera på stationsort och *Välj alla*.
+5. **Arbetsmönster**: klicka i måndag–fredag och tryck *Använd på N
+   personer*. Det lägger mönstret på alla i bemanningen som saknar ett.
+   Justera sedan de få som kör annorlunda, en i taget.
+6. **Bas-schema** kopplar person till bil — inga dagar anges, det avgör
+   arbetsdagarna. Därefter fyller **Fyll veckan** tavlan.
 
 ## 5. Användare och behörighet
 

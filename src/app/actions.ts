@@ -6,7 +6,7 @@ import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import { addDays, mondayOfWeek, weekDates } from "@/lib/week";
 import { requireUser } from "@/server/auth";
-import { assertBoardAccess } from "@/server/access";
+import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 
@@ -492,20 +492,58 @@ export async function saveWorkPattern(input: {
 }): Promise<void> {
   const user = await requireUser();
   await assertBoardAccess(user, { slug: input.boardSlug });
+  await writePattern(input.employeeId, input);
+  refresh(input.boardSlug);
+}
+
+/**
+ * Lägger samma mönster på flera personer.
+ *
+ * Nästan alla kör måndag till fredag. Att klicka i det en person i taget
+ * för ett helt åkeri är ett rent tidsslöseri, och det som annars står
+ * mellan en tom databas och en veckotavla som fylls. Vilka som träffas
+ * avgörs av anroparen — normalt de som saknar mönster.
+ */
+export async function applyWorkPatternToMany(input: {
+  employeeIds: string[];
+  cycleWeeks: number;
+  anchorDate: string;
+  weekStartsOn: number;
+  days: PatternDayInput[];
+  boardSlug: string;
+}): Promise<{ applied: number }> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+
+  // Bara tavlans egen bemanning — annars skulle en planerare kunna
+  // skriva om mönstret för folk hen inte hanterar.
+  const crew = await getDb()
+    .select({ employeeId: schema.boardCrew.employeeId })
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id));
+  const allowed = new Set(crew.map((c) => c.employeeId));
+  const targets = input.employeeIds.filter((id) => allowed.has(id));
+
+  for (const employeeId of targets) await writePattern(employeeId, input);
+  refresh(input.boardSlug);
+  return { applied: targets.length };
+}
+
+/** Skriver om en persons mönster. Det tidigare ersätts. */
+async function writePattern(
+  employeeId: string,
+  input: { cycleWeeks: number; anchorDate: string; weekStartsOn: number; days: PatternDayInput[] },
+): Promise<void> {
   const db = getDb();
   const cycleWeeks = Math.min(8, Math.max(1, Math.round(input.cycleWeeks)));
 
-  await db.delete(schema.workPattern).where(eq(schema.workPattern.employeeId, input.employeeId));
-
-  if (input.days.length === 0) {
-    refresh(input.boardSlug);
-    return;
-  }
+  await db.delete(schema.workPattern).where(eq(schema.workPattern.employeeId, employeeId));
+  if (input.days.length === 0) return;
 
   const [pattern] = await db
     .insert(schema.workPattern)
     .values({
-      employeeId: input.employeeId,
+      employeeId,
       cycleWeeks,
       anchorDate: input.anchorDate,
       weekStartsOn: input.weekStartsOn,
@@ -520,7 +558,6 @@ export async function saveWorkPattern(input: {
       .values(days.map((d) => ({ ...d, workPatternId: pattern.id })))
       .onConflictDoNothing();
   }
-  refresh(input.boardSlug);
 }
 
 /* ------------------------------------------------------------------ *

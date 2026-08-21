@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { BoardWeek } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
-import { saveWorkPattern, type PatternDayInput } from "@/app/actions";
+import { applyWorkPatternToMany, saveWorkPattern, type PatternDayInput } from "@/app/actions";
 import { mondayOfWeek } from "@/lib/week";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
@@ -37,7 +37,8 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
     new Set((existing?.days ?? []).map((d) => key(d.cycleWeek, d.weekday, d.shift))),
   );
   const [pending, startTransition] = useTransition();
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [overwrite, setOverwrite] = useState(false);
 
   /** Byter person och läser in hens mönster. */
   function select(id: string) {
@@ -46,7 +47,7 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
     setCycleWeeks(p?.cycleWeeks ?? 1);
     setWeekStartsOn(p?.weekStartsOn ?? 1);
     setPicked(new Set((p?.days ?? []).map((d) => key(d.cycleWeek, d.weekday, d.shift))));
-    setSaved(false);
+    setSaved(null);
   }
 
   const toggle = (cycleWeek: number, weekday: number, shift: Shift) => {
@@ -56,7 +57,7 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
-    setSaved(false);
+    setSaved(null);
   };
 
   const days: PatternDayInput[] = useMemo(
@@ -66,6 +67,19 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
         return { cycleWeek: Number(cw), weekday: Number(wd), shift: sh as Shift };
       }),
     [picked],
+  );
+
+  /**
+   * Vilka "Använd på …" träffar. Utan kryssrutan bara de som saknar
+   * mönster — så knappen går att trycka på utan att råka skriva om
+   * någons rullschema.
+   */
+  const targets = useMemo(
+    () =>
+      data.crew
+        .filter((c) => overwrite || !data.patterns.some((p) => p.employeeId === c.employeeId))
+        .map((c) => c.employeeId),
+    [data.crew, data.patterns, overwrite],
   );
 
   const anchorDate = existing?.anchorDate ?? mondayOfWeek(data.year, 1);
@@ -109,7 +123,7 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
               value={cycleWeeks}
               onChange={(e) => {
                 setCycleWeeks(Number(e.target.value));
-                setSaved(false);
+                setSaved(null);
               }}
               className="mt-1 block rounded border border-(--color-line) px-2 py-1.5 text-sm text-(--color-ink)"
             >
@@ -127,7 +141,7 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
               value={weekStartsOn}
               onChange={(e) => {
                 setWeekStartsOn(Number(e.target.value));
-                setSaved(false);
+                setSaved(null);
               }}
               className="mt-1 block rounded border border-(--color-line) px-2 py-1.5 text-sm text-(--color-ink)"
               title="Söndag betyder att söndagen hör ihop med måndagen som följer"
@@ -191,31 +205,70 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
           ))}
         </div>
 
-        <div className="flex items-center justify-between border-t border-(--color-line) px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--color-line) px-5 py-3">
           <span className="text-xs text-(--color-muted)">
             {days.length} pass per cykel
-            {saved && <span className="ml-2 text-(--color-accent)">✓ sparat</span>}
+            {saved && <span className="ml-2 text-(--color-accent)">✓ {saved}</span>}
           </span>
-          <button
-            type="button"
-            disabled={!employeeId || pending}
-            onClick={() =>
-              startTransition(async () => {
-                await saveWorkPattern({
-                  employeeId,
-                  cycleWeeks,
-                  anchorDate,
-                  weekStartsOn,
-                  days,
-                  boardSlug: data.board.slug,
-                });
-                setSaved(true);
-              })
-            }
-            className="rounded bg-(--color-accent) px-4 py-1.5 text-sm text-white disabled:opacity-40"
-          >
-            Spara mönster
-          </button>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-(--color-muted)">
+              <input
+                type="checkbox"
+                checked={overwrite}
+                onChange={(e) => {
+                  setOverwrite(e.target.checked);
+                  setSaved(null);
+                }}
+              />
+              även de som redan har ett mönster
+            </label>
+            <button
+              type="button"
+              disabled={targets.length === 0 || pending}
+              title={
+                overwrite
+                  ? "Skriver om mönstret för hela bemanningen"
+                  : "Lägger mönstret på dem som saknar ett — de som redan har ett rörs inte"
+              }
+              onClick={() =>
+                startTransition(async () => {
+                  const { applied } = await applyWorkPatternToMany({
+                    employeeIds: targets,
+                    cycleWeeks,
+                    anchorDate,
+                    weekStartsOn,
+                    days,
+                    boardSlug: data.board.slug,
+                  });
+                  setSaved(`lagt på ${applied} personer`);
+                })
+              }
+              className="rounded border border-(--color-line) px-4 py-1.5 text-sm disabled:opacity-40"
+            >
+              Använd på {targets.length} {targets.length === 1 ? "person" : "personer"}
+            </button>
+            <button
+              type="button"
+              disabled={!employeeId || pending}
+              onClick={() =>
+                startTransition(async () => {
+                  await saveWorkPattern({
+                    employeeId,
+                    cycleWeeks,
+                    anchorDate,
+                    weekStartsOn,
+                    days,
+                    boardSlug: data.board.slug,
+                  });
+                  setSaved("sparat");
+                })
+              }
+              className="rounded bg-(--color-accent) px-4 py-1.5 text-sm text-white disabled:opacity-40"
+            >
+              Spara mönster
+            </button>
+          </div>
         </div>
       </div>
     </div>

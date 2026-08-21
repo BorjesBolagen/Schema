@@ -1,7 +1,9 @@
 /**
- * Provar vägen från tom databas: logga in, skapa en tavla, lägg in
- * stationsort, personal och fordon. Det är den väg en ny installation
- * tar innan TransPA-synken finns, och den ska inte gå i stå någonstans.
+ * Provar vägen från tom databas hela vägen till en bemannad vecka:
+ * logga in, skapa en tavla, lägg in stationsort, personal och fordon,
+ * välj bemanning, ge alla ett mönster på en gång, koppla bas-schemat
+ * och fyll veckan. Det är den väg en ny installation tar innan
+ * TransPA-synken finns, och den ska inte gå i stå någonstans.
  *
  *   BASE_URL=… E2E_EMAIL=… E2E_PASSWORD=… npx tsx scripts/e2e-tomstart.ts
  */
@@ -14,6 +16,21 @@ const page = await browser.newPage();
 
 const checks: Array<[string, boolean]> = [];
 const check = (label: string, ok: boolean) => checks.push([label, ok]);
+
+/** Påhittad personal — bara för att ha någon att lägga ut. */
+const CREW = [
+  ["Björn", "Westman", "2262"],
+  ["Roger", "Bergström", "2263"],
+  ["Elin", "Karlsson", "2264"],
+];
+
+/** Väljer i en select på delsträng i optionstexten. */
+async function pick(select: ReturnType<typeof page.locator>, needle: string) {
+  const texts = await select.locator("option").allInnerTexts();
+  const i = texts.findIndex((t) => t.includes(needle));
+  if (i < 0) throw new Error(`hittade inte "${needle}" bland: ${texts.join(" | ")}`);
+  await select.selectOption({ index: i });
+}
 
 await signIn(page, base);
 check("loggar in", !page.url().includes("logga-in"));
@@ -45,12 +62,18 @@ await page.waitForFunction(
 check("stationsort går att lägga in", true);
 
 await page.click('button:text("Personal")');
-await page.fill('label:has-text("Förnamn") input', "Björn");
-await page.fill('label:has-text("Efternamn") input', "Westman");
-await page.fill('label:has-text("Anst.nr") input', "2262");
-await page.selectOption('div.rounded label:has-text("Stationsort") select', { label: "Nybro" });
-await page.click('div.rounded.border button:text("Lägg till")');
-await page.waitForFunction(() => document.body.innerText.includes("Björn Westman"), { timeout: 15_000 });
+for (const [first, last, number] of CREW) {
+  await page.fill('label:has-text("Förnamn") input', first);
+  await page.fill('label:has-text("Efternamn") input', last);
+  await page.fill('label:has-text("Anst.nr") input', number);
+  await page.selectOption('div.rounded label:has-text("Stationsort") select', { label: "Nybro" });
+  await page.click('div.rounded.border button:text("Lägg till")');
+  await page.waitForFunction(
+    (name) => document.body.innerText.includes(name),
+    `${first} ${last}`,
+    { timeout: 15_000 },
+  );
+}
 check("personal går att lägga in", true);
 
 await page.click('button:text("Fordon")');
@@ -62,10 +85,54 @@ await page.waitForFunction(
 );
 check("fordon går att lägga in", true);
 
-// Personen ska nu gå att välja som bemanning på tavlan.
+/* ---- Bemanning: hela orten på en gång ---- */
 await page.goto(`${base}/tavla/fjarr-nybro`, { waitUntil: "networkidle" });
-const board = (await page.textContent("body")) ?? "";
-check("tavlan är kvar efter grunddatan", board.includes("Fjärr Nybro"));
+check("tavlan är kvar efter grunddatan", ((await page.textContent("body")) ?? "").includes("Fjärr Nybro"));
+
+await page.click('button:text("+ lägg till")');
+await page.waitForSelector('text=Lägg till personal');
+await page.selectOption('label:has-text("Stationsort") select', { label: "Nybro" });
+await page.click('button:has-text("Välj alla")');
+await page.click('button:text-is("Spara")');
+await page.waitForTimeout(1500);
+const crewText = await page.locator("aside").innerText();
+check("hela orten blev bemanning", CREW.every((p) => crewText.includes(p[0] + " " + p[1])));
+
+/* ---- Ett mönster på hela bemanningen ---- */
+await page.getByRole("button", { name: "Arbetsmönster" }).click();
+await page.waitForSelector("text=Arbetsmönster");
+for (const day of ["Mån", "Tis", "Ons", "Tors", "Fre"]) {
+  await page.getByRole("button", { name: `${day} Dag` }).click();
+}
+const bulk = page.getByRole("button", { name: /Använd på \d+ person/ });
+check("knappen räknar alla utan mönster", (await bulk.innerText()).includes(String(CREW.length)));
+await bulk.click();
+await page.waitForTimeout(2000);
+check("mönstret lades på alla", (await page.locator("text=/✓ lagt på \\d+ personer/").count()) > 0);
+await page.getByRole("button", { name: "Klar" }).click();
+await page.waitForTimeout(800);
+
+/* ---- Bas-schema och Fyll veckan ---- */
+await page.getByRole("button", { name: "Bas-schema" }).click();
+await page.waitForTimeout(500);
+const dialog = page.locator("div.fixed");
+await dialog.locator("select").nth(0).selectOption({ label: "Bil 1" });
+await pick(dialog.locator("select").nth(1), "Björn Westman");
+await page.getByRole("button", { name: "Koppla" }).click();
+await page.waitForTimeout(1500);
+check(
+  "bas-schemat kopplar person till bil",
+  (await dialog.locator("table tbody tr").allInnerTexts()).some(
+    (t) => t.includes("Bil 1") && t.includes("Björn Westman"),
+  ),
+);
+await page.getByRole("button", { name: "Klar" }).click();
+await page.waitForTimeout(600);
+
+await page.getByRole("button", { name: "Fyll veckan" }).click();
+await page.waitForTimeout(3000);
+const row = await page.locator('tbody tr:has(th:text-is("Bil 1"))').innerText();
+check("veckan bemannas ur bas-schemat", row.includes("Björn Westman"));
 
 await browser.close();
 
