@@ -7,6 +7,7 @@ import { fullDisplayName } from "@/lib/name";
 import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
 import { BoardWorkspace } from "@/components/BoardWorkspace";
 import { PersonGrid } from "@/components/PersonGrid";
+import { PrintButton } from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,20 @@ export default async function BoardPage({ params, searchParams }: Props) {
               Personer
             </Link>
           </div>
+
+          <Link
+            href={`/tavla/${slug}/semester?ar=${year}`}
+            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+          >
+            Semester
+          </Link>
+          <a
+            href={`/tavla/${slug}/export?ar=${year}&vecka=${week}&vy=${view}`}
+            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+          >
+            Excel
+          </a>
+          <PrintButton />
         </div>
       </div>
 

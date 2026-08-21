@@ -1,5 +1,5 @@
 import { inArray } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { type Db, getDb, schema } from "@/db";
 import {
   CompositeWorkDayProvider,
   expandPatterns,
@@ -17,9 +17,12 @@ import {
 export class LocalPatternProvider implements WorkDayProvider {
   readonly name = "lokalt mönster";
 
+  /** Egen koppling när providern körs utanför webbappen, t.ex. i seed. */
+  constructor(private readonly db?: Db) {}
+
   async getWorkDays(employeeIds: string[], from: string, to: string): Promise<WorkDayResult> {
     if (employeeIds.length === 0) return { workDays: [], covered: [] };
-    const db = getDb();
+    const db = this.db ?? getDb();
 
     const patterns = await db
       .select()
@@ -51,6 +54,6 @@ export class LocalPatternProvider implements WorkDayProvider {
  * faller tillbaka på mönstren per person, så övergången kan ske en
  * person i taget.
  */
-export function getWorkDayProvider(): WorkDayProvider {
-  return new CompositeWorkDayProvider([new LocalPatternProvider()]);
+export function getWorkDayProvider(db?: Db): WorkDayProvider {
+  return new CompositeWorkDayProvider([new LocalPatternProvider(db)]);
 }

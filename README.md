@@ -28,18 +28,24 @@ person i taget.
 
 ```bash
 npm install
-npm test
-npm run seed -- --db ./.pgdata     # demounderlag, inte kunddata
-PGLITE_DIR=./.pgdata npm run dev
+npm run demo
 ```
 
-Utan `DATABASE_URL` körs [PGlite](https://pglite.dev) — en inbäddad
-Postgres — så tester och utveckling fungerar utan databasserver. Sätt
-`DATABASE_URL` till en postgres-URL i drift.
+Öppna sedan <http://localhost:3000>. `npm run demo` lägger upp ett
+demounderlag och startar appen med några veckor redan bemannade, så det
+går att klicka runt direkt. Underlaget är påhittat — skarp personal och
+skarpa fordon kommer från TransPA-synken.
+
+Utan `DATABASE_URL` körs [PGlite](https://pglite.dev), en inbäddad
+Postgres i katalogen `.pgdata`, så varken databasserver eller
+miljövariabler behövs. Sätt `DATABASE_URL` till en postgres-URL i drift.
+
+`npm run seed` lägger upp underlaget igen utan att starta servern.
 
 ```bash
-npm run db:generate   # ny migration efter ändring i src/db/schema.ts
+npm test              # enhetstester
 npm run typecheck
+npm run db:generate   # ny migration efter ändring i src/db/schema.ts
 ```
 
 ## Vad en trafikansvarig sätter upp själv
@@ -74,6 +80,26 @@ veckans kvitto och inte bara en lista att dra ur.
 
 Samma vecka kan visas med bilarna som rader eller med personerna som
 rader. Personvyn är en vy av samma pass, inte en andra kopia.
+
+## Semester och frånvaro
+
+`Semester` i verktygsraden öppnar årsvyn: en rad per person, en ruta per
+vecka. Dra över veckor för att markera, dra över markerade veckor igen
+för att ta bort. Beviljad ritas heldraget och önskemål rastrerat.
+
+Raden **Bemanning kvar** räknar hur många som är tillgängliga varje
+vecka och färgar rött under den nivå ni satt — det som i Excel upptäcks
+först när en vecka visar sig omöjlig att bemanna. *Fyll veckan* bemannar
+aldrig någon som är ledig.
+
+## Utskrift och export
+
+`Skriv ut / PDF` använder webbläsarens egen utskrift. Sidan har en
+utskriftslayout, så "Spara som PDF" ger exakt den layout trafikansvarig
+byggt, i A4 liggande utan sidopanel och knappar.
+
+`Excel` laddar ner veckan eller semesteråret som `.xlsx` med tavlans egen
+radordning och gruppering.
 
 ## TransPA-API:t
 

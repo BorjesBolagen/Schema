@@ -10,10 +10,16 @@
 import { parseArgs } from "node:util";
 import { createDb, schema } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
-import { mondayOfWeek } from "../src/lib/week";
+import { addDays, isoWeek, mondayOfWeek, toIso, weekDates } from "../src/lib/week";
+import { getWorkDayProvider } from "../src/server/work-days";
+import { planWeek } from "../src/server/fill-week";
 
-const { values } = parseArgs({ options: { db: { type: "string" } } });
-const db = createDb(values.db);
+const { values } = parseArgs({
+  options: { db: { type: "string" } },
+  // npm skickar med ett ensamt "--" när man kör `npm run seed -- …`.
+  allowPositionals: true,
+});
+const db = createDb(values.db ?? process.env.PGLITE_DIR ?? "./.pgdata");
 await runMigrations(db);
 
 const stations = await db
@@ -98,14 +104,17 @@ await db
   .values(crew.map((name, i) => ({ boardId: board.id, employeeId: byName[name].id, sortOrder: i })));
 
 /* Bas-schemat: person ↔ bil. Inga dagar — de kommer från mönstren. */
-await db.insert(schema.baseSchedule).values([
-  { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Elin.id, shift: "day" },
-  { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Peter.id, shift: "night" },
-  { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName["Björn"].id, shift: "day" },
-  { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName.Roger.id, shift: "day" },
-  { boardId: board.id, boardRowId: row["BT24/26"], employeeId: byName.Johan.id, shift: "day" },
-  { boardId: board.id, boardRowId: row.HF03, employeeId: byName.Alma.id, shift: "day" },
-]);
+const baseEntries = await db
+  .insert(schema.baseSchedule)
+  .values([
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Elin.id, shift: "day" },
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Peter.id, shift: "night" },
+    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName["Björn"].id, shift: "day" },
+    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName.Roger.id, shift: "day" },
+    { boardId: board.id, boardRowId: row["BT24/26"], employeeId: byName.Johan.id, shift: "day" },
+    { boardId: board.id, boardRowId: row.HF03, employeeId: byName.Alma.id, shift: "day" },
+  ])
+  .returning();
 
 const anchor = mondayOfWeek(2026, 1);
 
@@ -144,14 +153,63 @@ for (const [name, cycleWeeks, spec] of patterns) {
   );
 }
 
-/* En semestervecka så frånvarokonflikten går att se. */
-await db.insert(schema.absence).values({
-  employeeId: byName.Johan.id,
-  fromDate: "2026-08-20",
-  toDate: "2026-08-21",
-  type: "semester",
+/* Frånvaro spridd över året, så semestervyn har något att visa och
+   bemanningsraden dippar under sommaren precis som i verkligheten. */
+const week = (w: number, len = 1) => ({
+  fromDate: mondayOfWeek(2026, w),
+  toDate: addDays(mondayOfWeek(2026, w + len - 1), 6),
 });
 
-console.log(`Tavla: ${board.name} (/tavla/${board.slug})`);
+const absenceRows = await db
+  .insert(schema.absence)
+  .values([
+    { employeeId: byName.Elin.id, ...week(28, 3), type: "semester", status: "approved" },
+    { employeeId: byName["Björn"].id, ...week(29, 3), type: "semester", status: "approved" },
+    { employeeId: byName.Roger.id, ...week(30, 2), type: "semester", status: "approved" },
+    { employeeId: byName.Peter.id, ...week(29, 2), type: "semester", status: "approved" },
+    { employeeId: byName.Alma.id, ...week(31, 3), type: "semester", status: "requested" },
+    { employeeId: byName.Max.id, ...week(30, 3), type: "semester", status: "requested" },
+    { employeeId: byName.Johan.id, ...week(12), type: "foraldraledig", status: "approved" },
+    { employeeId: byName.Max.id, ...week(6), type: "sjuk", status: "approved" },
+    { employeeId: byName.Roger.id, ...week(9), type: "vab", status: "approved" },
+    // Den vecka som testas i veckovyn.
+    { employeeId: byName.Johan.id, fromDate: "2026-08-20", toDate: "2026-08-21", type: "semester", status: "approved" },
+  ])
+  .returning();
+
+/* Fyll veckorna runt idag, så appen visar ett bemannat schema direkt. */
+const today = isoWeek(toIso(new Date()));
+let filled = 0;
+for (let i = -1; i <= 3; i++) {
+  const week = today.week + i;
+  if (week < 1 || week > 52) continue;
+  const dates = weekDates(today.year, week, board.weekStartsOn, board.visibleWeekdays);
+  const { workDays } = await getWorkDayProvider(db).getWorkDays(
+    crew.map((n) => byName[n].id),
+    dates[0],
+    dates[dates.length - 1],
+  );
+  const plan = planWeek({
+    workDays,
+    baseSchedule: baseEntries,
+    existing: [],
+    absences: absenceRows.map((a) => ({
+      employeeId: a.employeeId,
+      fromDate: a.fromDate,
+      toDate: a.toDate,
+    })),
+    dates,
+  });
+  if (plan.create.length) {
+    await db
+      .insert(schema.assignment)
+      .values(plan.create.map((c) => ({ ...c, source: "generated" as const })));
+    filled += plan.create.length;
+  }
+}
+
+console.log(`Tavla: ${board.name}  →  /tavla/${board.slug}`);
+console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${today.year}&vecka=${today.week}`);
+console.log(`Semesterplanering       →  /tavla/${board.slug}/semester?ar=2026`);
 console.log(`Personal: ${employees.length}, bemanning: ${crew.length}, rader: ${rows.length}`);
-console.log("Bas-schema och arbetsmönster inlagda. Tryck 'Fyll veckan' i appen.");
+console.log(`Bas-schema, arbetsmönster och ${filled} utlagda pass inlagda.`);

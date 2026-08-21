@@ -23,7 +23,10 @@ export function createDb(url = process.env.DATABASE_URL): Db {
   if (url?.startsWith("postgres://") || url?.startsWith("postgresql://")) {
     return drizzlePg(postgres(url, { max: 10 }), { schema }) as unknown as Db;
   }
-  const dataDir = url?.replace(/^pglite:\/\//, "") ?? process.env.PGLITE_DIR ?? "memory://";
+  // Utan DATABASE_URL körs en lokal PGlite-katalog, så appen startar
+  // utan vare sig databasserver eller miljövariabler. Tester skickar
+  // "memory://" och får en tom databas per körning.
+  const dataDir = url?.replace(/^pglite:\/\//, "") ?? process.env.PGLITE_DIR ?? "./.pgdata";
   return drizzlePglite(new PGlite(dataDir), { schema }) as unknown as Db;
 }
 

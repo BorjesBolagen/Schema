@@ -17,24 +17,32 @@ export default async function Home() {
 
       {boards.length === 0 ? (
         <p className="mt-8 rounded border border-(--color-line) bg-white p-6 text-sm">
-          Inga tavlor ännu. Kör importen:{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">
-            npm run import -- --file &lt;Schema.xlsx&gt; --db ./.pgdata
-          </code>
+          Inga tavlor ännu. Lägg upp demounderlaget med{" "}
+          <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run seed</code>
         </p>
       ) : (
         <ul className="mt-8 space-y-3">
           {boards.map((b) => (
-            <li key={b.id}>
+            <li
+              key={b.id}
+              className="flex items-center gap-4 rounded border border-(--color-line) bg-white px-5 py-4"
+            >
               <Link
                 href={`/tavla/${b.slug}?ar=${now.year}&vecka=${now.week}`}
-                className="block rounded border border-(--color-line) bg-white px-5 py-4 hover:border-(--color-accent)"
+                className="flex-1 hover:underline"
               >
                 <span className="font-medium">{b.name}</span>
                 <span className="ml-3 text-xs text-(--color-muted)">
                   {b.visibleWeekdays.length} dagar · start{" "}
-                  {b.weekStartsOn === 0 ? "söndag" : "måndag"}
+                  {b.weekStartsOn === 0 ? "söndag" : "måndag"} ·{" "}
+                  {b.visibleShifts.length > 1 ? "dag och natt" : "bara dag"}
                 </span>
+              </Link>
+              <Link
+                href={`/tavla/${b.slug}/semester?ar=${now.year}`}
+                className="text-sm text-(--color-accent) hover:underline"
+              >
+                Semester
               </Link>
             </li>
           ))}

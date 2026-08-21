@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
-import { weekDates } from "@/lib/week";
+import { addDays, mondayOfWeek, weekDates } from "@/lib/week";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 
@@ -483,4 +483,139 @@ export async function saveWorkPattern(input: {
       .onConflictDoNothing();
   }
   refresh(input.boardSlug);
+}
+
+/* ------------------------------------------------------------------ *
+ * Frånvaro och semester
+ * ------------------------------------------------------------------ */
+
+/**
+ * Lägger in frånvaro för ett veckospann.
+ *
+ * Överlappande frånvaro av samma typ slås ihop till ett spann i stället
+ * för att staplas — annars blir årsvyn full av småbitar som beskriver
+ * samma ledighet.
+ */
+export async function setAbsenceWeeks(input: {
+  employeeId: string;
+  year: number;
+  weeks: number[];
+  type: string;
+  status: "requested" | "approved";
+  boardSlug: string;
+}): Promise<void> {
+  if (input.weeks.length === 0) return;
+  const db = getDb();
+
+  const sorted = [...new Set(input.weeks)].sort((a, b) => a - b);
+  const fromDate = mondayOfWeek(input.year, sorted[0]);
+  const toDate = addDays(mondayOfWeek(input.year, sorted[sorted.length - 1]), 6);
+
+  const overlapping = await db
+    .select()
+    .from(schema.absence)
+    .where(
+      and(
+        eq(schema.absence.employeeId, input.employeeId),
+        eq(schema.absence.type, input.type as never),
+        lte(schema.absence.fromDate, toDate),
+        gte(schema.absence.toDate, fromDate),
+      ),
+    );
+
+  const merged = overlapping.reduce(
+    (acc, a) => ({
+      fromDate: a.fromDate < acc.fromDate ? a.fromDate : acc.fromDate,
+      toDate: a.toDate > acc.toDate ? a.toDate : acc.toDate,
+    }),
+    { fromDate, toDate },
+  );
+
+  if (overlapping.length) {
+    await db.delete(schema.absence).where(
+      inArray(
+        schema.absence.id,
+        overlapping.map((a) => a.id),
+      ),
+    );
+  }
+
+  await db.insert(schema.absence).values({
+    employeeId: input.employeeId,
+    fromDate: merged.fromDate,
+    toDate: merged.toDate,
+    type: input.type as never,
+    status: input.status,
+  });
+  refresh(input.boardSlug);
+}
+
+/** Tar bort frånvaron som täcker en viss vecka. */
+export async function clearAbsenceWeek(input: {
+  employeeId: string;
+  year: number;
+  week: number;
+  boardSlug: string;
+}): Promise<void> {
+  const db = getDb();
+  const start = mondayOfWeek(input.year, input.week);
+  const end = addDays(start, 6);
+
+  const hits = await db
+    .select()
+    .from(schema.absence)
+    .where(
+      and(
+        eq(schema.absence.employeeId, input.employeeId),
+        lte(schema.absence.fromDate, end),
+        gte(schema.absence.toDate, start),
+      ),
+    );
+
+  for (const a of hits) {
+    const keepBefore = a.fromDate < start;
+    const keepAfter = a.toDate > end;
+
+    if (keepBefore && keepAfter) {
+      // Veckan ligger mitt i ett längre spann — dela det i två.
+      await db
+        .update(schema.absence)
+        .set({ toDate: addDays(start, -1), updatedAt: new Date() })
+        .where(eq(schema.absence.id, a.id));
+      await db.insert(schema.absence).values({
+        employeeId: a.employeeId,
+        fromDate: addDays(end, 1),
+        toDate: a.toDate,
+        type: a.type,
+        status: a.status,
+        note: a.note,
+      });
+    } else if (keepBefore) {
+      await db
+        .update(schema.absence)
+        .set({ toDate: addDays(start, -1), updatedAt: new Date() })
+        .where(eq(schema.absence.id, a.id));
+    } else if (keepAfter) {
+      await db
+        .update(schema.absence)
+        .set({ fromDate: addDays(end, 1), updatedAt: new Date() })
+        .where(eq(schema.absence.id, a.id));
+    } else {
+      await db.delete(schema.absence).where(eq(schema.absence.id, a.id));
+    }
+  }
+  refresh(input.boardSlug);
+}
+
+export async function setAbsenceStatus(
+  absenceId: string,
+  status: "requested" | "approved",
+  boardSlug: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(schema.absence)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(schema.absence.id, absenceId));
+  refresh(boardSlug);
 }
