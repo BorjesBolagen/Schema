@@ -71,6 +71,14 @@ export const appUser = pgTable("app_user", {
   connectUserId: text("connect_user_id").unique(),
 
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+
+  /**
+   * Spärr efter upprepade felaktiga försök. Räknaren nollställs vid
+   * lyckad inloggning; spärren gäller kontot och inte avsändaren,
+   * eftersom det är lösenordsgissning mot ett känt konto den ska stoppa.
+   */
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -104,6 +104,12 @@ export async function requireAdmin(): Promise<CurrentUser> {
 
 export type SignInResult = { ok: true } | { ok: false; error: string };
 
+/** Så många felförsök innan kontot spärras, och hur länge. */
+const MAX_FAILED = 8;
+const LOCK_MINUTES = 15;
+
+const GENERIC = "Fel e-post eller lösenord.";
+
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   const db = getDb();
   const [user] = await db
@@ -111,11 +117,37 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     .from(schema.appUser)
     .where(eq(schema.appUser.email, email.trim().toLowerCase()));
 
+  if (user?.lockedUntil && user.lockedUntil > new Date()) {
+    const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+    return {
+      ok: false,
+      error: `Kontot är tillfälligt spärrat efter flera felaktiga försök. Försök igen om ${minutes} min.`,
+    };
+  }
+
   // Samma svar oavsett om användaren finns eller lösenordet var fel, så
   // inloggningen inte går att använda för att kartlägga vilka som finns.
   const ok = user ? await verifyPassword(password, user.passwordHash) : false;
-  if (!ok || !user?.isActive) return { ok: false, error: "Fel e-post eller lösenord." };
 
+  if (!ok || !user?.isActive) {
+    if (user) {
+      const failed = user.failedLoginCount + 1;
+      await db
+        .update(schema.appUser)
+        .set({
+          failedLoginCount: failed,
+          lockedUntil:
+            failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : user.lockedUntil,
+        })
+        .where(eq(schema.appUser.id, user.id));
+    }
+    return { ok: false, error: GENERIC };
+  }
+
+  await db
+    .update(schema.appUser)
+    .set({ failedLoginCount: 0, lockedUntil: null })
+    .where(eq(schema.appUser.id, user.id));
   await createSession(user.id);
   return { ok: true };
 }

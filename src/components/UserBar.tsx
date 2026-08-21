@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCurrentUser } from "@/server/auth";
 import { signOut } from "@/app/auth-actions";
 
@@ -9,10 +10,15 @@ export async function UserBar() {
   return (
     <div className="border-b border-(--color-line) bg-white no-print">
       <div className="mx-auto flex max-w-[1700px] items-center justify-end gap-3 px-6 py-1.5 text-xs">
-        <span className="text-(--color-muted)">
-          {user.name}
-          {user.role === "admin" && <span className="ml-1.5">· admin</span>}
-        </span>
+        <span className="text-(--color-muted)">{user.name}</span>
+        {user.role === "admin" && (
+          <Link href="/anvandare" className="text-(--color-accent) hover:underline">
+            Användare
+          </Link>
+        )}
+        <Link href="/konto" className="text-(--color-accent) hover:underline">
+          Mitt konto
+        </Link>
         <form action={signOut}>
           <button type="submit" className="text-(--color-accent) hover:underline">
             Logga ut

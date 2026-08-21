@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { getCurrentUser } from "@/server/auth";
+import { canAccessBoardBySlug } from "@/server/access";
 import { getBoardWeek } from "@/server/board-week";
 import { getVacationYear } from "@/server/vacation-year";
 import { ABSENCE_LABEL, type AbsenceType } from "@/lib/absence";
@@ -35,11 +36,15 @@ export async function GET(
 ) {
   // Rutten kan inte omdirigera till inloggningen som en sida gör, så den
   // svarar 401 i stället.
-  if (!(await getCurrentUser())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Inte inloggad" }, { status: 401 });
   }
 
   const { slug } = await params;
+  if (!(await canAccessBoardBySlug(user, slug))) {
+    return NextResponse.json({ error: "Tavlan finns inte" }, { status: 404 });
+  }
   const url = new URL(request.url);
   const view = url.searchParams.get("vy") ?? "resource";
   const today = isoWeek(toIso(new Date()));

@@ -113,14 +113,24 @@ radordning och gruppering.
 
 ## Drift
 
-Se [`docs/drift.md`](docs/drift.md) för Supabase och Vercel. Kortversion:
-sätt `DATABASE_URL` till Supabases **poolade** anslutning, kör
-`npm run db:migrate`, och skapa första användaren med `npm run seed`.
+Se [`docs/drift.md`](docs/drift.md). Uppsättningen kräver ingen
+kommandorad: klistra in [`docs/supabase-setup.sql`](docs/supabase-setup.sql)
+i Supabases SQL-editor, sätt `DATABASE_URL` till den **poolade**
+anslutningen i Vercel, och skapa första kontot på `/kom-igang` i
+webbläsaren.
 
-## Inloggning
+## Inloggning och behörighet
 
 Inloggning per användare med sessioner i databasen. Lösenorden hashas med
-scrypt; sessionstabellen lagrar bara en hash av token.
+scrypt; sessionstabellen lagrar bara en hash av token. Kontot spärras i
+15 minuter efter åtta felaktiga försök.
+
+Administratörer når alla tavlor och användarhanteringen under
+**Användare**. Planerare når bara de tavlor de tilldelats — en planerare
+utan tavlor ser ingenting, eftersom tillgång ska ges och inte ärvas.
+Stängs ett konto av rivs dess sessioner samtidigt; annars skulle en
+avstängd användare kunna arbeta vidare i upp till trettio dagar på en
+redan utfärdad kaka.
 
 Mellanvaran skickar utloggade till inloggningen, men kör på Edge och når
 inte databasen — den ser bara *att* en kaka finns. Den är alltså en

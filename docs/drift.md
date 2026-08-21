@@ -1,12 +1,25 @@
 # Driftsättning
 
-Appen är en vanlig Next.js-app med en Postgres bakom sig. Nedan står
-Supabase som databas och Vercel som värd, eftersom det är vad som valts.
+Next.js-app med Postgres bakom. Nedan står Supabase som databas och
+Vercel som värd.
+
+Uppsättningen kräver **ingen kommandorad**. Du klistrar in en SQL-fil i
+Supabase, importerar repot i Vercel och skapar första kontot i
+webbläsaren.
 
 ## 1. Databas i Supabase
 
-Skapa ett projekt och hämta anslutningssträngen under **Connection
-Pooling** — inte den direkta på port 5432.
+Skapa ett projekt. **Välj region i Europa** — verktyget lagrar
+personuppgifter om anställda, och de ska inte lämna EU utan att någon
+fattat det beslutet medvetet.
+
+Öppna **SQL Editor** och klistra in hela innehållet i
+[`supabase-setup.sql`](supabase-setup.sql). Kör. Den skapar alla 18
+tabeller och markerar migrationerna som körda, så en senare
+`npm run db:migrate` inte försöker göra om det.
+
+Hämta sedan anslutningssträngen under **Connection Pooling** — inte den
+direkta på port 5432:
 
 ```
 postgresql://postgres.PROJEKT:LÖSENORD@aws-0-eu-north-1.pooler.supabase.com:6543/postgres?pgbouncer=true
@@ -18,63 +31,80 @@ långt innan trafiken gör det. `src/db/index.ts` känner igen en poolad
 sträng och stänger av både pool och förberedda satser, eftersom pgbouncer
 i transaction mode inte klarar något av det.
 
-Välj region i Europa. Personuppgifter om anställda ska inte lämna EU utan
-att någon fattat det beslutet medvetet.
+Innehåller lösenordet tecken som `@`, `/`, `:` eller `#` måste de
+procentkodas i URL:en. `&` fungerar som det är.
 
-## 2. Migrera
+## 2. Vercel
 
-Körs från din egen dator, inte från Vercels byggsteg — ett bygge kan
-starta flera gånger parallellt och en migration ska inte göra det.
-
-```bash
-DATABASE_URL='...' npm run db:migrate
-```
-
-## 3. Första användaren
-
-```bash
-DATABASE_URL='...' SEED_ADMIN_EMAIL=du@borjeskoncernen.se \
-  SEED_ADMIN_PASSWORD='något-långt-och-eget' npm run seed
-```
-
-Seed-skriptet lägger även upp demounderlaget. Vill ni ha en tom databas
-med bara inloggningen, ta bort raderna efter användaren i
-`scripts/seed-demo.ts` — eller lägg upp demot först, titta på det och
-töm tabellerna sedan.
-
-## 4. Vercel
-
-Importera repot. Inga särskilda inställningar behövs; Next känns igen av
-sig självt. Lägg in miljövariablerna:
+Importera repot. Inga särskilda inställningar behövs. Lägg in
+miljövariablerna:
 
 | Variabel | Krävs | Kommentar |
 |---|---|---|
 | `DATABASE_URL` | ja | Den poolade Supabase-strängen |
-| `TRANSPA_CLIENT_ID` | nej | När access beviljats |
+| `TRANSPA_CLIENT_ID` | nej | När Visma beviljat access |
 | `TRANSPA_CLIENT_SECRET` | nej | |
 | `TRANSPA_TENANT_ID` | nej | |
 
 Utan `DATABASE_URL` faller appen tillbaka på en inbäddad PGlite i en
-katalog — det fungerar lokalt men inte på Vercel, vars filsystem är
-läsbart bara och vars instanser inte delar disk. Sätt den.
+katalog. Det fungerar lokalt men inte på Vercel, vars filsystem är
+läsbart bara och vars instanser inte delar disk.
 
-## 5. Innan skarp personal läggs in
+## 3. Första kontot
 
-- Byt admin-lösenordet från det som seedades.
-- Lägg upp ett konto per trafikansvarig i stället för ett delat.
+Öppna den driftsatta adressen. Är databasen tom leds du till
+`/kom-igang`, där du skapar det första kontot. Det blir administratör
+och kan sedan lägga upp övriga under **Användare**.
+
+Sidan går inte att nå igen när kontot finns. **Gör det direkt efter
+första deployen** — fram tills dess kan vem som helst som hittar
+adressen skapa administratörskontot.
+
+## 4. Användare och behörighet
+
+Under **Användare** lägger en administratör upp konton.
+
+- **Administratör** når alla tavlor och användarhanteringen.
+- **Planerare** når bara de tavlor de tilldelats. En planerare utan
+  tavlor ser ingenting — tillgång ges, den ärvs inte.
+
+Kontot spärras i 15 minuter efter åtta felaktiga inloggningsförsök.
+
+## Innan skarp personal läggs in
+
+- Ett konto per trafikansvarig, inte ett delat.
 - Bekräfta att Supabase-projektet ligger i EU.
 
 Verktyget lagrar namn, anställningsnummer, stationsort och frånvaro med
 orsak. Frånvaroorsaken är en uppgift om hälsa när den är *sjuk* eller
 *vab*, och ska behandlas därefter.
 
+## Lokalt
+
+```bash
+npm install
+npm run demo     # demounderlag och server, konto skrivs ut i terminalen
+```
+
+Utan `DATABASE_URL` används en inbäddad PGlite i `.pgdata`, så varken
+databasserver eller miljövariabler behövs.
+
 ## TransPA
 
-`/transpa` i appen frågar er tenant vad den faktiskt exponerar: hämtar
+`/transpa` frågar er tenant vad den faktiskt exponerar: hämtar
 OpenAPI-specen, provar de dokumenterade endpointsen och provar dessutom
-ett antal gissade namn för pass och frånvaro. Sidan är den snabbaste
-vägen till svaret på om arbetsdagarna går att hämta.
+gissade namn för pass och frånvaro. Där finns också synken av grunddata.
 
 Uppgifterna fås från Visma Developer Portal efter att organisationen
 registrerats och access begärts. Scopen appen ber om står i
 `src/lib/transpa/auth.ts`.
+
+## När schemat ändras
+
+```bash
+npm run db:generate    # ny migration ur src/db/schema.ts
+npm run db:setup-sql   # uppdaterar docs/supabase-setup.sql
+```
+
+Kör sedan `npm run db:migrate` mot `DATABASE_URL`, eller klistra in den
+nya migrationen i Supabases SQL-editor.

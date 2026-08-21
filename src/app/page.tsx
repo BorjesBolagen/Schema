@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/server/auth";
-import { listBoards } from "@/server/board-week";
+import { visibleBoards } from "@/server/access";
 import { isoWeek, toIso } from "@/lib/week";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const user = await requireUser();
-  const boards = await listBoards();
+  const boards = await visibleBoards(user);
   const now = isoWeek(toIso(new Date()));
 
   return (
@@ -26,8 +26,9 @@ export default async function Home() {
 
       {boards.length === 0 ? (
         <p className="mt-8 rounded border border-(--color-line) bg-white p-6 text-sm">
-          Inga tavlor ännu. Lägg upp demounderlaget med{" "}
-          <code className="rounded bg-gray-100 px-1.5 py-0.5">npm run seed</code>
+          {user.role === "admin"
+            ? "Inga tavlor ännu."
+            : "Du har inte fått tillgång till någon tavla. Be en administratör lägga till dig."}
         </p>
       ) : (
         <ul className="mt-8 space-y-3">

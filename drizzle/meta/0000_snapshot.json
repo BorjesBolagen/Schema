@@ -1,5 +1,5 @@
 {
-  "id": "678f2530-3257-406a-8b69-8623a4b515bc",
+  "id": "e7d561c5-db9c-42a5-ba6a-5fdd4b5e9eef",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -197,6 +197,19 @@
         },
         "last_login_at": {
           "name": "last_login_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_login_count": {
+          "name": "failed_login_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "locked_until": {
+          "name": "locked_until",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

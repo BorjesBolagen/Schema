@@ -30,6 +30,8 @@ CREATE TABLE "app_user" (
 	"password_hash" text,
 	"connect_user_id" text,
 	"last_login_at" timestamp with time zone,
+	"failed_login_count" integer DEFAULT 0 NOT NULL,
+	"locked_until" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "app_user_email_unique" UNIQUE("email"),
 	CONSTRAINT "app_user_connect_user_id_unique" UNIQUE("connect_user_id")

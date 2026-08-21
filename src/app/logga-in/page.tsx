@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, signIn } from "@/server/auth";
+import { needsSetup } from "@/server/setup";
 import { LoginForm } from "@/components/LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export default async function LoginPage({
   searchParams: Promise<{ retur?: string }>;
 }) {
   if (await getCurrentUser()) redirect("/");
+  if (await needsSetup()) redirect("/kom-igang");
   const { retur } = await searchParams;
 
   async function attempt(email: string, password: string) {

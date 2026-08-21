@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:setup-sql": "tsx scripts/build-setup-sql.ts",
     "seed": "tsx scripts/seed-demo.ts",
     "demo": "node -e \"require('fs').rmSync('.pgdata',{recursive:true,force:true})\" && npm run seed && npm run dev"
   },

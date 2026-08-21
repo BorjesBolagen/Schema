@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "./password";
+import { passwordProblem } from "./password-rules";
 
 describe("lösenord", () => {
   it("verifierar rätt lösenord", async () => {
@@ -28,3 +29,19 @@ describe("lösenord", () => {
     expect(await verifyPassword("x", "bcrypt$1$2$3$4$5")).toBe(false);
   });
 })
+
+describe("passwordProblem", () => {
+  it("kräver längd framför teckenkrångel", () => {
+    expect(passwordProblem("Kort1!")).toMatch(/minst 12/);
+    expect(passwordProblem("hästar över ängen")).toBeNull();
+  });
+
+  it("avvisar enformiga lösenord", () => {
+    expect(passwordProblem("aaaaaaaaaaaaaaaa")).toMatch(/enformigt/);
+  });
+
+  it("avvisar inledande och avslutande blanksteg", () => {
+    expect(passwordProblem(" hästar över ängen")).toMatch(/blanksteg/);
+    expect(passwordProblem("hästar över ängen ")).toMatch(/blanksteg/);
+  });
+});
