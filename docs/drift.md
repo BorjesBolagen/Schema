@@ -36,8 +36,16 @@ procentkodas i URL:en. `&` fungerar som det är.
 
 ## 2. Vercel
 
-Importera repot. Inga särskilda inställningar behövs. Lägg in
-miljövariablerna:
+Importera repot. `vercel.json` pekar redan ut Dublin (`dub1`) som
+funktionsregion — Vercels närmaste till Supabases `eu-west-1`. Utan den
+körs funktionerna i Vercels standardregion i USA, och varje
+databasfråga blir en transatlantisk tur och retur i stället för en
+inom Europa; det gjorde databasanrop ovanligt känsliga för att hänga.
+Kontrollera under **Project Settings → Functions → Function Region**
+att den faktiskt fått verkan efter första deployen — annars sätt den
+där för hand.
+
+Lägg in miljövariablerna:
 
 | Variabel | Krävs | Kommentar |
 |---|---|---|
@@ -76,11 +84,15 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   om.
 - **Sidan hänger länge och kraschar sedan** (`Vercel Runtime Timeout
   Error: Task timed out after 300 seconds` i loggen, ofta följt av ett
-  oläsligt client-side-fel i webbläsaren) — en fråga har fastnat på den
-  delade databasanslutningen utan att någonsin få svar eller fel
-  tillbaka, och med bara en anslutning i klienten (`max: 1` mot en
-  poolad databas) köar allt bakom den. `withDbTimeout()` i
-  `src/db/index.ts` skyddar mot det på de tyngsta sidorna (tavlans
+  oläsligt client-side-fel i webbläsaren, eller efter fixen nedan i
+  stället `Databasanropet svarade inte inom 15 sekunder`) — troligen
+  **fel funktionsregion**. Kontrollera i Runtime Logs vilken region
+  anropet kördes i ("Routed to …"); ska vara Dublin (`dub1`), inte USA.
+  Se steg 2 ovan. En fråga som fastnat på den delade
+  databasanslutningen utan att någonsin få svar eller fel tillbaka är
+  också möjligt — med bara en anslutning i klienten (`max: 1` mot en
+  poolad databas) köar då allt bakom den. `withDbTimeout()` i
+  `src/db/index.ts` skyddar mot båda på de tyngsta sidorna (tavlans
   veckovy): går 15 sekunder utan svar kastas ett läsligt fel och den
   fastnade anslutningen byts ut, i stället för att hänga till
   plattformens egen gräns. Händer det på en sida som inte har det
