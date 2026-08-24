@@ -94,13 +94,21 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   anropet kördes i ("Routed to …"); ska vara Dublin (`dub1`), inte USA.
   Se steg 2 ovan. En fråga som fastnat på den delade
   databasanslutningen utan att någonsin få svar eller fel tillbaka är
-  också möjligt — med bara en anslutning i klienten (`max: 1` mot en
-  poolad databas) köar då allt bakom den. `withDbTimeout()` i
-  `src/db/index.ts` skyddar mot båda på de tyngsta sidorna (tavlans
-  veckovy): går 15 sekunder utan svar kastas ett läsligt fel och den
-  fastnade anslutningen byts ut, i stället för att hänga till
+  också möjligt. `withDbTimeout()` i `src/db/index.ts` skyddar mot båda
+  på de sidor som har den (tavlans veckovy, inloggningskollen): går 15
+  sekunder utan svar kastas ett läsligt fel i stället för att hänga till
   plattformens egen gräns. Händer det på en sida som inte har det
-  skyddet, är `withDbTimeout()` mönstret att kopiera dit.
+  skyddet, är `withDbTimeout()` mönstret att kopiera dit — men rör
+  aldrig den delade kopplingen från den, se nästa punkt.
+- **`CONNECTION_DESTROYED`** — en helt annan förfrågan stängde den
+  delade databaskopplingen medan den här höll på att använda den.
+  Vercels "Fluid"-läge kan låta flera samtidiga förfrågningar dela
+  samma körande instans och därmed samma delade koppling
+  (`src/db/index.ts`, `getDb()`), så inget som körs under en enskild
+  förfrågan får tvinga igenom en stängning av den — det drabbar då alla
+  andra som råkar dela den just då, inte bara den som ville stänga.
+  `withDbTimeout()` rör därför aldrig kopplingen; `resetDb()` finns bara
+  som ett manuellt verktyg, inget i appen anropar den automatiskt.
 - **Ett fel från `postgres`-drivrutinen** (`password authentication
   failed`, `SASL`, `timeout`) — fel lösenord, eller specialtecken i det
   som inte procentkodats (`@ / : #`), eller att den direkta anslutningen

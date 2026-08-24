@@ -17,8 +17,11 @@ const isPostgresUrl = (url?: string) =>
 /**
  * Supabase och andra hostade Postgres kör anslutningarna genom pgbouncer
  * i transaction mode. Där lever ingen session mellan frågorna, så
- * förberedda satser går inte att använda, och varje serverless-instans
- * ska hålla exakt en anslutning i stället för en egen pool.
+ * förberedda satser går inte att använda, och antalet egna anslutningar
+ * ska hållas lågt i stället för en egen stor pool — Vercels "Fluid"-läge
+ * kan låta flera samtidiga förfrågningar dela en och samma körande
+ * instans, så "en anslutning per instans" räcker inte som tumregel
+ * längre; se max i createDb().
  */
 function isPooled(url: string): boolean {
   return url.includes("pgbouncer=true") || url.includes("pooler.") || url.includes(":6543");
@@ -98,7 +101,13 @@ export function createDb(url = connectionUrl()): Db {
   if (isPostgresUrl(url)) {
     const pooled = isPooled(url!);
     const client = postgres(url!, {
-      max: pooled ? 1 : 10,
+      // 3, inte 1: en enda tavelsida gör över tio frågor i två
+      // parallella klumpar, och Fluid kan dessutom lägga flera
+      // samtidiga användares förfrågningar på samma instans. Med bara
+      // en anslutning köar allt det bakom varandra i onödan. 3 räcker
+      // för att ge verklig parallellitet utan att hota Supabases
+      // anslutningsbudget för ett så här litet verktyg.
+      max: pooled ? 3 : 10,
       prepare: !pooled,
       idle_timeout: pooled ? 20 : undefined,
       ssl: sslSetting(url!),
@@ -155,12 +164,17 @@ export async function closeDb(db: Db): Promise<void> {
 /**
  * Kastar den delade kopplingen och tvingar fram en ny.
  *
- * En fråga på en delad max:1-anslutning kan fastna — en trasig
- * pooler-anslutning, ett nätverksglapp — utan att någonsin få svar
- * eller fel tillbaka. Med bara en anslutning i klienten köar då alla
- * senare frågor bakom den, för evigt, tills processen dödas. Att kasta
- * den fastnade kopplingen och bygga en ny är den enda vägen ut som inte
- * kräver att processen startar om.
+ * INTE något att anropa automatiskt från en sida eller server-action.
+ * Vercels "Fluid"-läge kan låta flera samtidiga förfrågningar dela
+ * samma körande instans och därmed samma delade koppling — den här
+ * funktionen tvingar igenom en stängning av den, och gör det åt alla
+ * som råkar använda den just då, inte bara den som bad om det. Ett
+ * withDbTimeout() som anropade den här automatiskt gav precis det:
+ * en helt oskyldig session-koll på en annan sida kraschade med
+ * CONNECTION_DESTROYED för att en tavelsida i en annan förfrågan råkade
+ * tröttna på samma koppling samtidigt.
+ *
+ * Finns kvar som ett manuellt verktyg — inget i appen anropar den.
  */
 export async function resetDb(): Promise<void> {
   const g = globalThis as GlobalWithDb;
@@ -172,27 +186,26 @@ export async function resetDb(): Promise<void> {
 /**
  * Kör ett databasanrop med en tidsgräns.
  *
- * Utan den hänger en fastnad fråga på en delad anslutning kvar tills
- * plattformens egen gräns — 300 sekunder på Vercel — i stället för att
- * ge ett läsligt fel på några sekunder. Går tiden ut kastas den delade
- * kopplingen (resetDb()) så nästa anrop inte ärver samma fastnade
- * anslutning.
+ * Utan den hänger en fastnad fråga kvar tills plattformens egen gräns —
+ * 300 sekunder på Vercel — i stället för att ge ett läsligt fel på några
+ * sekunder. Rör *inte* den delade kopplingen på något sätt: bara den
+ * här förfrågan ger upp och går vidare. Andra förfrågningar som råkar
+ * dela samma koppling (se resetDb()) ska inte drabbas av att en annan
+ * förfrågan gav upp — de har sin egen tidsgräns om de behöver den.
  */
 export async function withDbTimeout<T>(fn: () => Promise<T>, ms = 15_000): Promise<T> {
-  let timedOut = false;
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      timedOut = true;
-      reject(new Error(`Databasanropet svarade inte inom ${Math.round(ms / 1000)} sekunder.`));
-    }, ms);
+    timer = setTimeout(
+      () => reject(new Error(`Databasanropet svarade inte inom ${Math.round(ms / 1000)} sekunder.`)),
+      ms,
+    );
   });
 
   try {
     return await Promise.race([fn(), timeout]);
   } finally {
     clearTimeout(timer!);
-    if (timedOut) await resetDb();
   }
 }
 

@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { getDb, schema, withDbTimeout } from "@/db";
 import { verifyPassword } from "@/lib/password";
 
 import { SESSION_COOKIE } from "./auth-cookie";
@@ -59,26 +59,30 @@ export async function destroySession(): Promise<void> {
  * Den inloggade användaren, eller null.
  *
  * cache() gör att en sidrendering slår i databasen en gång även när
- * flera komponenter frågar.
+ * flera komponenter frågar. Bakom withDbTimeout: den körs på varenda
+ * sida, så den får inte hänga kvar till plattformens egen gräns om
+ * databaskopplingen skulle fastna.
  */
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const rows = await getDb()
-    .select({
-      id: schema.appUser.id,
-      email: schema.appUser.email,
-      name: schema.appUser.name,
-      role: schema.appUser.role,
-      isActive: schema.appUser.isActive,
-    })
-    .from(schema.session)
-    .innerJoin(schema.appUser, eq(schema.session.userId, schema.appUser.id))
-    .where(
-      and(eq(schema.session.tokenHash, hashToken(token)), gt(schema.session.expiresAt, new Date())),
-    );
+  const rows = await withDbTimeout(() =>
+    getDb()
+      .select({
+        id: schema.appUser.id,
+        email: schema.appUser.email,
+        name: schema.appUser.name,
+        role: schema.appUser.role,
+        isActive: schema.appUser.isActive,
+      })
+      .from(schema.session)
+      .innerJoin(schema.appUser, eq(schema.session.userId, schema.appUser.id))
+      .where(
+        and(eq(schema.session.tokenHash, hashToken(token)), gt(schema.session.expiresAt, new Date())),
+      ),
+  );
 
   const user = rows[0];
   if (!user || !user.isActive) return null;
