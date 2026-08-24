@@ -134,15 +134,66 @@ export function getDb(): Db {
 /**
  * Stänger kopplingen.
  *
- * postgres-js håller anslutningen öppen tills den stängs, så ett skript
- * som glömmer det ser ut att hänga för evigt trots att arbetet är klart.
- * Webbappen ska inte anropa den — där ska kopplingen leva vidare.
+ * postgres-js har `end()`, PGlite har `close()` — bara den ena finns
+ * beroende på drivrutin. postgres-js `end()` väntar annars på att
+ * pågående frågor blir klara innan den stänger, utan tidsgräns — i
+ * praktiken för evigt på en fråga som fastnat, vilket är precis det
+ * den här funktionen kan behöva städa upp efter (se resetDb()). Fem
+ * sekunders nåd åt en legitimt pågående fråga, sedan tvingas den
+ * igenom.
  */
 export async function closeDb(db: Db): Promise<void> {
-  const client = (db as { $client?: { end?: () => Promise<void>; close?: () => Promise<void> } })
-    .$client;
-  await client?.end?.();
+  const client = (
+    db as {
+      $client?: { end?: (opts?: { timeout: number }) => Promise<void>; close?: () => Promise<void> };
+    }
+  ).$client;
+  await client?.end?.({ timeout: 5 });
   await client?.close?.();
+}
+
+/**
+ * Kastar den delade kopplingen och tvingar fram en ny.
+ *
+ * En fråga på en delad max:1-anslutning kan fastna — en trasig
+ * pooler-anslutning, ett nätverksglapp — utan att någonsin få svar
+ * eller fel tillbaka. Med bara en anslutning i klienten köar då alla
+ * senare frågor bakom den, för evigt, tills processen dödas. Att kasta
+ * den fastnade kopplingen och bygga en ny är den enda vägen ut som inte
+ * kräver att processen startar om.
+ */
+export async function resetDb(): Promise<void> {
+  const g = globalThis as GlobalWithDb;
+  const old = g[DB_KEY];
+  g[DB_KEY] = undefined;
+  if (old) await closeDb(old).catch(() => {});
+}
+
+/**
+ * Kör ett databasanrop med en tidsgräns.
+ *
+ * Utan den hänger en fastnad fråga på en delad anslutning kvar tills
+ * plattformens egen gräns — 300 sekunder på Vercel — i stället för att
+ * ge ett läsligt fel på några sekunder. Går tiden ut kastas den delade
+ * kopplingen (resetDb()) så nästa anrop inte ärver samma fastnade
+ * anslutning.
+ */
+export async function withDbTimeout<T>(fn: () => Promise<T>, ms = 15_000): Promise<T> {
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(`Databasanropet svarade inte inom ${Math.round(ms / 1000)} sekunder.`));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([fn(), timeout]);
+  } finally {
+    clearTimeout(timer!);
+    if (timedOut) await resetDb();
+  }
 }
 
 /** True när appen kör mot en riktig Postgres och inte den inbäddade. */

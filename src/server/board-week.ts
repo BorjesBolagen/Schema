@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { getDb, schema, withDbTimeout } from "@/db";
 import {
   type AbsenceLike,
   type AssignmentLike,
@@ -106,7 +106,23 @@ export async function listBoards() {
   return db.select().from(schema.board).orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
 }
 
+/**
+ * Hämtar veckan — tavla, rader, bemanning, arbetsdagar och konflikter.
+ *
+ * Bakom en tidsgräns (withDbTimeout): en fastnad fråga på den delade,
+ * poolade anslutningen hänger annars kvar tills plattformens egen
+ * gräns i stället för att ge ett läsligt fel på några sekunder. Se
+ * withDbTimeout i src/db/index.ts för varför.
+ */
 export async function getBoardWeek(
+  slug: string,
+  year: number,
+  week: number,
+): Promise<BoardWeek | null> {
+  return withDbTimeout(() => runGetBoardWeek(slug, year, week));
+}
+
+async function runGetBoardWeek(
   slug: string,
   year: number,
   week: number,

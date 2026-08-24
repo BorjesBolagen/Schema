@@ -74,6 +74,17 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   och Nodes strikta standard klarar inte Supabase poolers certifikat.
   Ser du felet ändå, kör ni en äldre deploy än den här fixen — deploya
   om.
+- **Sidan hänger länge och kraschar sedan** (`Vercel Runtime Timeout
+  Error: Task timed out after 300 seconds` i loggen, ofta följt av ett
+  oläsligt client-side-fel i webbläsaren) — en fråga har fastnat på den
+  delade databasanslutningen utan att någonsin få svar eller fel
+  tillbaka, och med bara en anslutning i klienten (`max: 1` mot en
+  poolad databas) köar allt bakom den. `withDbTimeout()` i
+  `src/db/index.ts` skyddar mot det på de tyngsta sidorna (tavlans
+  veckovy): går 15 sekunder utan svar kastas ett läsligt fel och den
+  fastnade anslutningen byts ut, i stället för att hänga till
+  plattformens egen gräns. Händer det på en sida som inte har det
+  skyddet, är `withDbTimeout()` mönstret att kopiera dit.
 - **Ett fel från `postgres`-drivrutinen** (`password authentication
   failed`, `SASL`, `timeout`) — fel lösenord, eller specialtecken i det
   som inte procentkodats (`@ / : #`), eller att den direkta anslutningen
