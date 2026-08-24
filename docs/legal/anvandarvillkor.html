@@ -1,0 +1,261 @@
+<title>Schema Användarvillkor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f3f4ef;
+    --surface: #ffffff;
+    --ink: #1a211c;
+    --muted: #5c6760;
+    --line: #d7dbd2;
+    --pine: #2b5d4f;
+    --pine-ink: #1f4b3f;
+    --pine-soft: #e4eee9;
+    --font-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12160f;
+      --surface: #171c15;
+      --ink: #e8ece5;
+      --muted: #93a08f;
+      --line: #2c332a;
+      --pine: #6fbfa8;
+      --pine-ink: #bfe9d8;
+      --pine-soft: #1c2c26;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #12160f;
+    --surface: #171c15;
+    --ink: #e8ece5;
+    --muted: #93a08f;
+    --line: #2c332a;
+    --pine: #6fbfa8;
+    --pine-ink: #bfe9d8;
+    --pine-soft: #1c2c26;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 4rem 1.75rem 5rem;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 1.4rem;
+  }
+
+  .meta-row span b {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pine-ink);
+    background: var(--pine-soft);
+    border-radius: 3px;
+    padding: 0.3rem 0.6rem;
+    margin-bottom: 1.1rem;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: clamp(2rem, 4.4vw, 2.7rem);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.6rem;
+    text-wrap: balance;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 2rem;
+  }
+
+  .intro {
+    max-width: 62ch;
+    color: var(--muted);
+    font-size: 1.02rem;
+    margin: 1.6rem 0 0;
+  }
+
+  .highlight {
+    margin-top: 1.4rem;
+    border-left: 3px solid var(--pine);
+    background: var(--pine-soft);
+    color: var(--pine-ink);
+    padding: 1rem 1.2rem;
+    border-radius: 0 6px 6px 0;
+    max-width: 62ch;
+    font-size: 0.98rem;
+  }
+
+  .highlight b { font-weight: 600; }
+
+  section.clause {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0 1.1rem;
+    padding: 2.1rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  section.clause:last-of-type { border-bottom: none; }
+
+  .clause-num {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--pine);
+    padding-top: 0.3rem;
+  }
+
+  .clause h2 {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 1.28rem;
+    margin: 0 0 0.55rem;
+    letter-spacing: -0.003em;
+  }
+
+  .clause p, .clause li {
+    max-width: 62ch;
+    font-size: 0.98rem;
+    color: var(--ink);
+  }
+
+  .clause p + p { margin-top: 0.8rem; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1.6rem;
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  footer a { color: var(--pine); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 520px) {
+    section.clause { grid-template-columns: 1fr; gap: 0.3rem; }
+    .clause-num { padding-top: 0; }
+  }
+</style>
+
+<div class="sheet">
+  <span class="kicker">Intern integration · ej publik</span>
+  <h1>Användarvillkor för Schema</h1>
+  <div class="meta-row">
+    <span><b>Gäller från</b> 2026-08-24</span>
+    <span><b>Organisation</b> Börjeskoncernen</span>
+    <span><b>Systemägare</b> Trafikledning, Börjeskoncernen</span>
+  </div>
+  <p class="intro">
+    Schema är en integration mellan Börjeskoncernens interna bemanningsverktyg och TransPA
+    (Visma), byggd av och för Börjeskoncernen.
+  </p>
+  <div class="highlight">
+    <b>Det här är inte en produkt.</b> Integrationen är byggd uteslutande för Börjeskoncernens
+    eget bruk och erbjuds inte till, säljs inte till och är inte avsedd att användas av någon
+    annan organisation.
+  </div>
+
+  <section class="clause">
+    <div class="clause-num">01</div>
+    <div>
+      <h2>Omfattning</h2>
+      <p>
+        Dessa villkor gäller den maskin-till-maskin-integration ("Schema") som hämtar personal-,
+        fordons- och schemadata från TransPA Public API för Börjeskoncernens interna
+        bemanningsverktyg.
+      </p>
+    </div>
+  </section>
+
+  <section class="clause">
+    <div class="clause-num">02</div>
+    <div>
+      <h2>Vem får använda den</h2>
+      <p>
+        Endast Börjeskoncernens egna trafikansvariga och administratörer, via personligt konto i
+        bemanningsverktyget. Integrationen är inte öppen för registrering och delas inte med
+        andra TransPA-kunder.
+      </p>
+    </div>
+  </section>
+
+  <section class="clause">
+    <div class="clause-num">03</div>
+    <div>
+      <h2>Inga garantier utöver internt bruk</h2>
+      <p>
+        Integrationen underhålls som ett internt verktyg, utan servicenivåavtal eller
+        kommersiellt åtagande. Börjeskoncernen ansvarar själv för drift och underhåll av sitt
+        eget bemanningsverktyg.
+      </p>
+    </div>
+  </section>
+
+  <section class="clause">
+    <div class="clause-num">04</div>
+    <div>
+      <h2>Ändringar och avslut</h2>
+      <p>
+        Börjeskoncernen kan när som helst ändra, pausa eller avsluta integrationen, till exempel
+        om TransPA-anslutningen byts ut eller bemanningsverktyget läggs ned.
+      </p>
+    </div>
+  </section>
+
+  <section class="clause">
+    <div class="clause-num">05</div>
+    <div>
+      <h2>Personuppgifter</h2>
+      <p>
+        Hur uppgifter om personal behandlas beskrivs i integritetspolicyn för Schema, inte i det
+        här dokumentet.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Schema · Börjeskoncernen</span>
+    <span><a href="mailto:johan@borjeskoncernen.se">johan@borjeskoncernen.se</a></span>
+  </footer>
+</div>
