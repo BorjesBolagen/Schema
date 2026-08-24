@@ -45,6 +45,10 @@ Kontrollera under **Project Settings → Functions → Function Region**
 att den faktiskt fått verkan efter första deployen — annars sätt den
 där för hand.
 
+`/db-health` (adminmenyn på startsidan) testar kopplingen direkt: tre
+enkla frågor, en i taget, med var sin tid. Snabbare väg till att veta om
+kopplingen själv är trög än att gå via en tavla.
+
 Lägg in miljövariablerna:
 
 | Variabel | Krävs | Kommentar |

@@ -24,6 +24,9 @@ export default async function Home() {
             <Link href="/transpa" className="text-(--color-accent) hover:underline">
               TransPA-anslutning
             </Link>
+            <Link href="/db-health" className="text-(--color-accent) hover:underline">
+              Databaskoppling
+            </Link>
           </nav>
         )}
       </div>
