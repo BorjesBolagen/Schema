@@ -156,9 +156,68 @@ databasserver eller miljövariabler behövs.
 OpenAPI-specen, provar de dokumenterade endpointsen och provar dessutom
 gissade namn för pass och frånvaro. Där finns också synken av grunddata.
 
-Uppgifterna fås från Visma Developer Portal efter att organisationen
-registrerats och access begärts. Scopen appen ber om står i
-`src/lib/transpa/auth.ts`.
+### Skaffa uppgifterna
+
+Tre värden krävs: `TRANSPA_CLIENT_ID`, `TRANSPA_CLIENT_SECRET`,
+`TRANSPA_TENANT_ID`. De skapas i två separata steg i Visma Developer
+Portal (`oauth.developers.visma.com`) — det första skapar appen, det
+andra kopplar den till er TransPA-tenant. Namn på knappar kan skilja sig
+något mot nedan om Visma ändrat gränssnittet, men flödet är detsamma.
+
+**1. Skapa applikationen**
+
+1. Logga in på Visma Developer Portal med ett konto knutet till Börjes
+   som organisation — skapa ett om det inte finns.
+2. **My Applications** → **Add application**.
+3. Välj typen **Service** (maskin-till-maskin, `client_credentials`) —
+   inte Web eller SPA, de är för inloggning av en person.
+4. Fyll i namn (t.ex. "Schema — Börjes") och beskrivning. Client ID
+   sätts eller genereras här — spara det, det blir `TRANSPA_CLIENT_ID`.
+5. Spara/publicera appen. Öppna sedan fliken **Credentials** och tryck
+   **Generate Secret**. Secreten visas bara en gång — spara den direkt,
+   det blir `TRANSPA_CLIENT_SECRET`.
+
+**2. Begär access till TransPA Public API**
+
+6. Hitta **TransPA Public API** i API-katalogen och begär access för
+   appen ni just skapade, med scopen som listas nedan.
+7. Access till TransPA är **manuell**, inte automatisk — Visma
+   handlägger den och hör av sig via mejl. Det är det här steget som
+   tar kalendertid, så skicka begäran även om ni inte hunnit klart med
+   allt annat.
+8. När Visma beviljat access: appen behöver kopplas till er TransPA-
+   tenant, normalt genom att en administratör för er TransPA-tenant
+   godkänner appen (i Visma App Store eller motsvarande admin-vy Visma
+   anvisar i mejlet). Det är det steget som ger er `tenant_id` — det
+   blir `TRANSPA_TENANT_ID`.
+
+Scopen att begära, så en andra ansökningsrunda inte behövs:
+
+```
+transpaapi:api
+transpaapi:employees:read
+transpaapi:vehicles:read
+transpaapi:vehiclegroups:read
+transpaapi:trafficareas:read
+transpaapi:stationplaces:read
+transpaapi:worktasks:read
+transpaapi:trips:read
+```
+
+(Samma lista står i `src/lib/transpa/auth.ts` — om den ändras där ska
+den ändras här också.)
+
+**3. Koppla in och testa**
+
+9. Lägg de tre värdena som miljövariabler i Vercel (Project Settings →
+   Environment Variables) och deploya om.
+10. Besök `/transpa` som administratör. Sidan visar om token- och
+    scope-uppsättningen fungerar, och fältnamnen från `/v1/trips` och
+    `/v1/employees` om anropen lyckas.
+
+Fungerar inte token-hämtningen (`/transpa` visar "Fel" på Token) är det
+nästan alltid client id, secret eller tenant id som skrivits fel av, eller
+att scopen inte hunnit beviljas än — vänta och ladda om.
 
 ## Skript mot en riktig databas
 
