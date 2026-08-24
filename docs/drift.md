@@ -67,6 +67,13 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
 - **`Ingen databasanslutning hittades`** — ingen av variablerna ovan är
   satt. Lägg in `DATABASE_URL` under Project Settings → Environment
   Variables och deploya om.
+- **`SELF_SIGNED_CERT_IN_CHAIN`** — rättat i koden (`src/db/index.ts`,
+  `sslSetting()`). Berodde inte på anslutningssträngen utan på hur
+  `postgres`-drivrutinen tolkar TLS-läget: bara strängen `"require"`
+  stänger av certifikatverifieringen, det booleska `true` gör det inte
+  och Nodes strikta standard klarar inte Supabase poolers certifikat.
+  Ser du felet ändå, kör ni en äldre deploy än den här fixen — deploya
+  om.
 - **Ett fel från `postgres`-drivrutinen** (`password authentication
   failed`, `SASL`, `timeout`) — fel lösenord, eller specialtecken i det
   som inte procentkodats (`@ / : #`), eller att den direkta anslutningen

@@ -30,15 +30,26 @@ function isPooled(url: string): boolean {
  * `sslmode` i URL:en vinner om den är satt. Utan den krävs TLS mot allt
  * som inte är localhost: hostad Postgres har det alltid, en databas man
  * kör själv under utveckling har det sällan.
+ *
+ * Standardläget måste bli strängen `"require"`, inte det booleska
+ * `true` som såg mest korrekt ut. `postgres`-drivrutinen känner bara
+ * igen `"require"`/`"allow"`/`"prefer"` som bett om att stänga av
+ * certifikatverifieringen (`node_modules/postgres/src/connection.js`);
+ * `true` matchar ingen av de grenarna och faller igenom till Nodes
+ * strikta standardverifiering. Supabase pooler-certifikat klarar den
+ * inte, vilket gav `SELF_SIGNED_CERT_IN_CHAIN` i drift trots korrekt
+ * lösenord och korrekt sträng i övrigt.
  */
-function sslSetting(url: string): "require" | "verify-full" | boolean {
+/** Exporterad enbart så testet kör mot den riktiga regeln, inte en kopia. */
+export function sslSetting(url: string): "require" | "verify-full" | boolean {
   const mode = new URL(url).searchParams.get("sslmode");
   if (mode === "disable" || mode === "allow") return false;
   if (mode === "verify-full" || mode === "verify-ca") return "verify-full";
   if (mode === "require" || mode === "prefer") return "require";
 
   const host = new URL(url).hostname;
-  return host !== "localhost" && host !== "127.0.0.1" && host !== "::1";
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+  return "require";
 }
 
 /**
