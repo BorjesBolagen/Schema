@@ -197,15 +197,26 @@ Scopen att begära, så en andra ansökningsrunda inte behövs:
 transpaapi:api
 transpaapi:employees:read
 transpaapi:vehicles:read
-transpaapi:vehiclegroups:read
-transpaapi:trafficareas:read
+transpaapi:workgroups:read
 transpaapi:stationplaces:read
 transpaapi:worktasks:read
 transpaapi:trips:read
+transpaapi:shifts:read
 ```
 
 (Samma lista står i `src/lib/transpa/auth.ts` — om den ändras där ska
 den ändras här också.)
+
+Listan ovan är rättad mot Börjes verkliga scope-katalog i Visma
+Developer Portal (2026-08-24): resursen heter `workgroups`, inte
+`vehiclegroups` som den föråldrade klienten antydde, och `trafficareas`
+finns inte som egen scope alls. Viktigast: **`shifts` finns.** TransPA
+har alltså en riktig schema-resurs — det var den öppna frågan som
+avgjorde hur mycket arbetsmönstren i verktyget skulle behövas, och
+svaret är att de blir en parentes i stället för grunden. Write-scopen
+för employees, vehicles, shifts och trips beviljades också men begärs
+inte av koden än — appen skriver ingenting till TransPA förrän
+frånvaro/semester-vägen (Fas 8) faktiskt byggs.
 
 **3. Koppla in och testa**
 

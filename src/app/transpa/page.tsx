@@ -57,10 +57,11 @@ export default async function TranspaPage() {
         facit. Ladda om sidan för att köra om kontrollen.
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-        <code>/v1/trips</code> och <code>/v1/employees</code> visar fältnamnen i första raden när
-        anropet lyckas — bara namnen, aldrig värdena, så personnummer eller adress aldrig syns här.
-        Det är den snabbaste vägen till att veta om en tur bär ett skift eller ett fordon, och om
-        personalen bär sin stationsort redan.
+        <code>/v1/shifts</code>, <code>/v1/trips</code> och <code>/v1/employees</code> visar
+        fältnamnen i första raden när anropet lyckas — bara namnen, aldrig värdena, så personnummer
+        eller adress aldrig syns här. Scopet <code>transpaapi:shifts:read</code> är beviljat, så
+        <code>/v1/shifts</code> är den viktigaste raden nedan: den avgör om arbetsmönstren i
+        verktyget blir en parentes eller om TransPA kan leverera arbetsdagarna direkt.
       </p>
 
       {missing ? (
@@ -95,11 +96,12 @@ export default async function TranspaPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-semibold">Schema och frånvaro</h2>
+        <h2 className="text-sm font-semibold">Gissade vägar</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Namn vi gissar på. Svarar någon av dem något annat än <em>finns inte</em> kan
-          arbetsdagarna hämtas från TransPA, och arbetsmönstren i verktyget blir en parentes i
-          stället för grunden.
+          Namn vi gissar på — antingen för att scopet finns men vägen är okänd (
+          <code>/v1/workGroups</code>, för <code>transpaapi:workgroups:read</code>), eller för att
+          varken scope eller väg är bekräftat (frånvaro, semester, tidrapporter). Svarar någon av
+          de sistnämnda något annat än <em>finns inte</em> är det värt att begära det scopet också.
         </p>
         <table className="mt-2 w-full border-collapse">
           <tbody>

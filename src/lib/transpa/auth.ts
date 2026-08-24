@@ -20,18 +20,32 @@ export interface TokenResponse {
   token_type: string;
 }
 
-/** Grundscope krävs på alla rutter; resten begärs efter behov. */
+/**
+ * Grundscope krävs på alla rutter; resten begärs efter behov.
+ *
+ * Listan är de scopen som faktiskt är beviljade för Börjes app i Visma
+ * Developer Portal (2026-08-24) — inte en gissning ur den föråldrade
+ * C#-klienten längre. Två skillnader mot den gissningen: resursen heter
+ * `workgroups`, inte `vehiclegroups`, och `trafficareas` finns inte som
+ * egen scope alls. Viktigast: `shifts` finns — TransPA har alltså en
+ * riktig schema-resurs, inte bara turer.
+ *
+ * Write-scopen (employees, vehicles, shifts, trips) är också beviljade
+ * men begärs inte här — appen skriver ingenting till TransPA än. Läggs
+ * till scope för scope när skrivvägen faktiskt byggs (Fas 8: frånvaro
+ * och semester tillbaka till TransPA).
+ */
 export const BASE_SCOPE = "transpaapi:api";
 
 export const READ_SCOPES = [
   BASE_SCOPE,
   "transpaapi:employees:read",
   "transpaapi:vehicles:read",
-  "transpaapi:vehiclegroups:read",
-  "transpaapi:trafficareas:read",
+  "transpaapi:workgroups:read",
   "transpaapi:stationplaces:read",
   "transpaapi:worktasks:read",
   "transpaapi:trips:read",
+  "transpaapi:shifts:read",
 ];
 
 interface CachedToken {

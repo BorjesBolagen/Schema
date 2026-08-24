@@ -54,35 +54,49 @@ export interface TenantReport {
   ranAt: string;
 }
 
-/** Endpoints Visma dokumenterat. */
+/**
+ * Endpoints Visma dokumenterat eller som scope-katalogen i Visma
+ * Developer Portal bekräftar existerar (2026-08-24).
+ *
+ * /v1/shifts hör hemma här av det starkaste skälet som finns: scopet
+ * `transpaapi:shifts:read` står bland de beviljade för Börjes app.
+ * TransPA har alltså en riktig schema-resurs, inte bara turer — det var
+ * den öppna frågan hela den här sidan fanns för att besvara.
+ */
 const KNOWN: Array<[string, string]> = [
   ["/v1/alive", "Livskontroll"],
   ["/v1/employees", "Personal"],
   ["/v1/vehicles", "Fordon"],
-  ["/v1/vehicleGroups", "Fordonsgrupper"],
-  ["/v1/trafficAreas", "Trafikområden"],
   ["/v1/stationPlaces", "Stationsorter"],
   ["/v1/workTasks", "Arbetsuppgifter"],
   ["/v1/trips", "Turer"],
+  ["/v1/shifts", "Pass"],
 ];
 
 /**
  * Endpoints där fältnamnen är värda att se, inte bara att anropet
- * lyckas. /v1/trips är den viktigaste: Vismas egna Postman-exempel
- * anropar den med employeeId, status, startDateTime och endDateTime,
- * men ingen dokumentation vi når visar vad ett svar innehåller — om det
- * bär ett fordon eller ett skift går bara att se genom att fråga.
- * /v1/employees avgör om stationPlaceId finns där eller måste sättas i
- * appen; den kända (föråldrade) modellen saknar den.
+ * lyckas. /v1/shifts är nu den viktigaste — scopet är beviljat, men
+ * ingen dokumentation vi når visar vad ett pass faktiskt innehåller.
+ * /v1/trips likaså: Vismas egna Postman-exempel anropar den med
+ * employeeId, status, startDateTime och endDateTime, men inget om
+ * svarsformen. /v1/employees avgör om stationPlaceId finns där eller
+ * måste sättas i appen; den kända (föråldrade) modellen saknar den.
  */
-const SAMPLE_SHAPE_OF = new Set(["/v1/trips", "/v1/employees"]);
+const SAMPLE_SHAPE_OF = new Set(["/v1/shifts", "/v1/trips", "/v1/employees"]);
 
 /**
- * Gissningar. Hela poängen med sidan: finns någon av dem är
- * arbetsmönstren i appen en parentes i stället för grunden.
+ * Gissningar. `transpaapi:workgroups:read` är beviljat men vägen är
+ * okänd — Vismas mönster för de andra resurserna (stationPlaces,
+ * workTasks) är camelCase av scope-namnet, därav /v1/workGroups som
+ * första gissning. `vehicleGroups` och `trafficAreas` kom från den
+ * föråldrade klienten men har inget motsvarande scope bland de
+ * beviljade, så de är nedgraderade till gissningar här — de kan ändå
+ * svara om de ligger bakom grundscopet.
  */
 const GUESSES: Array<[string, string]> = [
-  ["/v1/shifts", "Pass"],
+  ["/v1/workGroups", "Arbetsgrupper"],
+  ["/v1/vehicleGroups", "Fordonsgrupper"],
+  ["/v1/trafficAreas", "Trafikområden"],
   ["/v1/schedules", "Scheman"],
   ["/v1/absences", "Frånvaro"],
   ["/v1/timeReports", "Tidrapporter"],
