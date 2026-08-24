@@ -48,7 +48,32 @@ miljövariablerna:
 
 Utan `DATABASE_URL` faller appen tillbaka på en inbäddad PGlite i en
 katalog. Det fungerar lokalt men inte på Vercel, vars filsystem är
-läsbart bara och vars instanser inte delar disk.
+läsbart bara och vars instanser inte delar disk — där ger det i stället
+`Application error: a server-side exception has occurred`.
+
+Kopplade du Supabase till Vercel via deras integration i stället för
+att klistra in strängen ovan för hand, letar appen även efter
+`POSTGRES_URL`, `POSTGRES_URL_NON_POOLING` och `POSTGRES_PRISMA_URL` —
+namnen integrationen brukar sätta. Är ingen av dem den poolade strängen
+på port 6543 (eller `pgbouncer=true`) håller anslutningen ändå på att ta
+slut under trafik; sätt `DATABASE_URL` till den poolade strängen
+uttryckligen om så är fallet.
+
+### Felsöka "Application error"
+
+Sidans felmeddelande säger bara att något gick fel server-side — orsaken
+står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligaste:
+
+- **`Ingen databasanslutning hittades`** — ingen av variablerna ovan är
+  satt. Lägg in `DATABASE_URL` under Project Settings → Environment
+  Variables och deploya om.
+- **Ett fel från `postgres`-drivrutinen** (`password authentication
+  failed`, `SASL`, `timeout`) — fel lösenord, eller specialtecken i det
+  som inte procentkodats (`@ / : #`), eller att den direkta anslutningen
+  på port 5432 använts i stället för den poolade på 6543.
+- **`relation "..." does not exist`** — `supabase-setup.sql` har inte
+  körts i det projektet, eller `DATABASE_URL` pekar på fel Supabase-
+  projekt.
 
 ## 3. Första kontot
 

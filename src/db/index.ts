@@ -42,14 +42,48 @@ function sslSetting(url: string): "require" | "verify-full" | boolean {
 }
 
 /**
+ * Miljövariabeln som bär anslutningssträngen.
+ *
+ * DATABASE_URL är den vi dokumenterar och som ska sättas för hand med
+ * den poolade Supabase-strängen. De andra är reserver för när Supabase
+ * kopplats till Vercel via deras integration i stället — den sätter
+ * sina egna namn, och utan de här skulle appen tyst falla tillbaka på
+ * den inbäddade PGlite-databasen i drift, vilket kraschar på Vercels
+ * skrivskyddade filsystem.
+ */
+function connectionUrl(): string | undefined {
+  return (
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.POSTGRES_URL_NON_POOLING ??
+    process.env.POSTGRES_PRISMA_URL
+  );
+}
+
+/**
  * Databaskoppling.
  *
- * DATABASE_URL som pekar på en postgres-server används i drift. Saknas
- * den körs PGlite — en inbäddad Postgres i katalogen .pgdata — så appen
- * och testerna fungerar utan vare sig databasserver eller
- * miljövariabler. Samma SQL, samma migrationer.
+ * En postgres-URL används i drift. Saknas den körs PGlite — en
+ * inbäddad Postgres i katalogen .pgdata — så appen och testerna
+ * fungerar utan vare sig databasserver eller miljövariabler. Samma SQL,
+ * samma migrationer.
+ *
+ * Vercels filsystem är skrivskyddat utanför /tmp, så PGlite-vägen
+ * kraschar där — djupt inne i sitt eget filskrivningsförsök, med ett
+ * felmeddelande som inte säger vad som faktiskt saknas. `VERCEL` sätts
+ * automatiskt av plattformen (till skillnad från NODE_ENV, som också är
+ * "production" för en lokal `next start` utan databas, vilket ska
+ * fungera precis som `next dev` gör).
  */
-export function createDb(url = process.env.DATABASE_URL): Db {
+export function createDb(url = connectionUrl()): Db {
+  if (!isPostgresUrl(url) && process.env.VERCEL) {
+    throw new Error(
+      "Ingen databasanslutning hittades. Sätt DATABASE_URL till den poolade Supabase-strängen " +
+        "(Project Settings → Database → Connection Pooling, port 6543) i Vercels miljövariabler " +
+        "— se docs/drift.md.",
+    );
+  }
+
   if (isPostgresUrl(url)) {
     const pooled = isPooled(url!);
     const client = postgres(url!, {
@@ -102,7 +136,7 @@ export async function closeDb(db: Db): Promise<void> {
 
 /** True när appen kör mot en riktig Postgres och inte den inbäddade. */
 export function isHostedDatabase(): boolean {
-  return isPostgresUrl(process.env.DATABASE_URL);
+  return isPostgresUrl(connectionUrl());
 }
 
 export { schema };
