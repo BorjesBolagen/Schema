@@ -46,10 +46,13 @@ export default async function BoardPage({ params, searchParams }: Props) {
   if (!data) notFound();
 
   const db = getDb();
-  const [employees, stations] = await Promise.all([
-    db.select().from(schema.employee).orderBy(asc(schema.employee.firstName)),
-    db.select().from(schema.stationPlace),
-  ]);
+  // Seriellt, inte parallellt — se kommentaren i board-week.ts:
+  // pipelinade frågor genom Supabases pooler kan fastna.
+  const employees = await db
+    .select()
+    .from(schema.employee)
+    .orderBy(asc(schema.employee.firstName));
+  const stations = await db.select().from(schema.stationPlace);
   const stationName = new Map(stations.map((s) => [s.id, s.name]));
   const allEmployees = employees
     .filter((e) => e.isActive)

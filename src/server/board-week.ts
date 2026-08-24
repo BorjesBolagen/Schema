@@ -136,23 +136,41 @@ async function runGetBoardWeek(
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  const [rows, groups, employees, vehicles, stations, crewRows, baseRows] = await Promise.all([
-    db
-      .select()
-      .from(schema.boardRow)
-      .where(eq(schema.boardRow.boardId, board.id))
-      .orderBy(asc(schema.boardRow.sortOrder)),
-    db.select().from(schema.boardGroup).where(eq(schema.boardGroup.boardId, board.id)),
-    db.select().from(schema.employee),
-    db.select().from(schema.vehicle),
-    db.select().from(schema.stationPlace),
-    db
-      .select()
-      .from(schema.boardCrew)
-      .where(eq(schema.boardCrew.boardId, board.id))
-      .orderBy(asc(schema.boardCrew.sortOrder)),
-    db.select().from(schema.baseSchedule).where(eq(schema.baseSchedule.boardId, board.id)),
-  ]);
+  /* Frågorna körs en i taget, inte i Promise.all.
+   *
+   * Den här vyn körde tidigare sju frågor parallellt, och det var den
+   * enda sidan som hängde i drift — db-health (tre i följd) och
+   * semestervyn (högst två parallella) gjorde det aldrig. Drivrutinen
+   * skickar parallella frågor pipelinade på samma anslutning, och
+   * Supabases pooler i transaction mode ska mappa dem mot sina
+   * serveranslutningar; blir det för många på en gång kommer svaret
+   * ibland aldrig. En lokal pgbouncer utan nätverkslatens klarar det,
+   * vilket är därför felet bara syntes i drift.
+   *
+   * Varje fråga tar millisekunder, så hela vyn kostar under en tiondels
+   * sekund seriellt. Det är billigt jämfört med en sida som hänger.
+   */
+  const allRows = await db.select().from(schema.boardRow);
+  const rows = allRows
+    .filter((r) => r.boardId === board.id)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const groups = await db
+    .select()
+    .from(schema.boardGroup)
+    .where(eq(schema.boardGroup.boardId, board.id));
+  const employees = await db.select().from(schema.employee);
+  const vehicles = await db.select().from(schema.vehicle);
+  const stations = await db.select().from(schema.stationPlace);
+  const crewRows = await db
+    .select()
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id))
+    .orderBy(asc(schema.boardCrew.sortOrder));
+  const baseRows = await db
+    .select()
+    .from(schema.baseSchedule)
+    .where(eq(schema.baseSchedule.boardId, board.id));
 
   const employeeById = new Map(employees.map((e) => [e.id, e]));
   const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
@@ -161,14 +179,11 @@ async function runGetBoardWeek(
 
   /* Alla pass i veckan, från samtliga tavlor — dubbelbokning ska hittas
      även när den andra bokningen ligger på en annan tavla. */
-  const [allRows, allBoards, rawAssignments] = await Promise.all([
-    db.select().from(schema.boardRow),
-    db.select().from(schema.board),
-    db
-      .select()
-      .from(schema.assignment)
-      .where(and(gte(schema.assignment.date, first), lte(schema.assignment.date, last))),
-  ]);
+  const allBoards = await db.select().from(schema.board);
+  const rawAssignments = await db
+    .select()
+    .from(schema.assignment)
+    .where(and(gte(schema.assignment.date, first), lte(schema.assignment.date, last)));
   const rowInfo = new Map(allRows.map((r) => [r.id, r]));
   const boardName = new Map(allBoards.map((b) => [b.id, b.name]));
 

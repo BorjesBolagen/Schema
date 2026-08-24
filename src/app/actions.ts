@@ -178,15 +178,24 @@ export async function fillWeek(input: {
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  const [crew, baseRows, rows, absences] = await Promise.all([
-    db.select().from(schema.boardCrew).where(eq(schema.boardCrew.boardId, board.id)),
-    db.select().from(schema.baseSchedule).where(eq(schema.baseSchedule.boardId, board.id)),
-    db.select().from(schema.boardRow).where(eq(schema.boardRow.boardId, board.id)),
-    db
-      .select()
-      .from(schema.absence)
-      .where(and(lte(schema.absence.fromDate, last), gte(schema.absence.toDate, first))),
-  ]);
+  // Seriellt, inte parallellt — se kommentaren i board-week.ts:
+  // pipelinade frågor genom Supabases pooler kan fastna.
+  const crew = await db
+    .select()
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id));
+  const baseRows = await db
+    .select()
+    .from(schema.baseSchedule)
+    .where(eq(schema.baseSchedule.boardId, board.id));
+  const rows = await db
+    .select()
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, board.id));
+  const absences = await db
+    .select()
+    .from(schema.absence)
+    .where(and(lte(schema.absence.fromDate, last), gte(schema.absence.toDate, first)));
 
   const rowIds = rows.map((r) => r.id);
   const existingRaw = rowIds.length

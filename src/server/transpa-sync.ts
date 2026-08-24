@@ -162,11 +162,10 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
   results.push(
     await track(db, "vehicles", async () => {
       const rows = await client.list<TranspaVehicle>("/v1/vehicles");
-      const [areas, places, groups] = await Promise.all([
-        db.select().from(schema.trafficArea),
-        db.select().from(schema.stationPlace),
-        db.select().from(schema.vehicleGroup),
-      ]);
+      // Seriellt, inte parallellt — se kommentaren i board-week.ts.
+      const areas = await db.select().from(schema.trafficArea);
+      const places = await db.select().from(schema.stationPlace);
+      const groups = await db.select().from(schema.vehicleGroup);
       const areaBy = new Map(areas.map((a) => [a.transpaId, a.id]));
       const placeBy = new Map(places.map((p) => [p.transpaId, p.id]));
       const groupBy = new Map(groups.map((g) => [g.transpaId, g.id]));

@@ -9,10 +9,9 @@ export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
   const me = await requireAdmin();
-  const [users, boards] = await Promise.all([
-    listUsers(),
-    getDb().select().from(schema.board).orderBy(asc(schema.board.name)),
-  ]);
+  // Seriellt, inte parallellt — se kommentaren i board-week.ts.
+  const users = await listUsers();
+  const boards = await getDb().select().from(schema.board).orderBy(asc(schema.board.name));
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">

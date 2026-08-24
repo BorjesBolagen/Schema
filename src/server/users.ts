@@ -17,12 +17,12 @@ export interface ManagedUser {
 }
 
 export async function listUsers(): Promise<ManagedUser[]> {
-  const [users, members] = await readWithTimeout(() => {
+  const { users, members } = await readWithTimeout(async () => {
+    // Seriellt, inte parallellt — se kommentaren i board-week.ts.
     const db = getDb();
-    return Promise.all([
-      db.select().from(schema.appUser).orderBy(asc(schema.appUser.name)),
-      db.select().from(schema.boardMember),
-    ]);
+    const users = await db.select().from(schema.appUser).orderBy(asc(schema.appUser.name));
+    const members = await db.select().from(schema.boardMember);
+    return { users, members };
   });
   return users.map((u) => ({
     id: u.id,

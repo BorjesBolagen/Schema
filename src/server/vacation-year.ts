@@ -54,14 +54,14 @@ async function runGetVacationYear(slug: string, year: number): Promise<VacationY
   const [board] = await db.select().from(schema.board).where(eq(schema.board.slug, slug));
   if (!board) return null;
 
-  const [crewRows, stations] = await Promise.all([
-    db
-      .select()
-      .from(schema.boardCrew)
-      .where(eq(schema.boardCrew.boardId, board.id))
-      .orderBy(asc(schema.boardCrew.sortOrder)),
-    db.select().from(schema.stationPlace),
-  ]);
+  // Seriellt, inte parallellt — se kommentaren i board-week.ts:
+  // pipelinade frågor genom Supabases pooler kan fastna.
+  const crewRows = await db
+    .select()
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id))
+    .orderBy(asc(schema.boardCrew.sortOrder));
+  const stations = await db.select().from(schema.stationPlace);
   const crewIds = crewRows.map((c) => c.employeeId);
 
   const employees = crewIds.length

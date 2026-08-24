@@ -97,6 +97,15 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   efter sex sekunder, pensionerar kopplingen och gör om läsningen på en
   färsk. Alla sidors läsvägar går genom den. Gör du en ny sida som
   läser ur databasen, lägg den bakom `readWithTimeout()` också.
+- **Bara tavelvyn hänger, andra sidor svarar** — parallella
+  databasfrågor. Drivrutinen skickar dem pipelinade på samma
+  anslutning, och Supabases pooler i transaction mode kan fastna när
+  det blir för många på en gång. Tavelvyn körde sju parallellt och var
+  den enda sidan som hängde; db-health (tre i följd) och semestervyn
+  (två parallella) gjorde det aldrig. Alla databasfrågor körs därför
+  numera **en i taget**. Varje fråga tar millisekunder, så hela vyn
+  kostar under en tiondels sekund seriellt. Lägg inte tillbaka
+  `Promise.all` runt databasfrågor.
 - **`CONNECTION_DESTROYED`** — någon stängde den delade
   databaskopplingen medan en annan förfrågan använde den. Vercels
   "Fluid"-läge kan låta flera samtidiga förfrågningar dela samma

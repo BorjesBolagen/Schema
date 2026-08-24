@@ -8,11 +8,10 @@ export const dynamic = "force-dynamic";
 
 export default async function BaseDataPage() {
   await requireAdmin();
-  const [stations, employees, vehicles] = await Promise.all([
-    listStations(),
-    listEmployees(),
-    listVehicles(),
-  ]);
+  // Seriellt, inte parallellt — se kommentaren i board-week.ts.
+  const stations = await listStations();
+  const employees = await listEmployees();
+  const vehicles = await listVehicles();
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
