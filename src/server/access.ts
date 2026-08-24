@@ -1,7 +1,7 @@
 import "server-only";
 import { asc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { getDb, schema } from "@/db";
+import { getDb, schema, readWithTimeout } from "@/db";
 import type { CurrentUser } from "./auth";
 
 /**
@@ -12,30 +12,34 @@ import type { CurrentUser } from "./auth";
  * tillgång ska ges, inte ärvas.
  */
 export async function visibleBoards(user: CurrentUser) {
-  const db = getDb();
-  if (user.role === "admin") {
-    return db.select().from(schema.board).orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
-  }
+  return readWithTimeout(async () => {
+    const db = getDb();
+    if (user.role === "admin") {
+      return db
+        .select()
+        .from(schema.board)
+        .orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
+    }
 
-  const memberships = await db
-    .select()
-    .from(schema.boardMember)
-    .where(eq(schema.boardMember.userId, user.id));
-  if (memberships.length === 0) return [];
+    const memberships = await db
+      .select()
+      .from(schema.boardMember)
+      .where(eq(schema.boardMember.userId, user.id));
+    if (memberships.length === 0) return [];
 
-  return db
-    .select()
-    .from(schema.board)
-    .where(inArray(schema.board.id, memberships.map((m) => m.boardId)))
-    .orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
+    return db
+      .select()
+      .from(schema.board)
+      .where(inArray(schema.board.id, memberships.map((m) => m.boardId)))
+      .orderBy(asc(schema.board.sortOrder), asc(schema.board.name));
+  });
 }
 
 export async function canAccessBoard(user: CurrentUser, boardId: string): Promise<boolean> {
   if (user.role === "admin") return true;
-  const rows = await getDb()
-    .select()
-    .from(schema.boardMember)
-    .where(eq(schema.boardMember.userId, user.id));
+  const rows = await readWithTimeout(() =>
+    getDb().select().from(schema.boardMember).where(eq(schema.boardMember.userId, user.id)),
+  );
   return rows.some((m) => m.boardId === boardId);
 }
 
@@ -46,8 +50,9 @@ export async function canAccessBoard(user: CurrentUser, boardId: string): Promis
  * sidan att använda för att ta reda på vilka tavlor som finns.
  */
 export async function requireBoardBySlug(user: CurrentUser, slug: string) {
-  const db = getDb();
-  const [board] = await db.select().from(schema.board).where(eq(schema.board.slug, slug));
+  const [board] = await readWithTimeout(() =>
+    getDb().select().from(schema.board).where(eq(schema.board.slug, slug)),
+  );
   if (!board || !(await canAccessBoard(user, board.id))) notFound();
   return board;
 }

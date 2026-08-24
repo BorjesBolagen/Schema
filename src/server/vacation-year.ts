@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { getDb, schema, readWithTimeout } from "@/db";
 import { fullDisplayName } from "@/lib/name";
 import type { AbsenceType } from "@/lib/absence";
 import { mondayOfWeek, weeksInYear, addDays } from "@/lib/week";
@@ -46,6 +46,10 @@ export function weeksOfSpan(year: number, fromDate: string, toDate: string): num
 }
 
 export async function getVacationYear(slug: string, year: number): Promise<VacationYear | null> {
+  return readWithTimeout(() => runGetVacationYear(slug, year));
+}
+
+async function runGetVacationYear(slug: string, year: number): Promise<VacationYear | null> {
   const db = getDb();
   const [board] = await db.select().from(schema.board).where(eq(schema.board.slug, slug));
   if (!board) return null;

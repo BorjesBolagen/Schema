@@ -87,28 +87,23 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   Ser du felet ändå, kör ni en äldre deploy än den här fixen — deploya
   om.
 - **Sidan hänger länge och kraschar sedan** (`Vercel Runtime Timeout
-  Error: Task timed out after 300 seconds` i loggen, ofta följt av ett
-  oläsligt client-side-fel i webbläsaren, eller efter fixen nedan i
-  stället `Databasanropet svarade inte inom 15 sekunder`) — troligen
-  **fel funktionsregion**. Kontrollera i Runtime Logs vilken region
-  anropet kördes i ("Routed to …"); ska vara Dublin (`dub1`), inte USA.
-  Se steg 2 ovan. En fråga som fastnat på den delade
-  databasanslutningen utan att någonsin få svar eller fel tillbaka är
-  också möjligt. `withDbTimeout()` i `src/db/index.ts` skyddar mot båda
-  på de sidor som har den (tavlans veckovy, inloggningskollen): går 15
-  sekunder utan svar kastas ett läsligt fel i stället för att hänga till
-  plattformens egen gräns. Händer det på en sida som inte har det
-  skyddet, är `withDbTimeout()` mönstret att kopiera dit — men rör
-  aldrig den delade kopplingen från den, se nästa punkt.
-- **`CONNECTION_DESTROYED`** — en helt annan förfrågan stängde den
-  delade databaskopplingen medan den här höll på att använda den.
-  Vercels "Fluid"-läge kan låta flera samtidiga förfrågningar dela
-  samma körande instans och därmed samma delade koppling
-  (`src/db/index.ts`, `getDb()`), så inget som körs under en enskild
-  förfrågan får tvinga igenom en stängning av den — det drabbar då alla
-  andra som råkar dela den just då, inte bara den som ville stänga.
-  `withDbTimeout()` rör därför aldrig kopplingen; `resetDb()` finns bara
-  som ett manuellt verktyg, inget i appen anropar den automatiskt.
+  Error: Task timed out after 300 seconds`, eller ett oläsligt
+  client-side-fel i webbläsaren) — en databassockel har dött tyst.
+  `postgres`-drivrutinen har ingen lässtidsgräns: dör sockeln utan att
+  motparten hinner säga till — precis vad som händer när Vercel fryser
+  en instans mellan två anrop, eller när en brandvägg glömmer bort
+  anslutningen — skickas frågan i väg och svaret kommer aldrig.
+  `readWithTimeout()` i `src/db/index.ts` hanterar det: den ger upp
+  efter sex sekunder, pensionerar kopplingen och gör om läsningen på en
+  färsk. Alla sidors läsvägar går genom den. Gör du en ny sida som
+  läser ur databasen, lägg den bakom `readWithTimeout()` också.
+- **`CONNECTION_DESTROYED`** — någon stängde den delade
+  databaskopplingen medan en annan förfrågan använde den. Vercels
+  "Fluid"-läge kan låta flera samtidiga förfrågningar dela samma
+  körande instans och därmed samma koppling (`getDb()`), så inget som
+  körs under en enskild förfrågan får stänga den. `readWithTimeout()`
+  *byter ut* kopplingen mot en ny men stänger aldrig den gamla — den
+  får dö av sig själv, så pågående frågor på den lever klart.
 - **Ett fel från `postgres`-drivrutinen** (`password authentication
   failed`, `SASL`, `timeout`) — fel lösenord, eller specialtecken i det
   som inte procentkodats (`@ / : #`), eller att den direkta anslutningen

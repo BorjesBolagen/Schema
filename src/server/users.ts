@@ -1,6 +1,6 @@
 import "server-only";
 import { asc, eq, ne } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { getDb, schema, readWithTimeout } from "@/db";
 import { hashPassword } from "@/lib/password";
 import { passwordProblem } from "@/lib/password-rules";
 
@@ -17,11 +17,13 @@ export interface ManagedUser {
 }
 
 export async function listUsers(): Promise<ManagedUser[]> {
-  const db = getDb();
-  const [users, members] = await Promise.all([
-    db.select().from(schema.appUser).orderBy(asc(schema.appUser.name)),
-    db.select().from(schema.boardMember),
-  ]);
+  const [users, members] = await readWithTimeout(() => {
+    const db = getDb();
+    return Promise.all([
+      db.select().from(schema.appUser).orderBy(asc(schema.appUser.name)),
+      db.select().from(schema.boardMember),
+    ]);
+  });
   return users.map((u) => ({
     id: u.id,
     email: u.email,

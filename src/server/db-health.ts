@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "drizzle-orm";
-import { getDb, schema, isHostedDatabase, withDbTimeout } from "@/db";
+import { getDb, schema, isHostedDatabase, readWithTimeout } from "@/db";
 
 export interface DbHealthCheck {
   label: string;
@@ -27,7 +27,7 @@ export interface DbHealthReport {
 async function timed(label: string, run: () => Promise<unknown>): Promise<DbHealthCheck> {
   const t0 = Date.now();
   try {
-    await withDbTimeout(run, 8000);
+    await readWithTimeout(run, 8000);
     return { label, ok: true, ms: Date.now() - t0 };
   } catch (error) {
     return {
@@ -52,7 +52,7 @@ export async function probeDb(): Promise<DbHealthReport> {
   const t0 = Date.now();
 
   // getDb() anropas i varje test för sig, inte en gång i förväg: fastnar
-  // ett test byts den delade kopplingen ut (withDbTimeout → resetDb), och
+  // ett test pensioneras den delade kopplingen (readWithTimeout), och
   // nästa test ska då pröva den nya kopplingen, inte den kastade.
   const checks = [
     await timed("Anslutning + enkel fråga (select 1)", () => getDb().execute(sql`select 1`)),

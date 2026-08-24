@@ -1,6 +1,6 @@
 import "server-only";
 import { asc, eq } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { getDb, schema, readWithTimeout } from "@/db";
 
 /**
  * Grunddata — personal, fordon och stationsorter.
@@ -43,18 +43,16 @@ export interface ManagedStation {
 }
 
 export async function listStations(): Promise<ManagedStation[]> {
-  const rows = await getDb()
-    .select()
-    .from(schema.stationPlace)
-    .orderBy(asc(schema.stationPlace.name));
+  const rows = await readWithTimeout(() =>
+    getDb().select().from(schema.stationPlace).orderBy(asc(schema.stationPlace.name)),
+  );
   return rows.map((s) => ({ id: s.id, name: s.name, fromTranspa: !!s.transpaId }));
 }
 
 export async function listEmployees(): Promise<ManagedEmployee[]> {
-  const rows = await getDb()
-    .select()
-    .from(schema.employee)
-    .orderBy(asc(schema.employee.lastName), asc(schema.employee.firstName));
+  const rows = await readWithTimeout(() =>
+    getDb().select().from(schema.employee).orderBy(asc(schema.employee.lastName), asc(schema.employee.firstName)),
+  );
   return rows.map((e) => ({
     id: e.id,
     firstName: e.firstName,
@@ -67,10 +65,9 @@ export async function listEmployees(): Promise<ManagedEmployee[]> {
 }
 
 export async function listVehicles(): Promise<ManagedVehicle[]> {
-  const rows = await getDb()
-    .select()
-    .from(schema.vehicle)
-    .orderBy(asc(schema.vehicle.displayName));
+  const rows = await readWithTimeout(() =>
+    getDb().select().from(schema.vehicle).orderBy(asc(schema.vehicle.displayName)),
+  );
   return rows.map((v) => ({
     id: v.id,
     displayName: v.displayName,
