@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
@@ -22,6 +23,8 @@ import {
   updateBoard,
   updateBoardRow,
 } from "@/app/actions";
+import { boardRemovalPreview, removeBoard } from "@/app/basedata-actions";
+import type { BoardRemovalFacts } from "@/server/boards";
 import { SHIFT_LABEL } from "./shift";
 
 export interface EditableRow {
@@ -50,6 +53,8 @@ interface Props {
   groups: Array<{ id: string; label: string }>;
   vehicles: Array<{ id: string; name: string }>;
   onClose: () => void;
+  /** Bara administratörer ser borttagningen. Servern kräver det ändå. */
+  canDelete?: boolean;
 }
 
 const WEEKDAYS = [
@@ -217,11 +222,15 @@ function RowItem({
  * veckodagar och skift tavlan visar. Inget av det ska kräva en
  * utvecklare — det är hela poängen med att tavlan är data och inte kod.
  */
-export function BoardEditor({ board, rows, groups, vehicles, onClose }: Props) {
+export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete = false }: Props) {
   const [order, setOrder] = useState(rows.map((r) => r.id));
   const [newRow, setNewRow] = useState("");
   const [newGroup, setNewGroup] = useState("");
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  /** null = borttagning inte påbörjad. Annars: vad den skulle kosta. */
+  const [removal, setRemoval] = useState<BoardRemovalFacts | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -439,6 +448,93 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose }: Props) {
             </button>
           </div>
         </section>
+
+        {canDelete && (
+          <section className="border-t border-(--color-line) px-5 py-4">
+            <h3 className="text-xs font-semibold tracking-wide text-(--color-danger) uppercase">
+              Ta bort tavlan
+            </h3>
+
+            {removal === null ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <p className="max-w-[52ch] flex-1 text-xs text-(--color-muted)">
+                  Tavlan och allt som hör till den försvinner. Personal, fordon, arbetsmönster och
+                  registrerad frånvaro påverkas inte — frånvaron hör till personen, inte till tavlan.
+                </p>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      setRemoveError(null);
+                      try {
+                        setRemoval(await boardRemovalPreview(board.id));
+                      } catch {
+                        setRemoveError("Kunde inte läsa vad borttagningen skulle omfatta.");
+                      }
+                    })
+                  }
+                  className="rounded border border-(--color-danger) px-3 py-1.5 text-sm text-(--color-danger) disabled:opacity-40"
+                >
+                  Ta bort tavlan…
+                </button>
+              </div>
+            ) : (
+              <div className="mt-2 rounded border border-(--color-danger) bg-red-50 p-4">
+                <p className="text-sm font-medium text-(--color-danger)">
+                  Ta bort {board.name}?
+                </p>
+                <ul className="mt-2 space-y-0.5 text-sm text-(--color-ink)">
+                  <li>
+                    {removal.rows} {removal.rows === 1 ? "rad" : "rader"}
+                  </li>
+                  <li>{removal.assignments} utlagda pass</li>
+                  <li>{removal.crew} i bemanningen</li>
+                  <li>
+                    {removal.baseSchedule} {removal.baseSchedule === 1 ? "rad" : "rader"} i
+                    bas-schemat
+                  </li>
+                </ul>
+                <p className="mt-2 text-xs text-(--color-muted)">Det går inte att ångra.</p>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(async () => {
+                        setRemoveError(null);
+                        try {
+                          await removeBoard(board.id);
+                          router.push("/");
+                        } catch {
+                          setRemoveError("Borttagningen gick inte igenom. Ladda om och försök igen.");
+                        }
+                      })
+                    }
+                    className="rounded bg-(--color-danger) px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {pending ? "Tar bort…" : "Ja, ta bort"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => setRemoval(null)}
+                    className="rounded border border-(--color-line) bg-white px-4 py-1.5 text-sm"
+                  >
+                    Avbryt
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {removeError && (
+              <p role="alert" className="mt-3 text-sm text-(--color-danger)">
+                {removeError}
+              </p>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );

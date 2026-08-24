@@ -45,24 +45,9 @@ export default async function BoardPage({ params, searchParams }: Props) {
   const data = await getBoardWeek(slug, year, week);
   if (!data) notFound();
 
-  const db = getDb();
-  // Seriellt, inte parallellt — se kommentaren i board-week.ts:
-  // pipelinade frågor genom Supabases pooler kan fastna.
-  const employees = await db
-    .select()
-    .from(schema.employee)
-    .orderBy(asc(schema.employee.firstName));
-  const stations = await db.select().from(schema.stationPlace);
-  const stationName = new Map(stations.map((s) => [s.id, s.name]));
-  const allEmployees = employees
-    .filter((e) => e.isActive)
-    .map((e) => ({
-      id: e.id,
-      name: fullDisplayName(e),
-      employeeNumber: e.employeeNumber,
-      stationPlace: e.stationPlaceId ? (stationName.get(e.stationPlaceId) ?? null) : null,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, "sv"));
+  // Personalväljarens lista kommer med getBoardWeek — samlingsfrågan
+  // har redan hämtat personal och stationsorter.
+  const allEmployees = data.pickerEmployees;
 
   const prev = step(year, week, -1);
   const next = step(year, week, 1);
@@ -146,7 +131,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
         {view === "person" ? (
           <PersonGrid data={data} />
         ) : (
-          <BoardWorkspace data={data} allEmployees={allEmployees} />
+          <BoardWorkspace data={data} allEmployees={allEmployees} canDelete={user.role === "admin"} />
         )}
       </div>
     </main>

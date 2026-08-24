@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireUser } from "@/server/auth";
-import { createBoard, deleteBoard, type BoardResult, type BoardTemplate } from "@/server/boards";
+import {
+  boardRemovalFacts,
+  createBoard,
+  deleteBoard,
+  type BoardRemovalFacts,
+  type BoardResult,
+  type BoardTemplate,
+} from "@/server/boards";
 import { requireBoardById } from "@/server/access";
 import {
   addEmployee,
@@ -26,6 +33,13 @@ export async function addBoard(input: { name: string; template: BoardTemplate })
   const result = await createBoard(user, input);
   if (result.ok) revalidatePath("/");
   return result;
+}
+
+/** Vad en borttagning skulle ta med sig — underlag för bekräftelsen. */
+export async function boardRemovalPreview(boardId: string): Promise<BoardRemovalFacts> {
+  const user = await requireAdmin();
+  await requireBoardById(user, boardId);
+  return boardRemovalFacts(boardId);
 }
 
 /** Endast admin. En planerare ska inte kunna radera en kollegas tavla. */

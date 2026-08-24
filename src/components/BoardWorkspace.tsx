@@ -24,9 +24,11 @@ import { parseDragId, parseDropId } from "./dnd";
 interface Props {
   data: BoardWeek;
   allEmployees: PickerEmployee[];
+  /** Bara administratörer får ta bort en tavla — se removeBoard(). */
+  canDelete?: boolean;
 }
 
-export function BoardWorkspace({ data, allEmployees }: Props) {
+export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [open, setOpen] = useState<CellAssignment | null>(null);
   const [picker, setPicker] = useState(false);
@@ -244,6 +246,7 @@ export function BoardWorkspace({ data, allEmployees }: Props) {
             visibleShifts: data.board.visibleShifts,
             cellFields: data.board.cellFields,
           }}
+          canDelete={canDelete}
           rows={data.rows.map((r) => ({
             id: r.id,
             label: r.label,

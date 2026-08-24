@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { CurrentUser } from "./auth";
@@ -110,11 +110,60 @@ export async function createBoard(
   return { ok: true, slug };
 }
 
+/** Vad en borttagning skulle kosta — för att kunna fråga innan, inte efter. */
+export interface BoardRemovalFacts {
+  rows: number;
+  assignments: number;
+  crew: number;
+  baseSchedule: number;
+}
+
+/**
+ * Räknar vad som följer med en tavla i graven.
+ *
+ * Finns för att bekräftelsedialogen ska kunna säga vad som faktiskt
+ * försvinner. "Alla utlagda pass" kan vara noll eller femtusen, och
+ * skillnaden avgör om man ska tveka.
+ */
+export async function boardRemovalFacts(boardId: string): Promise<BoardRemovalFacts> {
+  const db = getDb();
+  // En fråga i taget — se kommentaren i board-week.ts.
+  const rows = await db
+    .select({ id: schema.boardRow.id })
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, boardId));
+  const crew = await db
+    .select({ id: schema.boardCrew.employeeId })
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, boardId));
+  const baseRows = await db
+    .select({ id: schema.baseSchedule.id })
+    .from(schema.baseSchedule)
+    .where(eq(schema.baseSchedule.boardId, boardId));
+
+  const rowIds = rows.map((r) => r.id);
+  const assignments = rowIds.length
+    ? await db
+        .select({ id: schema.assignment.id })
+        .from(schema.assignment)
+        .where(inArray(schema.assignment.boardRowId, rowIds))
+    : [];
+
+  return {
+    rows: rows.length,
+    assignments: assignments.length,
+    crew: crew.length,
+    baseSchedule: baseRows.length,
+  };
+}
+
 /**
  * Tar bort en tavla med allt som hänger på den.
  *
- * Raderna, passen och bas-schemat följer med genom cascade. Personal
- * och fordon ligger utanför tavlan och rörs inte.
+ * Raderna, passen, bemanningen och bas-schemat följer med genom
+ * cascade. Personal, fordon, arbetsmönster och registrerad frånvaro
+ * ligger utanför tavlan och rörs inte — frånvaron hör till personen,
+ * inte till den tavla hen råkade stå på.
  */
 export async function deleteBoard(boardId: string): Promise<void> {
   await getDb().delete(schema.board).where(eq(schema.board.id, boardId));

@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { getDb, schema, readWithTimeout } from "@/db";
 import {
   type AbsenceLike,
@@ -73,6 +73,19 @@ export interface BoardWeek {
   crew: CrewMember[];
   /** Namnet på källan som gav arbetsdagarna, för att visa var de kommer ifrån. */
   workDaySource: string;
+  /**
+   * Hela den aktiva personalen, färdig för personalväljaren.
+   *
+   * Byggs här därför att samlingsfrågan ändå hämtat personal och
+   * stationsorter. Sidan hämtade tidigare båda en gång till — två turer
+   * till databasen för uppgifter som redan låg i minnet.
+   */
+  pickerEmployees: Array<{
+    id: string;
+    name: string;
+    employeeNumber: string | null;
+    stationPlace: string | null;
+  }>;
 
   /* Underlag för redigeringsvyerna. */
   groups: Array<{ id: string; label: string }>;
@@ -92,6 +105,83 @@ export interface BoardWeek {
     anchorDate: string;
     weekStartsOn: number;
     days: Array<{ cycleWeek: number; weekday: number; shift: Shift }>;
+  }>;
+}
+
+
+/**
+ * Formen på samlingsfrågan i runGetBoardWeek.
+ *
+ * Fältnamnen inuti listorna sätts av json_build_object och matchar
+ * resten av koden; nycklarna på toppnivån är kolumnnamn och därför
+ * snake_case.
+ */
+interface BoardWeekBundle {
+  all_rows: Array<{
+    id: string;
+    boardId: string;
+    groupId: string | null;
+    label: string;
+    sublabel: string | null;
+    sortOrder: number;
+    color: string | null;
+    defaultVehicleId: string | null;
+    validFrom: string | null;
+    validTo: string | null;
+  }>;
+  groups: Array<{ id: string; label: string; sortOrder: number }>;
+  employees: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    employeeNumber: string | null;
+    stationPlaceId: string | null;
+    isActive: boolean;
+  }>;
+  vehicles: Array<{ id: string; displayName: string; isActive: boolean }>;
+  stations: Array<{ id: string; name: string }>;
+  crew: Array<{ employeeId: string; sortOrder: number }>;
+  base_schedule: Array<{
+    id: string;
+    boardRowId: string;
+    employeeId: string;
+    shift: Shift;
+    validFrom: string | null;
+    validTo: string | null;
+  }>;
+  all_boards: Array<{ id: string; name: string }>;
+  assignments: Array<{
+    id: string;
+    boardRowId: string;
+    date: string;
+    shift: Shift;
+    slot: number;
+    employeeId: string | null;
+    vehicleId: string | null;
+    note: string | null;
+    source: "generated" | "manual";
+  }>;
+  absences: Array<{
+    employeeId: string;
+    fromDate: string;
+    toDate: string;
+    type: string;
+    note: string | null;
+  }>;
+  patterns: Array<{
+    id: string;
+    employeeId: string;
+    cycleWeeks: number;
+    anchorDate: string;
+    weekStartsOn: number;
+    validFrom: string | null;
+    validTo: string | null;
+  }>;
+  pattern_days: Array<{
+    workPatternId: string;
+    cycleWeek: number;
+    weekday: number;
+    shift: Shift;
   }>;
 }
 
@@ -136,54 +226,108 @@ async function runGetBoardWeek(
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  /* Frågorna körs en i taget, inte i Promise.all.
+  /* Allt underlag i **en** fråga.
    *
-   * Den här vyn körde tidigare sju frågor parallellt, och det var den
-   * enda sidan som hängde i drift — db-health (tre i följd) och
-   * semestervyn (högst två parallella) gjorde det aldrig. Drivrutinen
-   * skickar parallella frågor pipelinade på samma anslutning, och
-   * Supabases pooler i transaction mode ska mappa dem mot sina
-   * serveranslutningar; blir det för många på en gång kommer svaret
-   * ibland aldrig. En lokal pgbouncer utan nätverkslatens klarar det,
-   * vilket är därför felet bara syntes i drift.
+   * Sidan behöver ett tiotal listor, och varje separat fråga är en tur
+   * till databasen. Mot Supabase från Vercel kostar en tur ungefär tio
+   * millisekunder, så tio frågor blir en kvarts sekund ren väntan även
+   * när själva databasen svarar på nolltid. Mätt vid 10 ms latens:
+   * seriellt 277 ms, parallellt 64 ms, den här enda frågan 24 ms.
    *
-   * Varje fråga tar millisekunder, så hela vyn kostar under en tiondels
-   * sekund seriellt. Det är billigt jämfört med en sida som hänger.
+   * En fråga är dessutom det enda upplägget som helt undviker
+   * parallella, pipelinade frågor genom poolern — den misstänkta
+   * orsaken till att just den här vyn hängde i drift. Snabbast och
+   * säkrast råkar vara samma sak här.
+   *
+   * json_build_object ger fälten samma namn som resten av koden
+   * använder, så inget mellanlager behövs för att översätta
+   * kolumnnamnen.
    */
-  const allRows = await db.select().from(schema.boardRow);
-  const rows = allRows
-    .filter((r) => r.boardId === board.id)
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const crewOfBoard = sql`select c.employee_id from board_crew c where c.board_id = ${board.id}`;
+  const [bundle] = (await db.execute(sql`
+    select
+      (select coalesce(json_agg(json_build_object(
+        'id', r.id, 'boardId', r.board_id, 'groupId', r.group_id, 'label', r.label,
+        'sublabel', r.sublabel, 'sortOrder', r.sort_order, 'color', r.color,
+        'defaultVehicleId', r.default_vehicle_id, 'validFrom', r.valid_from,
+        'validTo', r.valid_to) order by r.sort_order), '[]'::json)
+       from board_row r) as all_rows,
 
-  const groups = await db
-    .select()
-    .from(schema.boardGroup)
-    .where(eq(schema.boardGroup.boardId, board.id));
-  const employees = await db.select().from(schema.employee);
-  const vehicles = await db.select().from(schema.vehicle);
-  const stations = await db.select().from(schema.stationPlace);
-  const crewRows = await db
-    .select()
-    .from(schema.boardCrew)
-    .where(eq(schema.boardCrew.boardId, board.id))
-    .orderBy(asc(schema.boardCrew.sortOrder));
-  const baseRows = await db
-    .select()
-    .from(schema.baseSchedule)
-    .where(eq(schema.baseSchedule.boardId, board.id));
+      (select coalesce(json_agg(json_build_object(
+        'id', g.id, 'label', g.label, 'sortOrder', g.sort_order) order by g.sort_order), '[]'::json)
+       from board_group g where g.board_id = ${board.id}) as groups,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', e.id, 'firstName', e.first_name, 'lastName', e.last_name,
+        'employeeNumber', e.employee_number, 'stationPlaceId', e.station_place_id,
+        'isActive', e.is_active)), '[]'::json)
+       from employee e) as employees,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', v.id, 'displayName', v.display_name, 'isActive', v.is_active)), '[]'::json)
+       from vehicle v) as vehicles,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', p.id, 'name', p.name)), '[]'::json)
+       from station_place p) as stations,
+
+      (select coalesce(json_agg(json_build_object(
+        'employeeId', c.employee_id, 'sortOrder', c.sort_order) order by c.sort_order), '[]'::json)
+       from board_crew c where c.board_id = ${board.id}) as crew,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', b.id, 'boardRowId', b.board_row_id, 'employeeId', b.employee_id,
+        'shift', b.shift, 'validFrom', b.valid_from, 'validTo', b.valid_to)), '[]'::json)
+       from base_schedule b where b.board_id = ${board.id}) as base_schedule,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', b.id, 'name', b.name)), '[]'::json)
+       from board b) as all_boards,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', a.id, 'boardRowId', a.board_row_id, 'date', a.date, 'shift', a.shift,
+        'slot', a.slot, 'employeeId', a.employee_id, 'vehicleId', a.vehicle_id,
+        'note', a.note, 'source', a.source)), '[]'::json)
+       from assignment a where a.date >= ${first} and a.date <= ${last}) as assignments,
+
+      (select coalesce(json_agg(json_build_object(
+        'employeeId', x.employee_id, 'fromDate', x.from_date, 'toDate', x.to_date,
+        'type', x.type, 'note', x.note)), '[]'::json)
+       from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences,
+
+      (select coalesce(json_agg(json_build_object(
+        'id', w.id, 'employeeId', w.employee_id, 'cycleWeeks', w.cycle_weeks,
+        'anchorDate', w.anchor_date, 'weekStartsOn', w.week_starts_on,
+        'validFrom', w.valid_from, 'validTo', w.valid_to)), '[]'::json)
+       from work_pattern w where w.employee_id in (${crewOfBoard})) as patterns,
+
+      (select coalesce(json_agg(json_build_object(
+        'workPatternId', d.work_pattern_id, 'cycleWeek', d.cycle_week,
+        'weekday', d.weekday, 'shift', d.shift)), '[]'::json)
+       from work_pattern_day d
+       where d.work_pattern_id in (
+         select w.id from work_pattern w where w.employee_id in (${crewOfBoard}))) as pattern_days
+  `)) as unknown as [BoardWeekBundle];
+
+  const allRows = bundle.all_rows;
+  const rows = allRows.filter((r) => r.boardId === board.id);
+  const groups = bundle.groups;
+  const employees = bundle.employees;
+  const vehicles = bundle.vehicles;
+  const stations = bundle.stations;
+  const crewRows = bundle.crew;
+  const baseRows = bundle.base_schedule;
+  const allBoards = bundle.all_boards;
+  const rawAssignments = bundle.assignments;
+  const rawAbsences = bundle.absences;
+  const patternRows = bundle.patterns;
+  const patternDays = bundle.pattern_days;
 
   const employeeById = new Map(employees.map((e) => [e.id, e]));
   const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
   const stationById = new Map(stations.map((s) => [s.id, s]));
   const groupById = new Map(groups.map((g) => [g.id, g]));
 
-  /* Alla pass i veckan, från samtliga tavlor — dubbelbokning ska hittas
-     även när den andra bokningen ligger på en annan tavla. */
-  const allBoards = await db.select().from(schema.board);
-  const rawAssignments = await db
-    .select()
-    .from(schema.assignment)
-    .where(and(gte(schema.assignment.date, first), lte(schema.assignment.date, last)));
   const rowInfo = new Map(allRows.map((r) => [r.id, r]));
   const boardName = new Map(allBoards.map((b) => [b.id, b.name]));
 
@@ -203,10 +347,6 @@ async function runGetBoardWeek(
     };
   });
 
-  const rawAbsences = await db
-    .select()
-    .from(schema.absence)
-    .where(and(lte(schema.absence.fromDate, last), gte(schema.absence.toDate, first)));
   const absenceLikes: AbsenceLike[] = rawAbsences.map((a) => ({
     employeeId: a.employeeId,
     fromDate: a.fromDate,
@@ -274,7 +414,7 @@ async function runGetBoardWeek(
 
   /* Arbetsdagar för tavlans bemanning. */
   const crewIds = crewRows.map((c) => c.employeeId);
-  const provider = getWorkDayProvider();
+  const provider = getWorkDayProvider(undefined, { patterns: patternRows, days: patternDays });
   const workDayResult =
     crewIds.length > 0
       ? await provider.getWorkDays(crewIds, first, last)
@@ -355,25 +495,6 @@ async function runGetBoardWeek(
     })
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 
-  /* Arbetsmönstren för bemanningen, till mönsterredigeraren. */
-  const patternRows = crewIds.length
-    ? await db
-        .select()
-        .from(schema.workPattern)
-        .where(inArray(schema.workPattern.employeeId, crewIds))
-    : [];
-  const patternDays = patternRows.length
-    ? await db
-        .select()
-        .from(schema.workPatternDay)
-        .where(
-          inArray(
-            schema.workPatternDay.workPatternId,
-            patternRows.map((p) => p.id),
-          ),
-        )
-    : [];
-
   return {
     board,
     year,
@@ -385,6 +506,15 @@ async function runGetBoardWeek(
     conflicts,
     crew,
     workDaySource: provider.name,
+    pickerEmployees: employees
+      .filter((e) => e.isActive)
+      .map((e) => ({
+        id: e.id,
+        name: fullDisplayName(e),
+        employeeNumber: e.employeeNumber,
+        stationPlace: e.stationPlaceId ? (stationById.get(e.stationPlaceId)?.name ?? null) : null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "sv")),
     groups: groups
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((g) => ({ id: g.id, label: g.label })),

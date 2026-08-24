@@ -80,6 +80,12 @@ sig.
 personer får kopplas till samma rad och deras arbetsdagar avgör vem som
 står där vilken dag.
 
+En tavla tas bort under **⚙ Tavla**, längst ned. Bekräftelsen räknar upp
+vad som försvinner — rader, utlagda pass, bemanning och bas-schema.
+Personal, fordon, arbetsmönster och registrerad frånvaro rörs inte:
+frånvaron hör till personen, inte till den tavla hen råkade stå på. Bara
+administratörer kan ta bort en tavla.
+
 **Arbetsmönster** — vilka dagar och skift en person jobbar, som en cykel
 på 1–8 veckor. *Använd på N personer* lägger samma mönster på hela
 bemanningen på en gång — normalt bara på dem som saknar ett, så ingens
@@ -206,6 +212,7 @@ npx tsx scripts/e2e-fill.ts                # fyll veckan i en riktig webbläsare
 npx tsx scripts/e2e-drag.ts                # dra ut och flytta pass
 npx tsx scripts/e2e-editor.ts              # bygg om tavlan, mönster, bas-schema
 npx tsx scripts/e2e-tomstart.ts            # tom databas → bemannad vecka
+npx tsx scripts/e2e-radera.ts              # ta bort en tavla, se att rätt saker överlever
 npx tsx scripts/screenshot.ts <url> <fil>  # bild av en vy
 ```
 
