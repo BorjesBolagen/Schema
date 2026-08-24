@@ -56,6 +56,12 @@ export default async function TranspaPage() {
         den saknar <code>/v1/trips</code>, som deras egna exempel anropar — så den duger inte som
         facit. Ladda om sidan för att köra om kontrollen.
       </p>
+      <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
+        <code>/v1/trips</code> och <code>/v1/employees</code> visar fältnamnen i första raden när
+        anropet lyckas — bara namnen, aldrig värdena, så personnummer eller adress aldrig syns här.
+        Det är den snabbaste vägen till att veta om en tur bär ett skift eller ett fordon, och om
+        personalen bär sin stationsort redan.
+      </p>
 
       {missing ? (
         <div className="mt-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm">

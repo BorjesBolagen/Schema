@@ -28,6 +28,13 @@ export interface EndpointProbe {
   status?: number;
   detail?: string;
   sample?: number;
+  /**
+   * Fältnamnen i första raden, inte värdena. Poängen är att se formen
+   * på svaret utan ett till kodsteg när uppgifterna väl finns — och
+   * utan att en diagnostiksida råkar visa personnummer eller adress i
+   * klartext för den som tittar.
+   */
+  sampleKeys?: string[];
 }
 
 export interface SpecProbe {
@@ -58,6 +65,17 @@ const KNOWN: Array<[string, string]> = [
   ["/v1/workTasks", "Arbetsuppgifter"],
   ["/v1/trips", "Turer"],
 ];
+
+/**
+ * Endpoints där fältnamnen är värda att se, inte bara att anropet
+ * lyckas. /v1/trips är den viktigaste: Vismas egna Postman-exempel
+ * anropar den med employeeId, status, startDateTime och endDateTime,
+ * men ingen dokumentation vi når visar vad ett svar innehåller — om det
+ * bär ett fordon eller ett skift går bara att se genom att fråga.
+ * /v1/employees avgör om stationPlaceId finns där eller måste sättas i
+ * appen; den kända (föråldrade) modellen saknar den.
+ */
+const SAMPLE_SHAPE_OF = new Set(["/v1/trips", "/v1/employees"]);
 
 /**
  * Gissningar. Hela poängen med sidan: finns någon av dem är
@@ -183,6 +201,15 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
         scopes,
       });
       const rows = Array.isArray(response?.data) ? response.data.length : undefined;
+      const first = response?.data?.[0];
+      // Tomt svar ger [] snarare än undefined, för att skilja "frågade
+      // men inget kom" från "frågade inte" — annars visar sidan varken
+      // fältnamn eller meddelandet om att svaret var tomt.
+      const sampleKeys = !SAMPLE_SHAPE_OF.has(path)
+        ? undefined
+        : first && typeof first === "object"
+          ? Object.keys(first as object).sort()
+          : [];
       endpoints.push({
         path,
         label,
@@ -190,6 +217,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
         outcome: rows === 0 ? "empty" : "ok",
         status: 200,
         sample: rows,
+        sampleKeys,
       });
     } catch (error) {
       endpoints.push({ path, label, known, ...describe(error) });
