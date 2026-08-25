@@ -26,7 +26,10 @@ export function SyncButton({ disabled }: { disabled: boolean }) {
               <tr key={r.resource} className="border-t border-(--color-line)">
                 <td className="py-1 pr-4 font-mono">{r.resource}</td>
                 <td className="py-1 pr-4">
-                  {r.error ? (
+                  {r.skipped ? (
+                    // Överhoppad är inte ett fel — resursen har inget scope.
+                    <span className="text-(--color-muted)">{r.error}</span>
+                  ) : r.error ? (
                     <span className="text-(--color-danger)">{r.error}</span>
                   ) : (
                     <span className="text-(--color-muted)">

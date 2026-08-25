@@ -2,7 +2,7 @@ import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
-import { credentialsFromEnv } from "@/lib/transpa/auth";
+import { READ_SCOPES, credentialsFromEnv } from "@/lib/transpa/auth";
 
 /**
  * Synk av grunddata från TransPA.
@@ -44,7 +44,31 @@ export interface ResourceResult {
   fetched: number;
   written: number;
   error?: string;
+  /** Sant när resursen hoppades över för att scopet inte är beviljat. */
+  skipped?: boolean;
 }
+
+/**
+ * Vilket scope varje resurs kräver.
+ *
+ * Synken hämtar bara det ni faktiskt har tillstånd till. Börjes
+ * beviljade lista saknar `trafficareas` och `vehiclegroups` — de fanns
+ * i Vismas föråldrade klient men har inga scopes — och utan den här
+ * kontrollen skulle de misslyckas med 403 vid varje körning och skräpa
+ * ner resultatet med fel som inte går att åtgärda.
+ *
+ * Får ni fler scopes beviljade räcker det att lägga till dem i
+ * READ_SCOPES; synken plockar upp dem härifrån.
+ */
+const SCOPE_FOR: Record<string, string> = {
+  trafficAreas: "transpaapi:trafficareas:read",
+  stationPlaces: "transpaapi:stationplaces:read",
+  vehicleGroups: "transpaapi:vehiclegroups:read",
+  vehicles: "transpaapi:vehicles:read",
+  employees: "transpaapi:employees:read",
+};
+
+const granted = (resource: string) => READ_SCOPES.includes(SCOPE_FOR[resource] ?? "");
 
 export interface SyncResult {
   ok: boolean;
@@ -55,11 +79,21 @@ export interface SyncResult {
 const str = (v: unknown): string | null =>
   v === null || v === undefined || v === "" ? null : String(v);
 
-async function track<T>(
+async function track(
   db: Db,
   resource: string,
   run: () => Promise<{ fetched: number; written: number }>,
 ): Promise<ResourceResult> {
+  if (!granted(resource)) {
+    return {
+      resource,
+      fetched: 0,
+      written: 0,
+      skipped: true,
+      error: `Hoppades över — scopet ${SCOPE_FOR[resource]} är inte beviljat.`,
+    };
+  }
+
   const [row] = await db.insert(schema.syncRun).values({ resource }).returning();
   try {
     const { fetched, written } = await run();
@@ -242,5 +276,7 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
     }),
   );
 
-  return { ok: results.every((r) => !r.error), results, ranAt };
+  // Överhoppad är inte misslyckad: resursen har inget scope och kommer
+  // aldrig att gå att hämta, så den ska inte färga hela körningen röd.
+  return { ok: results.every((r) => r.skipped || !r.error), results, ranAt };
 }

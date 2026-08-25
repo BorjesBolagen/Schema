@@ -253,6 +253,13 @@ transpaapi:shifts:read
 (Samma lista står i `src/lib/transpa/auth.ts` — om den ändras där ska
 den ändras här också.)
 
+Synken hämtar bara det ni har scope för. `trafficareas` och
+`vehiclegroups` finns i Vismas föråldrade klient men beviljades aldrig,
+så de hoppas över i stället för att misslyckas med 403 vid varje
+körning — `SCOPE_FOR` i `src/server/transpa-sync.ts` styr det, och
+läser scopen ur samma lista som resten av koden. Får ni fler scopes
+beviljade räcker det att lägga till dem i `READ_SCOPES`.
+
 Listan ovan är rättad mot Börjes verkliga scope-katalog i Visma
 Developer Portal (2026-08-24): resursen heter `workgroups`, inte
 `vehiclegroups` som den föråldrade klienten antydde, och `trafficareas`
