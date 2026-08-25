@@ -253,6 +253,33 @@ transpaapi:shifts:read
 (Samma lista står i `src/lib/transpa/auth.ts` — om den ändras där ska
 den ändras här också.)
 
+### Flera bolag
+
+Ett bolag i TransPA = en tenant. Klient-id och hemlighet delas av alla
+bolag — det är samma Visma-applikation som varje bolag i sin tur ger
+tillgång via en inbjudningskod — så bara tenant-id skiljer.
+
+Bolagen ligger i tabellen `transpa_tenant`. Är den tom men
+`TRANSPA_TENANT_ID` satt läggs det bolaget upp automatiskt vid första
+synken, så inget behöver fyllas i för att komma igång. Fler bolag läggs
+till med en rad:
+
+```sql
+insert into transpa_tenant (tenant_id, name) values ('<tenant-id>', 'Bolagets namn');
+```
+
+Modellen följer verkligheten: **en person tillhör exakt ett bolag** och
+kan aldrig finnas i två. En *tavla* kan däremot behöva folk från två
+bolag — på orter där två bolag samarbetar om samma trafik — så tavlan
+låses aldrig till ett bolag; kopplingen sitter på personen.
+
+Därför är anställningsnummer unika **per bolag**, inte globalt: två
+bolag har med stor sannolikhet varsin 2262, och en global unik nyckel
+hade stoppat synken för det andra bolaget.
+
+**Fordon hämtas inte** från TransPA. De skrivs in för hand under
+Grunddata; ni äger bilnumren själva. Kan ändras senare — scopet finns.
+
 Synken hämtar bara det ni har scope för. `trafficareas` och
 `vehiclegroups` finns i Vismas föråldrade klient men beviljades aldrig,
 så de hoppas över i stället för att misslyckas med 403 vid varje

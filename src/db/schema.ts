@@ -130,12 +130,43 @@ export const vehicleGroup = pgTable("vehicle_group", {
   name: text("name").notNull(),
 });
 
+/**
+ * Ett bolag i TransPA — en tenant.
+ *
+ * En person tillhör exakt ett bolag och kan aldrig finnas i två.
+ * Däremot kan en tavla behöva folk från två bolag: på vissa orter
+ * samarbetar två bolag om samma trafik, och då står de på samma tavla
+ * utan att för den skull byta anställning. Tavlan låses därför aldrig
+ * till ett bolag — kopplingen sitter på personen.
+ *
+ * Klient-id och hemlighet är gemensamma för alla bolag; det är en och
+ * samma Visma-applikation som varje bolag i sin tur ger tillgång. Bara
+ * tenant-id skiljer, och namnet finns här för att en meny inte kan visa
+ * ett id.
+ */
+export const transpaTenant = pgTable("transpa_tenant", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** Tenant-id hos Visma. */
+  tenantId: text("tenant_id").notNull().unique(),
+  /** Vad ni kallar bolaget. */
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const employee = pgTable(
   "employee",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     transpaId: text("transpa_id").unique(),
-    employeeNumber: text("employee_number").unique(),
+    /**
+     * Unikt per bolag, inte globalt: två bolag har med stor sannolikhet
+     * överlappande anställningsnummer, och en global unik nyckel skulle
+     * stoppa synken för det andra bolaget. Se employee_number_uq nedan.
+     */
+    employeeNumber: text("employee_number"),
+    /** Bolaget personen är anställd i. Null för dem som lagts in för hand. */
+    transpaTenantId: uuid("transpa_tenant_id").references(() => transpaTenant.id),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     signature: text("signature"),
@@ -154,6 +185,8 @@ export const employee = pgTable(
   (t) => [
     index("employee_active_idx").on(t.isActive),
     index("employee_station_idx").on(t.stationPlaceId),
+    index("employee_tenant_idx").on(t.transpaTenantId),
+    unique("employee_number_uq").on(t.transpaTenantId, t.employeeNumber),
   ],
 );
 

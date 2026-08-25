@@ -1,6 +1,6 @@
 -- Genererad av scripts/build-setup-sql.ts — redigera inte för hand.
 -- Klistra in i Supabase → SQL Editor och kör.
--- Migrationer: 0000_init.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql
 
 BEGIN;
 
@@ -260,6 +260,22 @@ CREATE INDEX "employee_station_idx" ON "employee" USING btree ("station_place_id
 CREATE INDEX "session_user_idx" ON "session" USING btree ("user_id");
 CREATE INDEX "work_pattern_employee_idx" ON "work_pattern" USING btree ("employee_id");
 
+-- 0001_legal_king_cobra.sql
+CREATE TABLE "transpa_tenant" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" text NOT NULL,
+	"name" text NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "transpa_tenant_tenant_id_unique" UNIQUE("tenant_id")
+);
+
+ALTER TABLE "employee" DROP CONSTRAINT "employee_employee_number_unique";
+ALTER TABLE "employee" ADD COLUMN "transpa_tenant_id" uuid;
+ALTER TABLE "employee" ADD CONSTRAINT "employee_transpa_tenant_id_transpa_tenant_id_fk" FOREIGN KEY ("transpa_tenant_id") REFERENCES "public"."transpa_tenant"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "employee_tenant_idx" ON "employee" USING btree ("transpa_tenant_id");
+ALTER TABLE "employee" ADD CONSTRAINT "employee_number_uq" UNIQUE("transpa_tenant_id","employee_number");
+
 COMMIT;
 
 -- Markera migrationerna som körda, så npm run db:migrate inte
@@ -272,3 +288,5 @@ CREATE TABLE IF NOT EXISTS drizzle."__drizzle_migrations" (
 );
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'dcd5e93674f810457deb29590251f149eefcf063f76dcadaff83beeec8b6cee6', 1787314083994
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'dcd5e93674f810457deb29590251f149eefcf063f76dcadaff83beeec8b6cee6');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '630566f1c775d7cab27a27d2f34809d526f59edc848077f6b812b4f881b20934', 1787657708770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '630566f1c775d7cab27a27d2f34809d526f59edc848077f6b812b4f881b20934');

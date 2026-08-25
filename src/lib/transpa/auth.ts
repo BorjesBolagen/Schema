@@ -89,6 +89,21 @@ export function credentialsFromEnv(): TranspaCredentials | null {
   return { clientId, clientSecret, tenantId };
 }
 
+/**
+ * Samma applikation, ett annat bolag.
+ *
+ * Klient-id och hemlighet delas av alla bolag — det är en och samma
+ * Visma-applikation som varje bolag i sin tur ger tillgång. Bara
+ * tenant-id skiljer, och det avgör vilket bolags uppgifter token ger
+ * tillgång till.
+ */
+export function credentialsForTenant(tenantId: string): TranspaCredentials | null {
+  const clientId = process.env.TRANSPA_CLIENT_ID;
+  const clientSecret = process.env.TRANSPA_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret, tenantId };
+}
+
 export async function getAccessToken(
   credentials: TranspaCredentials,
   scopes: string[] = READ_SCOPES,

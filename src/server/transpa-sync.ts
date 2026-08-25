@@ -2,7 +2,7 @@ import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
-import { READ_SCOPES, credentialsFromEnv } from "@/lib/transpa/auth";
+import { READ_SCOPES, credentialsForTenant, credentialsFromEnv } from "@/lib/transpa/auth";
 
 /**
  * Synk av grunddata från TransPA.
@@ -13,22 +13,11 @@ import { READ_SCOPES, credentialsFromEnv } from "@/lib/transpa/auth";
  * bär någon stationsort.
  */
 
-interface TranspaTrafficArea { id?: string; name?: string }
 interface TranspaStationPlace {
   id?: string;
   name?: string;
   supervisorPhoneNumber?: string;
   emergencyPhoneNumber?: string;
-}
-interface TranspaVehicleGroup { id?: string; name?: string }
-interface TranspaVehicle {
-  id?: string;
-  registrationNumber?: string;
-  externalId?: string;
-  isActive?: boolean;
-  trafficAreaId?: number | string | null;
-  stationPlaceId?: number | string | null;
-  vehicleGroupId?: number | string | null;
 }
 interface TranspaEmployee {
   id?: string;
@@ -51,20 +40,13 @@ export interface ResourceResult {
 /**
  * Vilket scope varje resurs kräver.
  *
- * Synken hämtar bara det ni faktiskt har tillstånd till. Börjes
- * beviljade lista saknar `trafficareas` och `vehiclegroups` — de fanns
- * i Vismas föråldrade klient men har inga scopes — och utan den här
- * kontrollen skulle de misslyckas med 403 vid varje körning och skräpa
- * ner resultatet med fel som inte går att åtgärda.
- *
- * Får ni fler scopes beviljade räcker det att lägga till dem i
- * READ_SCOPES; synken plockar upp dem härifrån.
+ * Synken frågar aldrig efter något ni saknar tillstånd till — annars
+ * blir det 403 vid varje körning, utan att det går att åtgärda.
+ * Kontrollen läser ur READ_SCOPES, så listan hålls ihop av sig själv
+ * när fler scopes beviljas.
  */
 const SCOPE_FOR: Record<string, string> = {
-  trafficAreas: "transpaapi:trafficareas:read",
   stationPlaces: "transpaapi:stationplaces:read",
-  vehicleGroups: "transpaapi:vehiclegroups:read",
-  vehicles: "transpaapi:vehicles:read",
   employees: "transpaapi:employees:read",
 };
 
@@ -79,43 +61,87 @@ export interface SyncResult {
 const str = (v: unknown): string | null =>
   v === null || v === undefined || v === "" ? null : String(v);
 
+/**
+ * `key` avgör scopet, `label` är vad som visas.
+ *
+ * De skiljs åt därför att etiketten bär bolagets namn när flera bolag
+ * synkas — utan uppdelningen skulle scope-uppslaget söka på
+ * "employees · Bolag 1" och aldrig hitta något.
+ */
 async function track(
   db: Db,
-  resource: string,
+  key: string,
+  label: string,
   run: () => Promise<{ fetched: number; written: number }>,
 ): Promise<ResourceResult> {
-  if (!granted(resource)) {
+  if (!granted(key)) {
     return {
-      resource,
+      resource: label,
       fetched: 0,
       written: 0,
       skipped: true,
-      error: `Hoppades över — scopet ${SCOPE_FOR[resource]} är inte beviljat.`,
+      error: `Hoppades över — scopet ${SCOPE_FOR[key]} är inte beviljat.`,
     };
   }
 
-  const [row] = await db.insert(schema.syncRun).values({ resource }).returning();
+  const [row] = await db.insert(schema.syncRun).values({ resource: label }).returning();
   try {
     const { fetched, written } = await run();
     await db
       .update(schema.syncRun)
       .set({ status: "ok", itemCount: written, finishedAt: new Date() })
       .where(eq(schema.syncRun.id, row.id));
-    return { resource, fetched, written };
+    return { resource: label, fetched, written };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await db
       .update(schema.syncRun)
       .set({ status: "failed", error: message, finishedAt: new Date() })
       .where(eq(schema.syncRun.id, row.id));
-    return { resource, fetched: 0, written: 0, error: message };
+    return { resource: label, fetched: 0, written: 0, error: message };
   }
 }
 
+/**
+ * Bolagen som ska synkas.
+ *
+ * Registret ligger i databasen så bolagen kan få begripliga namn — ett
+ * tenant-id duger inte i en meny. Är det tomt men TRANSPA_TENANT_ID satt
+ * läggs det bolaget upp automatiskt, så första körningen fungerar utan
+ * att någon behöver fylla i något först.
+ */
+async function tenantsToSync(db: Db): Promise<Array<{ id: string; tenantId: string; name: string }>> {
+  const existing = await db
+    .select()
+    .from(schema.transpaTenant)
+    .where(eq(schema.transpaTenant.isActive, true));
+  if (existing.length > 0) {
+    return existing.map((t) => ({ id: t.id, tenantId: t.tenantId, name: t.name }));
+  }
+
+  const fromEnv = process.env.TRANSPA_TENANT_ID;
+  if (!fromEnv) return [];
+
+  const [row] = await db
+    .insert(schema.transpaTenant)
+    .values({ tenantId: fromEnv, name: "Bolag 1" })
+    .onConflictDoNothing({ target: schema.transpaTenant.tenantId })
+    .returning();
+  return row ? [{ id: row.id, tenantId: row.tenantId, name: row.name }] : [];
+}
+
+/**
+ * Synkar personal och stationsorter, ett bolag i taget.
+ *
+ * Fordon hämtas medvetet inte: de skrivs in för hand i verktyget. Det
+ * kan ändras senare, men i dag äger ni bilnumren själva och TransPA:s
+ * fordonsregister tillför inget.
+ */
 export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<SyncResult> {
   const ranAt = new Date().toISOString();
-  const credentials = credentialsFromEnv();
-  if (!credentials) {
+  const db = getDb();
+
+  if (!credentialsFromEnv() && !process.env.TRANSPA_CLIENT_ID) {
     return {
       ok: false,
       ranAt,
@@ -123,31 +149,35 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
     };
   }
 
-  const db = getDb();
-  const client = new TranspaClient({ credentials, fetchImpl });
+  const tenants = await tenantsToSync(db);
+  if (tenants.length === 0) {
+    return {
+      ok: false,
+      ranAt,
+      results: [{ resource: "alla", fetched: 0, written: 0, error: "Inget bolag att synka." }],
+    };
+  }
+
+  const results: ResourceResult[] = [];
+  for (const tenant of tenants) {
+    const credentials = credentialsForTenant(tenant.tenantId);
+    if (!credentials) continue;
+    const client = new TranspaClient({ credentials, fetchImpl });
+    results.push(...(await syncTenant(db, client, tenant)));
+  }
+
+  return { ok: results.every((r) => r.skipped || !r.error), results, ranAt };
+}
+
+async function syncTenant(
+  db: Db,
+  client: TranspaClient,
+  tenant: { id: string; name: string },
+): Promise<ResourceResult[]> {
   const results: ResourceResult[] = [];
 
   results.push(
-    await track(db, "trafficAreas", async () => {
-      const rows = await client.list<TranspaTrafficArea>("/v1/trafficAreas");
-      const values = rows
-        .filter((r) => r.id && r.name)
-        .map((r) => ({ transpaId: String(r.id), name: r.name! }));
-      if (values.length) {
-        await db
-          .insert(schema.trafficArea)
-          .values(values)
-          .onConflictDoUpdate({
-            target: schema.trafficArea.transpaId,
-            set: { name: sql`excluded.name` },
-          });
-      }
-      return { fetched: rows.length, written: values.length };
-    }),
-  );
-
-  results.push(
-    await track(db, "stationPlaces", async () => {
+    await track(db, "stationPlaces", `stationsorter · ${tenant.name}`, async () => {
       const rows = await client.list<TranspaStationPlace>("/v1/stationPlaces");
       const values = rows
         .filter((r) => r.id && r.name)
@@ -175,73 +205,7 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
   );
 
   results.push(
-    await track(db, "vehicleGroups", async () => {
-      const rows = await client.list<TranspaVehicleGroup>("/v1/vehicleGroups");
-      const values = rows
-        .filter((r) => r.id && r.name)
-        .map((r) => ({ transpaId: String(r.id), name: r.name! }));
-      if (values.length) {
-        await db
-          .insert(schema.vehicleGroup)
-          .values(values)
-          .onConflictDoUpdate({
-            target: schema.vehicleGroup.transpaId,
-            set: { name: sql`excluded.name` },
-          });
-      }
-      return { fetched: rows.length, written: values.length };
-    }),
-  );
-
-  results.push(
-    await track(db, "vehicles", async () => {
-      const rows = await client.list<TranspaVehicle>("/v1/vehicles");
-      // Seriellt, inte parallellt — se kommentaren i board-week.ts.
-      const areas = await db.select().from(schema.trafficArea);
-      const places = await db.select().from(schema.stationPlace);
-      const groups = await db.select().from(schema.vehicleGroup);
-      const areaBy = new Map(areas.map((a) => [a.transpaId, a.id]));
-      const placeBy = new Map(places.map((p) => [p.transpaId, p.id]));
-      const groupBy = new Map(groups.map((g) => [g.transpaId, g.id]));
-
-      const values = rows
-        .filter((r) => r.id)
-        .map((r) => ({
-          transpaId: String(r.id),
-          registrationNumber: str(r.registrationNumber),
-          externalId: str(r.externalId),
-          // Bara vid nyinlägg — se set-satsen nedan.
-          displayName: str(r.externalId) ?? str(r.registrationNumber) ?? String(r.id),
-          isActive: r.isActive ?? true,
-          trafficAreaId: areaBy.get(str(r.trafficAreaId) ?? "") ?? null,
-          stationPlaceId: placeBy.get(str(r.stationPlaceId) ?? "") ?? null,
-          vehicleGroupId: groupBy.get(str(r.vehicleGroupId) ?? "") ?? null,
-        }));
-
-      if (values.length) {
-        await db
-          .insert(schema.vehicle)
-          .values(values)
-          .onConflictDoUpdate({
-            target: schema.vehicle.transpaId,
-            // displayName utelämnas medvetet: namnet ägs lokalt.
-            set: {
-              registrationNumber: sql`excluded.registration_number`,
-              externalId: sql`excluded.external_id`,
-              isActive: sql`excluded.is_active`,
-              trafficAreaId: sql`excluded.traffic_area_id`,
-              stationPlaceId: sql`excluded.station_place_id`,
-              vehicleGroupId: sql`excluded.vehicle_group_id`,
-              updatedAt: new Date(),
-            },
-          });
-      }
-      return { fetched: rows.length, written: values.length };
-    }),
-  );
-
-  results.push(
-    await track(db, "employees", async () => {
+    await track(db, "employees", `personal · ${tenant.name}`, async () => {
       const rows = await client.list<TranspaEmployee>("/v1/employees");
       const values = rows
         .filter((r) => r.id && (r.firstName || r.lastName))
@@ -252,6 +216,7 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
           lastName: r.lastName ?? "",
           signature: str(r.signature),
           isActive: r.isActive ?? true,
+          transpaTenantId: tenant.id,
         }));
 
       if (values.length) {
@@ -276,7 +241,6 @@ export async function syncBaseData(fetchImpl: typeof fetch = fetch): Promise<Syn
     }),
   );
 
-  // Överhoppad är inte misslyckad: resursen har inget scope och kommer
-  // aldrig att gå att hämta, så den ska inte färga hela körningen röd.
-  return { ok: results.every((r) => r.skipped || !r.error), results, ranAt };
+
+  return results;
 }

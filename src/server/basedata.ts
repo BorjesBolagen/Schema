@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb, schema, readWithTimeout } from "@/db";
 
 /**
@@ -136,10 +136,22 @@ export async function addEmployee(input: {
 
   const employeeNumber = input.employeeNumber?.trim() || null;
   if (employeeNumber) {
+    /* Bara bland dem som lagts in för hand.
+     *
+     * Anställningsnummer är unika inom ett bolag, inte mellan bolag —
+     * två bolag har med stor sannolikhet varsin 2262. Att jämföra mot
+     * hela registret skulle därför neka ett nummer som är helt korrekt
+     * för den som lägger in det. De som kommit från TransPA skyddas av
+     * employee_number_uq, som räknar bolaget med. */
     const taken = await getDb()
       .select({ id: schema.employee.id })
       .from(schema.employee)
-      .where(eq(schema.employee.employeeNumber, employeeNumber));
+      .where(
+        and(
+          eq(schema.employee.employeeNumber, employeeNumber),
+          isNull(schema.employee.transpaTenantId),
+        ),
+      );
     if (taken.length > 0) {
       return { ok: false, error: `Anställningsnummer ${employeeNumber} används redan.` };
     }
