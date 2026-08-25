@@ -121,6 +121,27 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
   körts i det projektet, eller `DATABASE_URL` pekar på fel Supabase-
   projekt.
 
+### Row Level Security
+
+Supabase publicerar automatiskt ett REST-API för allt i schemat
+`public`, nåbart med projektets **anon-nyckel** — och den nyckeln är
+avsedd att vara publik. Utan Row Level Security kan alltså vem som helst
+som känner till projektets adress både läsa och skriva. Det är inte
+teoretiskt: `session` lagrar hashen av en sessionskaka, så den som kan
+skriva där lägger in en egen rad mot en administratörs id och är
+inloggad som administratör. `app_user` bär lösenordshashar, `absence`
+bär sjukfrånvaro och vab.
+
+`supabase-setup.sql` slår därför på RLS för varje tabell, utan en enda
+policy, och tar bort de rättigheter Supabase ger `anon` och
+`authenticated` som standard. Appen påverkas inte: den kopplar direkt
+mot Postgres som rollen `postgres`, som äger tabellerna, och en ägare
+går förbi RLS. Ingen `FORCE ROW LEVEL SECURITY` — det skulle gälla även
+ägaren och stoppa appen.
+
+Lägger du till en tabell: slå på RLS för den också. `src/db/rls.test.ts`
+går sönder om du glömmer.
+
 ## 3. Första kontot
 
 Öppna den driftsatta adressen. Är databasen tom leds du till
