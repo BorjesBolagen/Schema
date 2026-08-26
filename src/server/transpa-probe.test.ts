@@ -90,15 +90,73 @@ describe("jakten på passen", () => {
     expect(sedda).toContain("/publicApi/v1/employees/emp-42/shifts");
   });
 
-  it("provar inte underresurser när ingen person gick att hämta", async () => {
+  it("anropar aldrig en väg med platshållaren kvar", async () => {
     const sedda: string[] = [];
     const fetchImpl = fakeFetch((url) => {
       sedda.push(new URL(url).pathname);
       return new Response(JSON.stringify({ data: [], cursor: {} }));
     });
 
-    await probeTenant(fetchImpl);
+    const report = await probeTenant(fetchImpl);
+    // Raden syns, men vägen anropas inte: en 404 på "{id}" betyder inget.
     expect(sedda.some((p) => p.includes("{id}"))).toBe(false);
-    expect(sedda.some((p) => /\/v1\/employees\/[^/]+\/shifts/.test(p))).toBe(false);
+    const kvar = report.endpoints.find((e) => e.path.includes("{id}"));
+    expect(kvar?.outcome).toBe("not-run");
+    expect(kvar?.detail).toMatch(/inget person-id/i);
+  });
+});
+
+describe("person-id ur svaret", () => {
+  it("hittar id:t även när fälten är PascalCase", async () => {
+    // Vismas genererade klient är PascalCase (Id, FirstName). Antar man
+    // camelCase blir id:t null, underresurserna provas aldrig, och
+    // raderna såg tidigare ut att inte ens finnas.
+    const sedda: string[] = [];
+    const fetchImpl = fakeFetch((url) => {
+      const path = new URL(url).pathname;
+      sedda.push(path);
+      if (path.endsWith("/v1/employees")) {
+        return new Response(
+          JSON.stringify({
+            data: [{ Id: "PASCAL-1", FirstName: "A", LastName: "B" }],
+            cursor: { nextToken: null },
+          }),
+        );
+      }
+      return new Response(JSON.stringify({ title: "Not found" }), { status: 404 });
+    });
+
+    const report = await probeTenant(fetchImpl);
+    expect(report.employeeSample?.id).toBe("PASCAL-1");
+    expect(report.employeeSample?.keys).toContain("Id");
+    expect(sedda).toContain("/publicApi/v1/employees/PASCAL-1/shifts");
+  });
+
+  it("listar underresurserna även när inget id gick att plocka ut", async () => {
+    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ data: [], cursor: {} })));
+    const report = await probeTenant(fetchImpl);
+
+    expect(report.employeeSample?.id).toBeNull();
+    // Raden ska finnas kvar, med platshållaren synlig — att den tyst
+    // försvann gjorde det omöjligt att se att den aldrig provades.
+    expect(report.endpoints.some((e) => e.path.includes("{id}"))).toBe(true);
+  });
+});
+
+describe("samma vägar redovisas oavsett hur långt körningen kom", () => {
+  it("listar pass-kandidaterna även när token-hämtningen misslyckas", async () => {
+    // Tidigare byggdes listan på två ställen, och den här vägen saknade
+    // pass-kandidaterna helt — de såg ut att inte finnas.
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      if (String(input).includes("connect/token")) {
+        return new Response("nej", { status: 401 });
+      }
+      return new Response("", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const report = await probeTenant(fetchImpl);
+    expect(report.token.outcome).not.toBe("ok");
+    expect(report.endpoints.some((e) => e.label === "Pass under en person")).toBe(true);
+    expect(report.endpoints.every((e) => e.outcome === "not-run")).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import { requireAdmin } from "@/server/auth";
 import { probeTenant, type EndpointProbe, type ProbeOutcome } from "@/server/transpa-probe";
 import { credentialsFromEnv } from "@/lib/transpa/auth";
 import { SyncButton } from "@/components/SyncButton";
+import { CopyReport } from "@/components/CopyReport";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,34 @@ export default async function TranspaPage() {
   const found = guesses.filter((g) => g.outcome === "ok" || g.outcome === "empty");
   const missing = credentialsFromEnv() === null;
 
+  /* Samma uppgifter som tabellerna, men som ren text — se CopyReport. */
+  const rapport = [
+    `TransPA-diagnostik ${report.ranAt}`,
+    `tenant: ${report.tenantId ?? "—"}   token: ${report.token.outcome}`,
+    report.token.detail ? `token-detalj: ${report.token.detail}` : null,
+    "",
+    report.employeeSample
+      ? `person-fält: ${report.employeeSample.keys.join(", ") || "(inga)"}\n` +
+        `person-id som gick att plocka ut: ${report.employeeSample.id ?? "INGET"}`
+      : null,
+    "",
+    ...report.endpoints.map(
+      (e) =>
+        `${e.path}  ${e.outcome}${e.status ? ` (${e.status})` : ""}` +
+        `${e.detail ? `  ${e.detail}` : ""}` +
+        `${e.sampleKeys ? `\n    fält: ${e.sampleKeys.join(", ") || "(tomt svar)"}` : ""}`,
+    ),
+    "",
+    report.spec?.outcome === "ok"
+      ? `spec: ${report.spec.url} (v${report.spec.version ?? "?"})\n` +
+        (report.spec.paths ?? []).map((x) => `    ${x}`).join("\n")
+      : `spec: kunde inte hämtas (${report.spec?.outcome ?? "ej körd"}${
+          report.spec?.status ? ` ${report.spec.status}` : ""
+        }), senast provad: ${report.spec?.url ?? "—"}`,
+  ]
+    .filter((r) => r !== null)
+    .join("\n");
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <Link href="/" className="text-xs text-(--color-muted) hover:underline">
@@ -83,6 +112,29 @@ export default async function TranspaPage() {
           )}
         </div>
       )}
+
+      {report.employeeSample && (
+        <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
+          <p className="font-medium">Fälten på en person</p>
+          <p className="mt-1 font-mono text-xs break-all text-(--color-ink)">
+            {report.employeeSample.keys.join(", ") || "(svaret innehöll inga fält)"}
+          </p>
+          <p className="mt-2 text-xs text-(--color-muted)">
+            Id som gick att plocka ut:{" "}
+            {report.employeeSample.id ? (
+              <code>{report.employeeSample.id}</code>
+            ) : (
+              <span className="text-(--color-warn)">
+                inget — då går underresurserna under en person inte att prova
+              </span>
+            )}
+          </p>
+        </div>
+      )}
+
+      <div className="mt-6">
+        <CopyReport text={rapport} />
+      </div>
 
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Dokumenterade endpoints</h2>

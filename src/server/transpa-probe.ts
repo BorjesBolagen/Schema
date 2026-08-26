@@ -47,6 +47,8 @@ export interface SpecProbe {
 
 export interface TenantReport {
   hasCredentials: boolean;
+  /** Fältnamnen på en person, och id:t vi kunde plocka ur dem. */
+  employeeSample?: { keys: string[]; id: string | null };
   tenantId?: string;
   token: { outcome: ProbeOutcome; detail?: string; scopes: string[] };
   spec?: SpecProbe;
@@ -127,12 +129,42 @@ const GUESSES: Array<[string, string]> = [
 ];
 
 /** Troliga platser för OpenAPI-specen. */
+/**
+ * Specen är den enda vägen bort från gissningar.
+ *
+ * Hittas den vet vi exakt vilka vägar som finns, och jakten på passen
+ * är över på en gång. Swagger-UI:t ligger på
+ * api.mytranspa.com/doc/openapi/swaggerui/, och själva dokumentet
+ * brukar ligga i närheten under något av namnen nedan.
+ */
 const SPEC_URLS = [
   "https://api.mytranspa.com/doc/openapi/openapi.json",
   "https://api.mytranspa.com/doc/openapi/swagger.json",
+  "https://api.mytranspa.com/doc/openapi/v1/swagger.json",
   "https://api.mytranspa.com/doc/openapi/v1/openapi.json",
+  "https://api.mytranspa.com/doc/openapi/swaggerui/swagger.json",
+  "https://api.mytranspa.com/doc/openapi/spec.json",
+  "https://api.mytranspa.com/doc/openapi/openapi.yaml",
   "https://api.mytranspa.com/publicApi/swagger/v1/swagger.json",
+  "https://api.mytranspa.com/publicApi/openapi.json",
+  "https://api.mytranspa.com/swagger/v1/swagger.json",
 ];
+
+/**
+ * Alla vägar sidan redovisar, i den ordning de visas.
+ *
+ * Finns som en funktion för att listan ska bli densamma oavsett hur
+ * långt körningen kom. Tidigare byggdes den på två ställen, och när
+ * token-hämtningen misslyckades försvann pass-kandidaterna tyst ur
+ * tabellen — vilket såg ut som att de aldrig funnits.
+ */
+function allPaths(employeeId: string | null): Array<[string, string]> {
+  const shifts: Array<[string, string]> = SHIFT_CANDIDATES.map((c) => [
+    employeeId ? c.replace("{id}", employeeId) : c,
+    c.includes("{id}") ? "Pass under en person" : "Pass",
+  ]);
+  return [...KNOWN, ...shifts, ...GUESSES];
+}
 
 function describe(error: unknown): { outcome: ProbeOutcome; status?: number; detail: string } {
   if (error instanceof TranspaApiError) {
@@ -185,7 +217,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
       hasCredentials: false,
       token: { outcome: "not-run", scopes: READ_SCOPES },
       spec,
-      endpoints: [...KNOWN, ...GUESSES].map(([path, label]) => ({
+      endpoints: allPaths(null).map(([path, label]) => ({
         path,
         label,
         known: KNOWN.some(([p]) => p === path),
@@ -216,7 +248,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
         tenantId: credentials.tenantId,
         token: { outcome: d.outcome, detail: d.detail, scopes: READ_SCOPES },
         spec,
-        endpoints: [...KNOWN, ...GUESSES].map(([path, label]) => ({
+        endpoints: allPaths(null).map(([path, label]) => ({
           path,
           label,
           known: KNOWN.some(([p]) => p === path),
@@ -234,25 +266,47 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
      id skulle /v1/employees/{id}/shifts svara 404 oavsett om vägen
      finns, och svaret vore värdelöst. */
   let sampleEmployeeId: string | null = null;
+  let sampleEmployeeKeys: string[] = [];
   try {
-    const r = await client.request<{ data?: Array<{ id?: string }> }>("/v1/employees", {
+    const r = await client.request<{ data?: Array<Record<string, unknown>> }>("/v1/employees", {
       limit: 1,
       scopes,
     });
-    sampleEmployeeId = r?.data?.[0]?.id ?? null;
+    const first = r?.data?.[0];
+    if (first && typeof first === "object") {
+      sampleEmployeeKeys = Object.keys(first);
+      /* Fältnamnet gissas inte. Vismas genererade klient är PascalCase
+         (Id, FirstName), medan deras Postman-exempel filtrerar på
+         camelCase (employeeId) — vilket av dem JSON:en faktiskt
+         använder syns först här. Därför letas nyckeln upp utan hänsyn
+         till skiftläge i stället för att antas. */
+      const key = sampleEmployeeKeys.find((k) => k.toLowerCase() === "id");
+      const value = key ? first[key] : undefined;
+      if (typeof value === "string" || typeof value === "number") {
+        sampleEmployeeId = String(value);
+      }
+    }
   } catch {
     /* Går det inte syns det ändå på raden för /v1/employees nedan. */
   }
 
-  const shiftPaths: Array<[string, string]> = SHIFT_CANDIDATES.filter(
-    (c) => !c.includes("{id}") || sampleEmployeeId,
-  ).map((c) => [
-    c.replace("{id}", sampleEmployeeId ?? ""),
-    c.includes("{id}") ? `Pass under en person (${c.split("/").pop()})` : "Pass",
-  ]);
-
-  for (const [path, label] of [...KNOWN, ...shiftPaths, ...GUESSES]) {
+  for (const [path, label] of allPaths(sampleEmployeeId)) {
     const known = KNOWN.some(([p]) => p === path);
+
+    /* Kvar-stående {id} betyder att ingen person gick att plocka ut.
+       Raden visas ändå — men att anropa vägen med platshållaren kvar
+       vore ett bortkastat anrop vars 404 inte betyder något. */
+    if (path.includes("{id}")) {
+      endpoints.push({
+        path,
+        label,
+        known,
+        outcome: "not-run",
+        detail: "Ej provad — inget person-id gick att plocka ur /v1/employees.",
+      });
+      continue;
+    }
+
     try {
       const response = await client.request<{ data?: unknown[] }>(path, {
         limit: path === "/v1/alive" ? undefined : 1,
@@ -285,6 +339,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
   return {
     hasCredentials: true,
     tenantId: credentials.tenantId,
+    employeeSample: { keys: sampleEmployeeKeys, id: sampleEmployeeId },
     token: { outcome: tokenOutcome, detail: tokenDetail, scopes },
     spec,
     endpoints,
