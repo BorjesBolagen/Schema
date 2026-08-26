@@ -1,4 +1,5 @@
 import "server-only";
+import { overlapsRange } from "@/lib/transpa/filter";
 import {
   TranspaApiError,
   TranspaClient,
@@ -49,6 +50,27 @@ export interface EndpointProbe {
   rowKey?: string;
 }
 
+/**
+ * Är turerna planerade eller körda?
+ *
+ * Det avgör om TranspaWorkDayProvider kan byggas alls. Finns turer som
+ * ligger i framtiden vet TransPA vem som ska jobba, och arbetsdagarna
+ * kan hämtas i stället för att gissas ur ett mönster. Finns bara turer
+ * bakåt är /v1/trips historik, och då kan den på sin höjd föreslå ett
+ * mönster.
+ *
+ * Bara antal och statusvärden redovisas — aldrig employeeId eller
+ * tider, som pekar ut enskilda personers arbetspass.
+ */
+export interface TripsWindow {
+  outcome: ProbeOutcome;
+  detail?: string;
+  future?: { rows: number; statuses: string[] };
+  past?: { rows: number; statuses: string[] };
+  /** Slutsatsen, uttryckt så att den går att handla på. */
+  verdict?: "planerade" | "bara-korda" | "inga-turer";
+}
+
 export interface SpecProbe {
   url: string;
   outcome: ProbeOutcome;
@@ -64,6 +86,7 @@ export interface TenantReport {
   tenantId?: string;
   token: { outcome: ProbeOutcome; detail?: string; scopes: string[] };
   spec?: SpecProbe;
+  trips?: TripsWindow;
   endpoints: EndpointProbe[];
   ranAt: string;
 }
@@ -124,18 +147,21 @@ const SAMPLE_SHAPE_OF = new Set([
  * svara om de ligger bakom grundscopet.
  */
 /**
- * Jakten på passen.
+ * Jakten på passen — avslutad, utan träff.
  *
- * `transpaapi:shifts:read` är beviljat, så resursen finns — men
- * /v1/shifts svarar 404. Vägen heter alltså något annat. Mönstret hos
- * de endpoints som fungerar är scopet i camelCase (`workgroups` →
- * /v1/workGroups), vilket borde gett /v1/shifts; att det inte gör det
- * pekar mot att passen ligger under en annan resurs, troligast under
- * personen de gäller.
+ * `transpaapi:shifts:read` är beviljat, men samtliga kandidater nedan
+ * svarar 404, även med ett riktigt person-id insatt (körning
+ * 2026-08-26). Detsamma gäller frånvaro, semester och scheman. Ett
+ * beviljat scope betyder alltså bara att katalogen känner till namnet,
+ * inte att Public API exponerar resursen.
  *
- * Kandidater med {id} i sig provas mot en riktig person, hämtad ur
- * /v1/employees först — annars går de inte att skilja från en felstavad
- * väg.
+ * Slutsatsen: TransPA:s Public API levererar inga planerade pass. De
+ * lokala arbetsmönstren är därmed inte en parentes utan grunden, och
+ * /v1/trips är det enda som säger något om när en person faktiskt är i
+ * tjänst.
+ *
+ * Listan står kvar som bevakning: svarar någon av dem annat än 404 en
+ * dag har Visma öppnat resursen, och då är det värt att veta.
  */
 const SHIFT_CANDIDATES = [
   "/v1/workShifts",
@@ -210,6 +236,43 @@ function describe(error: unknown): { outcome: ProbeOutcome; status?: number; det
     return { outcome: "error", status: 200, detail: error.message };
   }
   return { outcome: "error", detail: error instanceof Error ? error.message : String(error) };
+}
+
+/**
+ * Frågar /v1/trips i två fönster: en vecka framåt och en vecka bakåt.
+ *
+ * Ett svar med rader framåt betyder att TransPA bär planerade turer.
+ * Filtret är på startDateTime eftersom det är fältet Vismas egna
+ * exempel filtrerar på.
+ */
+async function probeTrips(client: TranspaClient, scopes: string[]): Promise<TripsWindow> {
+  const now = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const DAY = 86_400_000;
+
+  const window = async (from: string, to: string) => {
+    const response = await client.request<unknown>("/v1/trips", {
+      filter: overlapsRange("startDateTime", from, to),
+      limit: 50,
+      scopes,
+    });
+    const rows = rowsOf<Record<string, unknown>>(response, "/v1/trips").rows;
+    /* Status är ett tillståndsvärde, inte en personuppgift — till
+       skillnad från employeeId och tiderna, som aldrig lämnar servern. */
+    const statuses = [
+      ...new Set(rows.map((r) => (typeof r.status === "string" ? r.status : "")).filter(Boolean)),
+    ].sort();
+    return { rows: rows.length, statuses };
+  };
+
+  try {
+    const future = await window(iso(now), iso(now + 7 * DAY));
+    const past = await window(iso(now - 7 * DAY), iso(now));
+    const verdict = future.rows > 0 ? "planerade" : past.rows > 0 ? "bara-korda" : "inga-turer";
+    return { outcome: "ok", future, past, verdict };
+  } catch (error) {
+    return { ...describe(error), future: undefined, past: undefined };
+  }
 }
 
 async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
@@ -378,8 +441,15 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     }
   }
 
+  /* Körs efter endpoint-svepet: utan att veta att /v1/trips svarar
+     alls vore fönsterfrågan bara brus. */
+  const trips = endpoints.some((e) => e.path === "/v1/trips" && e.outcome !== "missing")
+    ? await probeTrips(client, scopes)
+    : undefined;
+
   return {
     hasCredentials: true,
+    trips,
     tenantId: credentials.tenantId,
     employeeSample: { keys: sampleEmployeeKeys, id: sampleEmployeeId },
     token: { outcome: tokenOutcome, detail: tokenDetail, scopes },

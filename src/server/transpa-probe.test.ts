@@ -178,3 +178,61 @@ describe("samma vägar redovisas oavsett hur långt körningen kom", () => {
     expect(employees.detail).toMatch(/varken items eller data/);
   });
 });
+
+/**
+ * Fönsterfrågan mot /v1/trips avgör om TranspaWorkDayProvider går att
+ * bygga alls. Svaret ska följa av vad API:t returnerar, inte av vad vi
+ * hoppas.
+ */
+describe("turer: planerade eller körda", () => {
+  const trip = (startDateTime: string, status: string) => ({
+    id: "x",
+    employeeId: "e1",
+    startDateTime,
+    status,
+  });
+
+  /** Skiljer fönstren åt på gte-gränsen i filtret. */
+  const windowed = (future: unknown[], past: unknown[]) =>
+    fakeFetch((url) => {
+      if (!url.includes("/v1/trips")) {
+        return new Response(JSON.stringify({ items: [], cursor: {} }));
+      }
+      const filter = decodeURIComponent(new URL(url).searchParams.get("filter") ?? "");
+      const from = filter.split("$gte:")[1]?.split("$and:")[0] ?? "";
+      const isPast = new Date(from).getTime() < Date.now() - 1000;
+      return new Response(JSON.stringify({ items: isPast ? past : future, cursor: {} }));
+    });
+
+  it("säger planerade när det finns turer framåt", async () => {
+    const soon = new Date(Date.now() + 2 * 86_400_000).toISOString();
+    const report = await probeTenant(windowed([trip(soon, "planned")], []));
+
+    expect(report.trips?.verdict).toBe("planerade");
+    expect(report.trips?.future?.rows).toBe(1);
+  });
+
+  it("säger bara-körda när det bara finns turer bakåt", async () => {
+    const then = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const report = await probeTenant(windowed([], [trip(then, "approved")]));
+
+    expect(report.trips?.verdict).toBe("bara-korda");
+    expect(report.trips?.past?.statuses).toEqual(["approved"]);
+  });
+
+  it("säger inga-turer när fönstren är tomma", async () => {
+    const report = await probeTenant(windowed([], []));
+    expect(report.trips?.verdict).toBe("inga-turer");
+  });
+
+  /* employeeId och tiderna pekar ut enskilda personers arbetspass och
+     får inte lämna servern — bara antal och status redovisas. */
+  it("släpper aldrig ut employeeId eller tider", async () => {
+    const soon = new Date(Date.now() + 86_400_000).toISOString();
+    const report = await probeTenant(windowed([trip(soon, "planned")], []));
+
+    expect(JSON.stringify(report.trips)).not.toContain("e1");
+    expect(JSON.stringify(report.trips)).not.toContain(soon);
+  });
+});
+

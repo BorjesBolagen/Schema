@@ -70,6 +70,13 @@ export default async function TranspaPage() {
       ? `person-fält: ${report.employeeSample.keys.join(", ") || "(inga)"}\n` +
         `person-id som gick att plocka ut: ${report.employeeSample.id ?? "INGET"}`
       : null,
+    report.trips
+      ? `turer: ${report.trips.verdict ?? report.trips.outcome} — framåt ${
+          report.trips.future?.rows ?? 0
+        }, bakåt ${report.trips.past?.rows ?? 0}, status: ${
+          report.trips.past?.statuses.join(", ") || "—"
+        }`
+      : null,
     "",
     ...report.endpoints.map(
       (e) =>
@@ -101,11 +108,13 @@ export default async function TranspaPage() {
         facit. Ladda om sidan för att köra om kontrollen.
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-        <code>/v1/shifts</code>, <code>/v1/trips</code> och <code>/v1/employees</code> visar
-        fältnamnen i första raden när anropet lyckas — bara namnen, aldrig värdena, så personnummer
-        eller adress aldrig syns här. Scopet <code>transpaapi:shifts:read</code> är beviljat, så
-        <code>/v1/shifts</code> är den viktigaste raden nedan: den avgör om arbetsmönstren i
-        verktyget blir en parentes eller om TransPA kan leverera arbetsdagarna direkt.
+        Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
+        adress aldrig syns här. <strong>Frågan om passen är avgjord:</strong> scopet{" "}
+        <code>transpaapi:shifts:read</code> är beviljat, men varje tänkbar väg svarar 404, även med
+        ett riktigt person-id. Detsamma gäller frånvaro, semester och scheman. TransPA:s Public API
+        levererar alltså inga planerade pass — arbetsmönstren i verktyget är grunden, inte en
+        parentes. Kvar står <code>/v1/trips</code>, och frågan där är om turerna är planerade eller
+        körda.
       </p>
 
       {missing ? (
@@ -124,6 +133,34 @@ export default async function TranspaPage() {
           <span className="text-xs text-(--color-muted)">tenant {report.tenantId}</span>
           {report.token.detail && (
             <p className="w-full text-xs text-(--color-warn)">{report.token.detail}</p>
+          )}
+        </div>
+      )}
+
+      {report.trips && (
+        <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
+          <p className="font-medium">Turer: planerade eller körda?</p>
+          {report.trips.outcome !== "ok" ? (
+            <p className="mt-1 text-xs text-(--color-warn)">
+              Gick inte att avgöra: {report.trips.detail}
+            </p>
+          ) : (
+            <>
+              <p className="mt-1 text-xs text-(--color-muted)">
+                Vecka framåt: {report.trips.future?.rows ?? 0} turer · vecka bakåt:{" "}
+                {report.trips.past?.rows ?? 0} turer
+                {report.trips.past?.statuses.length
+                  ? ` · status: ${report.trips.past.statuses.join(", ")}`
+                  : ""}
+              </p>
+              <p className="mt-2 max-w-[68ch] text-sm">
+                {report.trips.verdict === "planerade"
+                  ? "TransPA bär turer som ligger i framtiden — den vet alltså vem som ska jobba. Arbetsdagarna kan hämtas därifrån i stället för att härledas ur ett mönster."
+                  : report.trips.verdict === "bara-korda"
+                    ? "Bara turer bakåt i tiden. /v1/trips är historik, inte plan — den kan föreslå ett arbetsmönster, men inte ersätta det."
+                    : "Inga turer alls i fönstret. Det säger ingenting säkert; prova igen en vecka då det körts."}
+              </p>
+            </>
           )}
         </div>
       )}

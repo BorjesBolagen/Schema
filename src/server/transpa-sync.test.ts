@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { READ_SCOPES } from "@/lib/transpa/auth";
 
 /**
@@ -33,5 +34,37 @@ describe("TransPA-scopes", () => {
   it("saknar trafficareas och vehiclegroups, som aldrig beviljades", () => {
     expect(READ_SCOPES).not.toContain("transpaapi:trafficareas:read");
     expect(READ_SCOPES).not.toContain("transpaapi:vehiclegroups:read");
+  });
+});
+
+/**
+ * TransPA:s Employee bär mer än vi vill ha.
+ *
+ * Körningen 2026-08-26 visade att /v1/employees returnerar
+ * nationalIdentityNumber, address och tachographCards — personnummer,
+ * hemadress och förarkortnummer. Inget av det behövs för att lägga ett
+ * schema, och därför ska inget av det lagras. Testet finns för att den
+ * gränsen är lätt att råka flytta: fälten kommer i svaret, och att
+ * mappa in ett till är en rad kod.
+ */
+const FORBIDDEN = [
+  "nationalIdentityNumber",
+  "address",
+  "tachographCards",
+  "loginEmail",
+  "loginPhoneNumber",
+];
+
+describe("personuppgifter i synken", () => {
+  it("mappar aldrig in personnummer, adress eller förarkort", async () => {
+    const source = await readFile(new URL("./transpa-sync.ts", import.meta.url), "utf8");
+    const found = FORBIDDEN.filter((field) => source.includes(field));
+    expect(found).toEqual([]);
+  });
+
+  it("lagrar inte heller fälten i databasmodellen", async () => {
+    const source = await readFile(new URL("../db/schema.ts", import.meta.url), "utf8");
+    const found = FORBIDDEN.filter((field) => source.includes(field));
+    expect(found).toEqual([]);
   });
 });
