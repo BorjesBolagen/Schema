@@ -49,3 +49,59 @@ export function joinConditions(conditions: string[], operator: Operator = "and")
 export function overlapsRange(fromField: string, from: string, to: string): string {
   return joinConditions([condition(fromField, "gte", from), condition(fromField, "lt", to)]);
 }
+
+/**
+ * TransPA avvisar filter längre än så här.
+ *
+ * Gränsen märks först i skarp drift: `employeeId$in:[…]` med GUID:er
+ * spränger den redan vid sju personer, och svaret är ett rakt
+ * "Filter is too long. Max length is 400 characters." Därför delas
+ * långa listor upp i flera anrop i stället för att skickas i ett.
+ */
+export const MAX_FILTER_LENGTH = 400;
+
+export class FilterTooLongError extends Error {
+  constructor(readonly length: number) {
+    super(
+      `Filtret blir ${length} tecken även med ett enda värde, men TransPA tar högst ${MAX_FILTER_LENGTH}.`,
+    );
+    this.name = "FilterTooLongError";
+  }
+}
+
+/**
+ * Delar upp en värdelista så att varje färdigt filter håller sig under
+ * gränsen.
+ *
+ * `build` får en delmängd och returnerar hela filtersträngen för den —
+ * så mäts det som faktiskt skickas, inklusive villkoren runt omkring,
+ * i stället för att en marginal gissas fram.
+ */
+export function batchByFilterLength<T extends string | number>(
+  values: T[],
+  build: (batch: T[]) => string,
+  maxLength = MAX_FILTER_LENGTH,
+): T[][] {
+  if (values.length === 0) return [];
+
+  const batches: T[][] = [];
+  let current: T[] = [];
+
+  for (const value of values) {
+    const candidate = [...current, value];
+    if (build(candidate).length <= maxLength) {
+      current = candidate;
+      continue;
+    }
+
+    // Ryms inte ens ett ensamt värde är det villkoren runt omkring som
+    // är för långa, och då hjälper ingen uppdelning.
+    if (current.length === 0) throw new FilterTooLongError(build(candidate).length);
+
+    batches.push(current);
+    current = [value];
+  }
+
+  if (current.length > 0) batches.push(current);
+  return batches;
+}

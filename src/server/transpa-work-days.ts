@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
-import { condition, joinConditions } from "@/lib/transpa/filter";
+import { batchByFilterLength, condition, joinConditions } from "@/lib/transpa/filter";
 import { suggestPatterns, type PatternSuggestion, type TripLike } from "@/lib/trip-patterns";
 
 /**
@@ -97,21 +97,28 @@ export async function suggestPatternsFromTrips(
     if (ids.length === 0) continue;
 
     const client = new TranspaClient({ credentials, fetchImpl });
-    try {
-      const rows = await client.list<TranspaTrip>("/v1/trips", {
-        filter: joinConditions([
-          condition("employeeId", "in", ids),
-          condition("startDateTime", "gte", from),
-          condition("startDateTime", "lt", to),
-        ]),
-      });
 
-      for (const row of rows) {
-        const localId = row.employeeId ? byTranspaId.get(row.employeeId) : undefined;
-        if (!localId || !row.startDateTime) continue;
-        // Personen bärs vidare med sitt lokala id, så förslagen går att
-        // koppla mot mönstertabellen utan ännu ett uppslag.
-        collected.push({ employeeId: localId, startDateTime: row.startDateTime });
+    /* Filtret får vara högst 400 tecken, och ett GUID är 36 — listan
+       spricker alltså redan vid sju personer. Uppdelningen mäter det
+       färdiga filtret i stället för att gissa hur många som ryms. */
+    const buildFilter = (batch: string[]) =>
+      joinConditions([
+        condition("employeeId", "in", batch),
+        condition("startDateTime", "gte", from),
+        condition("startDateTime", "lt", to),
+      ]);
+
+    try {
+      for (const batch of batchByFilterLength(ids, buildFilter)) {
+        const rows = await client.list<TranspaTrip>("/v1/trips", { filter: buildFilter(batch) });
+
+        for (const row of rows) {
+          const localId = row.employeeId ? byTranspaId.get(row.employeeId) : undefined;
+          if (!localId || !row.startDateTime) continue;
+          // Personen bärs vidare med sitt lokala id, så förslagen går
+          // att koppla mot mönstertabellen utan ännu ett uppslag.
+          collected.push({ employeeId: localId, startDateTime: row.startDateTime });
+        }
       }
     } catch (error) {
       return {
