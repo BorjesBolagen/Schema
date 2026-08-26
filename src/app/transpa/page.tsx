@@ -161,7 +161,8 @@ export default async function TranspaPage() {
                 Vecka framåt: {report.trips.future?.capped ? "minst " : ""}
                 {report.trips.future?.rows ?? 0} turer · vecka bakåt:{" "}
                 {report.trips.past?.capped ? "minst " : ""}
-                {report.trips.past?.rows ?? 0} turer
+                {report.trips.past?.rows ?? 0} turer fördelade på{" "}
+                {report.trips.past?.employees ?? 0} personer
                 {report.trips.past?.statuses.length
                   ? ` · status: ${report.trips.past.statuses.join(", ")}`
                   : ""}
@@ -170,8 +171,22 @@ export default async function TranspaPage() {
                 {report.trips.verdict === "planerade"
                   ? "TransPA bär turer som ligger i framtiden — den vet alltså vem som ska jobba. Arbetsdagarna kan hämtas därifrån i stället för att härledas ur ett mönster."
                   : report.trips.verdict === "bara-korda"
-                    ? "Bara turer bakåt i tiden. /v1/trips är historik, inte plan — den kan föreslå ett arbetsmönster, men inte ersätta det."
+                    ? "Bara turer bakåt i tiden. /v1/trips är historik, inte plan."
                     : "Inga turer alls i fönstret. Det säger ingenting säkert; prova igen en vecka då det körts."}
+              </p>
+
+              {/* Antalet turer säger inget utan fördelningen. Är en tur
+                  ett arbetspass ska nästan varje chaufför ha flera i
+                  veckan; ligger snittet kring en är det något annat. */}
+              <p className="mt-2 max-w-[68ch] text-sm">
+                {(() => {
+                  const past = report.trips.past;
+                  if (!past || past.rows === 0 || past.employees === 0) return null;
+                  const per = past.rows / past.employees;
+                  return per < 2
+                    ? `Turerna fördelar sig på ${past.employees} personer, ${per.toFixed(1)} per person och vecka. En tur är alltså inget arbetspass — fälten allowanceReductions och borderCrossings pekar mot en traktamentsgrundande resa. Turhistoriken duger då inte för att härleda arbetsdagar, och arbetsmönstren får fyllas i för hand.`
+                    : `${per.toFixed(1)} turer per person och vecka. Tätt nog för att kunna säga något om vilka dagar någon kör.`;
+                })()}
               </p>
             </>
           )}

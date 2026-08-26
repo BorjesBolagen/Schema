@@ -220,6 +220,32 @@ describe("turer: planerade eller körda", () => {
     expect(report.trips?.past?.statuses).toEqual(["approved"]);
   });
 
+  /**
+   * Antalet turer säger inget utan fördelningen. Femton turer kan vara
+   * tre personer som kör fem dagar var — eller femton personer med en
+   * resa var, vilket betyder att en tur inte är ett arbetspass.
+   */
+  it("räknar hur många personer turerna fördelar sig på", async () => {
+    const then = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const many = ["a", "b", "c"].flatMap((who) => [
+      { ...trip(then, "approved"), employeeId: who },
+      { ...trip(then, "approved"), employeeId: who },
+    ]);
+    const report = await probeTenant(windowed([], many));
+
+    expect(report.trips?.past?.rows).toBe(6);
+    expect(report.trips?.past?.employees).toBe(3);
+  });
+
+  it("räknar personen en gång även med många turer", async () => {
+    const then = new Date(Date.now() - 86_400_000).toISOString();
+    const same = Array.from({ length: 8 }, () => ({ ...trip(then, "approved"), employeeId: "a" }));
+    const report = await probeTenant(windowed([], same));
+
+    expect(report.trips?.past?.rows).toBe(8);
+    expect(report.trips?.past?.employees).toBe(1);
+  });
+
   it("säger inga-turer när fönstren är tomma", async () => {
     const report = await probeTenant(windowed([], []));
     expect(report.trips?.verdict).toBe("inga-turer");

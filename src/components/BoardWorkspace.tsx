@@ -247,6 +247,12 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
                 {weekPlacement.name}: {weekPlacement.placed} pass utlagda
                 {weekPlacement.skipped.some((x) => x.reason === "frånvaro") &&
                   `, ${weekPlacement.skipped.filter((x) => x.reason === "frånvaro").length} dagar frånvaro`}
+                {/* Noll utlagda när allt redan står där är inte samma
+                    sak som noll för att inget gick att lägga ut. */}
+                {weekPlacement.skipped.some((x) => x.reason === "redan utlagd") &&
+                  `, ${
+                    weekPlacement.skipped.filter((x) => x.reason === "redan utlagd").length
+                  } dagar stod redan på raden`}
                 {weekPlacement.addedToCrew && ", tillagd i bemanningen"}
               </>
             )}

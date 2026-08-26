@@ -10,6 +10,7 @@ import {
   type PatternDayInput,
 } from "@/app/actions";
 import type { PatternSuggestion } from "@/lib/trip-patterns";
+import type { SuggestionReport } from "@/server/transpa-work-days";
 import { mondayOfWeek } from "@/lib/week";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
@@ -47,6 +48,7 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
   const [overwrite, setOverwrite] = useState(false);
   const [suggestions, setSuggestions] = useState<PatternSuggestion[] | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const [report, setReport] = useState<SuggestionReport | null>(null);
 
   const mine = suggestions?.find((s) => s.employeeId === employeeId);
 
@@ -66,10 +68,14 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
         return;
       }
       setSuggestions(report.suggestions);
+      setReport(report);
+
+      /* Antalet turer säger inget i sig — det som avgör om underlaget
+         duger är hur många personer de fördelar sig på. */
       setSuggestNote(
-        report.trips === 0
-          ? "Inga turer hittades. Personerna kanske saknar koppling till TransPA, eller har inte kört de senaste veckorna."
-          : `${report.trips} turer lästa från de senaste ${report.weeksBack} veckorna.`,
+        report.linked === 0
+          ? "Ingen i bemanningen är kopplad till TransPA. Kör synken under TransPA-anslutning först."
+          : `${report.trips} turer på ${report.weeksBack} veckor, för ${report.withTrips} av ${report.linked} personer.`,
       );
     });
   }
@@ -205,6 +211,23 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
             </button>
             {suggestNote && <span className="text-xs text-(--color-muted)">{suggestNote}</span>}
           </div>
+
+          {/* Tystnad är inte ett svar. Har den valda personen inga turer
+              såg det ut som att knappen inte gjorde något — vilket den
+              hade gjort, för alla utom hen. */}
+          {report?.ok && !mine && (
+            <p className="mt-3 rounded border border-(--color-line) bg-gray-50 p-3 text-xs text-(--color-warn)">
+              Inga turer för den här personen de senaste {report.weeksBack} veckorna. Mönstret får
+              fyllas i för hand nedan.
+              {report.withTrips === 0 && report.linked > 0 && (
+                <>
+                  {" "}
+                  Ingen av de {report.linked} personerna hade några turer heller — turhistoriken bär
+                  troligen inte arbetsdagar hos er, utan bara traktamentsgrundande resor.
+                </>
+              )}
+            </p>
+          )}
 
           {mine && (
             <div className="mt-3 rounded border border-(--color-line) bg-gray-50 p-3 text-xs">

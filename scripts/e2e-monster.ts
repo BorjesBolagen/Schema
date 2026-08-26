@@ -34,10 +34,14 @@ console.log("lovar inte längre TransPA-hämtning:", !/tills arbetsdagarna kan h
 await suggest.click();
 await page.waitForTimeout(5000);
 const after = await page.locator("body").innerText();
-const note = after
-  .split("\n")
-  .find((l) => /^(Inga turer|Kunde inte läsa|\d+ turer)/.test(l.trim()));
-console.log("svarsrad från åtgärden:", note ?? "(ingen — åtgärden svarade inte)");
+const lines = after.split("\n").map((l) => l.trim());
+const note = lines.find((l) => /^(Ingen i bemanningen|Kunde inte läsa|\d+ turer på)/.test(l));
+console.log("sammanfattning:", note ?? "(ingen — åtgärden svarade inte)");
+
+/* Det som var trasigt: sa panelen ingenting om den valda personen såg
+   det ut som att knappen inte gjorde något alls. */
+const perPerson = lines.find((l) => /^(Inga turer för den här personen|Kör |Bara \d+ vecka|Turerna följer)/.test(l));
+console.log("besked om den valda personen:", perPerson ?? "(INGET — det är felet)");
 console.log("knappen är klickbar igen:", await suggest.isEnabled());
 
 console.log("JS-fel:", errors.length ? errors.slice(0, 3) : "inga");

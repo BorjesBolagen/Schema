@@ -5,6 +5,7 @@ import {
   TranspaClient,
   TranspaShapeError,
   API_BASE,
+  MAX_LIMIT,
   rowsOf,
 } from "@/lib/transpa/client";
 import {
@@ -64,8 +65,20 @@ export interface EndpointProbe {
  */
 export interface TripWindow {
   rows: number;
-  /** Sant när taket nåddes — då är rows ett minimum, inte ett antal. */
+  /** Sant när sidtaket nåddes — då är rows ett minimum, inte ett antal. */
   capped: boolean;
+  /**
+   * Hur många olika personer turerna fördelar sig på.
+   *
+   * Det är den avgörande siffran. Är en tur ett arbetspass ska nästan
+   * varje chaufför ha flera turer i veckan. Fördelar sig i stället en
+   * handfull turer på lika många personer är "tur" något annat —
+   * fälten allowanceReductions och borderCrossings pekar mot en
+   * traktamentsgrundande resa.
+   *
+   * Bara antalet, aldrig vilka.
+   */
+  employees: number;
   statuses: string[];
 }
 
@@ -292,23 +305,36 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
   const iso = (ms: number) => new Date(ms).toISOString();
   const DAY = 86_400_000;
 
-  /* Taket finns för att fönsterfrågan ska vara billig — den ska svara
-     på om det finns turer, inte räkna dem. */
-  const LIMIT = 50;
+  /* Fem sidor à 100 rader räcker för att se hur turerna fördelar sig,
+     och sätter ändå ett tak så frågan förblir billig. */
+  const TRIP_PAGES = 5;
 
   const window = async (from: string, to: string): Promise<TripWindow> => {
-    const response = await client.request<unknown>("/v1/trips", {
-      filter: overlapsRange("startDateTime", from, to),
-      limit: LIMIT,
-      scopes,
-    });
-    const rows = rowsOf<Record<string, unknown>>(response, "/v1/trips").rows;
+    /* Bläddring i stället för en enda sida: antalet turer säger inget
+       utan att veta hur många personer de fördelar sig på, och en sida
+       på 100 rader räcker inte för att se det. */
+    const rows = await client.list<Record<string, unknown>>(
+      "/v1/trips",
+      { filter: overlapsRange("startDateTime", from, to), scopes },
+      TRIP_PAGES,
+    );
+
     /* Status är ett tillståndsvärde, inte en personuppgift — till
-       skillnad från employeeId och tiderna, som aldrig lämnar servern. */
+       skillnad från employeeId och tiderna, som aldrig lämnar servern.
+       Personerna räknas, men inga id:n förs vidare. */
     const statuses = [
       ...new Set(rows.map((r) => (typeof r.status === "string" ? r.status : "")).filter(Boolean)),
     ].sort();
-    return { rows: rows.length, capped: rows.length >= LIMIT, statuses };
+    const employees = new Set(
+      rows.map((r) => (typeof r.employeeId === "string" ? r.employeeId : "")).filter(Boolean),
+    ).size;
+
+    return {
+      rows: rows.length,
+      capped: rows.length >= TRIP_PAGES * MAX_LIMIT,
+      employees,
+      statuses,
+    };
   };
 
   try {

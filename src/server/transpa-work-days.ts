@@ -35,6 +35,19 @@ export interface SuggestionReport {
   weeksBack: number;
   /** Antal turer som lästes, över alla bolag. */
   trips: number;
+  /** Personer förslaget frågades om. */
+  asked: number;
+  /** Av dem: hur många som har en TransPA-koppling att fråga om. */
+  linked: number;
+  /**
+   * Av de kopplade: hur många som faktiskt hade någon tur i perioden.
+   *
+   * Det är den siffra som avgör om turhistoriken duger som underlag.
+   * Ligger den nära noll bär /v1/trips inte arbetsdagar — fälten
+   * allowanceReductions och borderCrossings pekar mot att en "tur" är
+   * en traktamentsgrundande resa, inte ett arbetspass.
+   */
+  withTrips: number;
   suggestions: PatternSuggestion[];
   error?: string;
 }
@@ -56,7 +69,15 @@ export async function suggestPatternsFromTrips(
   weeksBack = DEFAULT_WEEKS_BACK,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SuggestionReport> {
-  const empty: SuggestionReport = { ok: true, weeksBack, trips: 0, suggestions: [] };
+  const empty: SuggestionReport = {
+    ok: true,
+    weeksBack,
+    trips: 0,
+    asked: employeeIds.length,
+    linked: 0,
+    withTrips: 0,
+    suggestions: [],
+  };
   if (employeeIds.length === 0) return empty;
 
   const db = getDb();
@@ -74,6 +95,7 @@ export async function suggestPatternsFromTrips(
      vara utan turer — hon är utan koppling. */
   const linked = people.filter((p) => p.transpaId && p.tenantId);
   if (linked.length === 0) return empty;
+  empty.linked = linked.length;
 
   const byTranspaId = new Map(linked.map((p) => [p.transpaId!, p.id]));
   const byTenant = new Map<string, string[]>();
@@ -122,16 +144,21 @@ export async function suggestPatternsFromTrips(
       }
     } catch (error) {
       return {
+        ...empty,
         ok: false,
-        weeksBack,
         trips: collected.length,
-        suggestions: [],
         error: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
-  return { ok: true, weeksBack, trips: collected.length, suggestions: suggestPatterns(collected) };
+  return {
+    ...empty,
+    ok: true,
+    trips: collected.length,
+    withTrips: new Set(collected.map((t) => t.employeeId)).size,
+    suggestions: suggestPatterns(collected),
+  };
 }
 
 /**
