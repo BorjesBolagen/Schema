@@ -180,8 +180,8 @@ describe("samma vägar redovisas oavsett hur långt körningen kom", () => {
 });
 
 /**
- * Fönsterfrågan mot /v1/trips avgör om TranspaWorkDayProvider går att
- * bygga alls. Svaret ska följa av vad API:t returnerar, inte av vad vi
+ * Fönsterfrågan mot /v1/trips avgör om arbetsdagarna går att hämta
+ * från TransPA alls. Svaret ska följa av vad API:t returnerar, inte av vad vi
  * hoppas.
  */
 describe("turer: planerade eller körda", () => {

@@ -1,5 +1,5 @@
 import { asc, eq, sql } from "drizzle-orm";
-import { getDb, schema, readWithTimeout } from "@/db";
+import { getDb, schema, readWithTimeout, rowsFromExecute } from "@/db";
 import {
   type AbsenceLike,
   type AssignmentLike,
@@ -244,7 +244,8 @@ async function runGetBoardWeek(
    * kolumnnamnen.
    */
   const crewOfBoard = sql`select c.employee_id from board_crew c where c.board_id = ${board.id}`;
-  const [bundle] = (await db.execute(sql`
+  const bundleRows = rowsFromExecute<BoardWeekBundle>(
+    await db.execute(sql`
     select
       (select coalesce(json_agg(json_build_object(
         'id', r.id, 'boardId', r.board_id, 'groupId', r.group_id, 'label', r.label,
@@ -307,7 +308,14 @@ async function runGetBoardWeek(
        from work_pattern_day d
        where d.work_pattern_id in (
          select w.id from work_pattern w where w.employee_id in (${crewOfBoard}))) as pattern_days
-  `)) as unknown as [BoardWeekBundle];
+    `),
+  );
+
+  /* En tom lista här betyder att frågan inte gav någon rad alls — det
+     ska inte gå, men att låta den falla vidare som "undefined.all_rows"
+     skulle ge ett fel som inte pekar hit. */
+  const bundle = bundleRows[0];
+  if (!bundle) throw new Error("Kunde inte läsa tavelveckan: frågan gav ingen rad.");
 
   const allRows = bundle.all_rows;
   const rows = allRows.filter((r) => r.boardId === board.id);

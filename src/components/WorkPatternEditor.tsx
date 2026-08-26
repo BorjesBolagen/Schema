@@ -3,7 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import type { BoardWeek } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
-import { applyWorkPatternToMany, saveWorkPattern, type PatternDayInput } from "@/app/actions";
+import {
+  applyWorkPatternToMany,
+  saveWorkPattern,
+  suggestPatternsForBoard,
+  type PatternDayInput,
+} from "@/app/actions";
+import type { PatternSuggestion } from "@/lib/trip-patterns";
 import { mondayOfWeek } from "@/lib/week";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
@@ -39,6 +45,41 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState<string | null>(null);
   const [overwrite, setOverwrite] = useState(false);
+  const [suggestions, setSuggestions] = useState<PatternSuggestion[] | null>(null);
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
+
+  const mine = suggestions?.find((s) => s.employeeId === employeeId);
+
+  /**
+   * Hämtar turhistoriken för hela bemanningen på en gång.
+   *
+   * Ett anrop för alla, inte ett per person: turerna hämtas ändå i en
+   * fråga per bolag, och planeraren ska kunna bläddra mellan personer
+   * utan att vänta på nätverket varje gång.
+   */
+  function fetchSuggestions() {
+    setSuggestNote(null);
+    startTransition(async () => {
+      const report = await suggestPatternsForBoard({ boardSlug: data.board.slug });
+      if (!report.ok) {
+        setSuggestNote(`Kunde inte läsa turhistoriken: ${report.error}`);
+        return;
+      }
+      setSuggestions(report.suggestions);
+      setSuggestNote(
+        report.trips === 0
+          ? "Inga turer hittades. Personerna kanske saknar koppling till TransPA, eller har inte kört de senaste veckorna."
+          : `${report.trips} turer lästa från de senaste ${report.weeksBack} veckorna.`,
+      );
+    });
+  }
+
+  /** Fyller i förslaget i rutnätet. Sparas först när planeraren sparar. */
+  function useSuggestion(suggestion: PatternSuggestion) {
+    setCycleWeeks(1);
+    setPicked(new Set(suggestion.days.map((d) => key(0, d.weekday, d.shift))));
+    setSaved(null);
+  }
 
   /** Byter person och läser in hens mönster. */
   function select(id: string) {
@@ -96,8 +137,8 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
         </div>
 
         <p className="border-b border-(--color-line) bg-gray-50 px-5 py-2 text-xs text-(--color-muted)">
-          Vilka dagar personen jobbar. Används tills arbetsdagarna kan hämtas från TransPA — då tar
-          hämtningen över för de personer TransPA har besked om.
+          Vilka dagar personen jobbar. TransPA levererar inga planerade pass — det är kontrollerat
+          — så mönstret här är källan. Turhistoriken kan däremot föreslå det åt dig.
         </p>
 
         <div className="flex flex-wrap items-end gap-4 border-b border-(--color-line) px-5 py-4">
@@ -150,6 +191,72 @@ export function WorkPatternEditor({ data, onClose }: { data: BoardWeek; onClose:
               <option value={0}>Söndag</option>
             </select>
           </label>
+        </div>
+
+        <div className="border-b border-(--color-line) px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={fetchSuggestions}
+              disabled={pending}
+              className="rounded border border-(--color-line) px-3 py-1.5 text-sm disabled:opacity-50"
+            >
+              {pending ? "Läser turhistoriken …" : "Föreslå ur turhistoriken"}
+            </button>
+            {suggestNote && <span className="text-xs text-(--color-muted)">{suggestNote}</span>}
+          </div>
+
+          {mine && (
+            <div className="mt-3 rounded border border-(--color-line) bg-gray-50 p-3 text-xs">
+              {mine.confidence === "otillräcklig" ? (
+                <p className="text-(--color-warn)">
+                  Bara {mine.weeksObserved} vecka{mine.weeksObserved === 1 ? "" : "or"} med turer —
+                  för tunt underlag för att föreslå ett mönster.
+                </p>
+              ) : mine.days.length === 0 ? (
+                <p className="text-(--color-warn)">
+                  Turerna följer inget tydligt veckomönster. Dagarna nedan förekommer, men för
+                  oregelbundet för att fyllas i åt dig.
+                </p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>
+                    Kör{" "}
+                    <strong>
+                      {mine.days
+                        .map((d) => WEEKDAYS.find((w) => w.value === d.weekday)?.label)
+                        .join(", ")}
+                    </strong>{" "}
+                    ({SHIFT_LABEL[mine.days[0].shift].toLowerCase()}), {mine.weeksObserved} veckor
+                    som underlag.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => useSuggestion(mine)}
+                    className="rounded bg-(--color-accent) px-3 py-1 text-white"
+                  >
+                    Fyll i
+                  </button>
+                </div>
+              )}
+
+              {/* Osäkra dagar redovisas men fylls aldrig i. Ett tyst
+                  felaktigt mönster lägger ut fel person på fel bil. */}
+              {mine.uncertain.length > 0 && (
+                <p className="mt-2 text-(--color-muted)">
+                  Oregelbundet:{" "}
+                  {mine.uncertain
+                    .map(
+                      (e) =>
+                        `${WEEKDAYS.find((w) => w.value === e.weekday)?.label} ${
+                          SHIFT_ICON[e.shift]
+                        } ${e.weeksWorked} av ${e.weeksObserved} veckor`,
+                    )
+                    .join(" · ")}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 px-5 py-4">

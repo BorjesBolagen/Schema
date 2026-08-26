@@ -53,7 +53,7 @@ export interface EndpointProbe {
 /**
  * Är turerna planerade eller körda?
  *
- * Det avgör om TranspaWorkDayProvider kan byggas alls. Finns turer som
+ * Det avgör om arbetsdagarna kan hämtas från TransPA alls. Finns turer som
  * ligger i framtiden vet TransPA vem som ska jobba, och arbetsdagarna
  * kan hämtas i stället för att gissas ur ett mönster. Finns bara turer
  * bakåt är /v1/trips historik, och då kan den på sin höjd föreslå ett
@@ -62,11 +62,18 @@ export interface EndpointProbe {
  * Bara antal och statusvärden redovisas — aldrig employeeId eller
  * tider, som pekar ut enskilda personers arbetspass.
  */
+export interface TripWindow {
+  rows: number;
+  /** Sant när taket nåddes — då är rows ett minimum, inte ett antal. */
+  capped: boolean;
+  statuses: string[];
+}
+
 export interface TripsWindow {
   outcome: ProbeOutcome;
   detail?: string;
-  future?: { rows: number; statuses: string[] };
-  past?: { rows: number; statuses: string[] };
+  future?: TripWindow;
+  past?: TripWindow;
   /** Slutsatsen, uttryckt så att den går att handla på. */
   verdict?: "planerade" | "bara-korda" | "inga-turer";
 }
@@ -250,10 +257,14 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
   const iso = (ms: number) => new Date(ms).toISOString();
   const DAY = 86_400_000;
 
-  const window = async (from: string, to: string) => {
+  /* Taket finns för att fönsterfrågan ska vara billig — den ska svara
+     på om det finns turer, inte räkna dem. */
+  const LIMIT = 50;
+
+  const window = async (from: string, to: string): Promise<TripWindow> => {
     const response = await client.request<unknown>("/v1/trips", {
       filter: overlapsRange("startDateTime", from, to),
-      limit: 50,
+      limit: LIMIT,
       scopes,
     });
     const rows = rowsOf<Record<string, unknown>>(response, "/v1/trips").rows;
@@ -262,7 +273,7 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
     const statuses = [
       ...new Set(rows.map((r) => (typeof r.status === "string" ? r.status : "")).filter(Boolean)),
     ].sort();
-    return { rows: rows.length, statuses };
+    return { rows: rows.length, capped: rows.length >= LIMIT, statuses };
   };
 
   try {

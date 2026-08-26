@@ -147,7 +147,9 @@ export default async function TranspaPage() {
           ) : (
             <>
               <p className="mt-1 text-xs text-(--color-muted)">
-                Vecka framåt: {report.trips.future?.rows ?? 0} turer · vecka bakåt:{" "}
+                Vecka framåt: {report.trips.future?.capped ? "minst " : ""}
+                {report.trips.future?.rows ?? 0} turer · vecka bakåt:{" "}
+                {report.trips.past?.capped ? "minst " : ""}
                 {report.trips.past?.rows ?? 0} turer
                 {report.trips.past?.statuses.length
                   ? ` · status: ${report.trips.past.statuses.join(", ")}`
@@ -200,13 +202,12 @@ export default async function TranspaPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-semibold">Gissade vägar</h2>
+        <h2 className="text-sm font-semibold">Vägar som inte finns</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Scopet <code>transpaapi:shifts:read</code> är beviljat, men <code>/v1/shifts</code>
-          svarar 404 — resursen finns alltså, på en annan väg. Raderna med
-          <em> Pass </em> nedan provar de troligaste, inklusive under en riktig person. Övriga är
-          rena gissningar på frånvaro och semester; svarar någon av dem annat än <em>finns
-          inte</em> är det värt att begära det scopet också.
+          Samtliga svarar 404, även de som provats mot ett riktigt person-id. Ett beviljat scope
+          betyder alltså bara att Vismas katalog känner till namnet, inte att Public API exponerar
+          resursen. Listan står kvar som bevakning: svarar någon av dem annat än <em>finns inte</em>{" "}
+          en dag har Visma öppnat resursen, och då är det värt att veta.
         </p>
         <table className="mt-2 w-full border-collapse">
           <tbody>

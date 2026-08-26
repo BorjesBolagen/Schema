@@ -236,6 +236,22 @@ export async function readWithTimeout<T>(fn: () => Promise<T>, ms = 6_000): Prom
   }
 }
 
+/**
+ * Raderna ur en rå db.execute(), oavsett drivrutin.
+ *
+ * postgres-js returnerar en array; PGlite returnerar { rows }. Skillnaden
+ * syns inte i typerna, så en destrukturering av resultatet fungerade i
+ * produktion och kraschade lokalt med "(intermediate value) is not
+ * iterable" — och en cast till [T] gjorde tystnaden fullständig genom
+ * att påstå en form som inte fanns. Därför den här: en enda plats som
+ * vet vad drivrutinerna gör.
+ */
+export function rowsFromExecute<T>(result: unknown): T[] {
+  if (Array.isArray(result)) return result as T[];
+  const rows = (result as { rows?: unknown })?.rows;
+  return Array.isArray(rows) ? (rows as T[]) : [];
+}
+
 /** True när appen kör mot en riktig Postgres och inte den inbäddade. */
 export function isHostedDatabase(): boolean {
   return isPostgresUrl(connectionUrl());

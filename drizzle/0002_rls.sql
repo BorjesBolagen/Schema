@@ -20,24 +20,43 @@
 -- ägaren, och då skulle appen sluta fungera.
 
 ALTER TABLE "absence" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "app_user" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "assignment" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "base_schedule" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "board" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "board_crew" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "board_group" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "board_member" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "board_row" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "employee" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "station_place" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "sync_run" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "traffic_area" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "transpa_tenant" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "vehicle" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "vehicle_group" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "work_pattern" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 ALTER TABLE "work_pattern_day" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
 
 -- Bälte och hängslen: ta även bort de rättigheter Supabase ger anon och
 -- authenticated som standard. RLS ensamt räcker, men om någon längre

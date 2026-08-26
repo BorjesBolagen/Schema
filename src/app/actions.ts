@@ -9,6 +9,10 @@ import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
+import {
+  suggestPatternsFromTrips,
+  type SuggestionReport,
+} from "@/server/transpa-work-days";
 
 const refresh = (slug: string) => revalidatePath(`/tavla/${slug}`);
 
@@ -513,6 +517,36 @@ export async function saveWorkPattern(input: {
  * mellan en tom databas och en veckotavla som fylls. Vilka som träffas
  * avgörs av anroparen — normalt de som saknar mönster.
  */
+/**
+ * Föreslår mönster ur turhistoriken i TransPA.
+ *
+ * TransPA har inga planerade pass — det är avgjort — men /v1/trips bär
+ * körda turer, och ur några veckors turer syns vilka dagar och vilket
+ * skift en person faktiskt kör. Förslaget fylls i åt planeraren, som
+ * får godkänna det. Osäkra dagar föreslås inte utan redovisas separat.
+ *
+ * Bara tavlans egen bemanning, av samma skäl som applyWorkPatternToMany:
+ * en planerare ska inte kunna läsa ut arbetstider för folk hen inte
+ * hanterar.
+ */
+export async function suggestPatternsForBoard(input: {
+  boardSlug: string;
+  weeksBack?: number;
+}): Promise<SuggestionReport> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+
+  const crew = await getDb()
+    .select({ employeeId: schema.boardCrew.employeeId })
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id));
+
+  return suggestPatternsFromTrips(
+    crew.map((c) => c.employeeId),
+    input.weeksBack,
+  );
+}
+
 export async function applyWorkPatternToMany(input: {
   employeeIds: string[];
   cycleWeeks: number;

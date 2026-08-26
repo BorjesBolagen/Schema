@@ -299,24 +299,43 @@ ALTER TABLE "employee" ADD CONSTRAINT "employee_number_uq" UNIQUE("transpa_tenan
 -- ägaren, och då skulle appen sluta fungera.
 
 ALTER TABLE "absence" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "app_user" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "assignment" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "base_schedule" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "board" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "board_crew" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "board_group" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "board_member" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "board_row" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "employee" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "session" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "station_place" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "sync_run" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "traffic_area" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "transpa_tenant" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "vehicle" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "vehicle_group" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "work_pattern" ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE "work_pattern_day" ENABLE ROW LEVEL SECURITY;
+
 
 -- Bälte och hängslen: ta även bort de rättigheter Supabase ger anon och
 -- authenticated som standard. RLS ensamt räcker, men om någon längre
@@ -350,5 +369,5 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'dcd5e93674
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'dcd5e93674f810457deb29590251f149eefcf063f76dcadaff83beeec8b6cee6');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '630566f1c775d7cab27a27d2f34809d526f59edc848077f6b812b4f881b20934', 1787657708770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '630566f1c775d7cab27a27d2f34809d526f59edc848077f6b812b4f881b20934');
-INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '416d5cb3af84b9b94e63b0c9bce0cc6e207cb5118e6796ce301747404b8536d1', 1787657709770
-WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '416d5cb3af84b9b94e63b0c9bce0cc6e207cb5118e6796ce301747404b8536d1');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'f4da4f11a725385615862e445dc258a6ea655516dbbe074d071ee95b74ce6e07', 1787657709770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'f4da4f11a725385615862e445dc258a6ea655516dbbe074d071ee95b74ce6e07');
