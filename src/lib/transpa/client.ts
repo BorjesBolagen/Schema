@@ -2,6 +2,15 @@ import { getAccessToken, type TranspaCredentials } from "./auth";
 
 export const API_BASE = "https://api.mytranspa.com/publicApi";
 
+/**
+ * Största antal rader TransPA ger per sida.
+ *
+ * Vismas egen dokumentation: "Default and maximum is 100". Begär man
+ * fler blir svaret "Invalid limit" — inte en tyst nedklippning — så
+ * hela anropet faller.
+ */
+export const MAX_LIMIT = 100;
+
 /** TransPA svarar med problem+json på fel. */
 export interface Problem {
   type?: string;
@@ -106,7 +115,13 @@ export class TranspaClient {
     const token = await getAccessToken(this.options.credentials, options.scopes, this.fetchImpl);
     const url = new URL(this.baseUrl + path);
     if (options.filter) url.searchParams.set("filter", options.filter);
-    if (options.limit) url.searchParams.set("limit", String(options.limit));
+    /* Över taket svarar TransPA "Invalid limit" och anropet faller helt.
+       Klämmas här och inte hos anroparen: gränsen är API:ts, och ett
+       anropsställe som ber om fler ska få så många som går snarare än
+       ett fel. Behövs fler rader finns list(), som bläddrar. */
+    if (options.limit) {
+      url.searchParams.set("limit", String(Math.min(options.limit, MAX_LIMIT)));
+    }
     if (options.cursor) url.searchParams.set("cursor", options.cursor);
 
     const response = await this.fetchImpl(url.toString(), {

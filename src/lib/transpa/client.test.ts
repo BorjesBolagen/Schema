@@ -1,5 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { TranspaClient, TranspaApiError, TranspaShapeError, rowsOf } from "./client";
+import {
+  TranspaClient,
+  TranspaApiError,
+  TranspaShapeError,
+  MAX_LIMIT,
+  rowsOf,
+} from "./client";
 import { clearTokenCache } from "./auth";
 
 const credentials = { clientId: "id", clientSecret: "hemlis", tenantId: "t1" };
@@ -124,5 +130,31 @@ describe("TranspaClient", () => {
   it("skiljer en tom sida från en okänd form", async () => {
     expect(rowsOf({ items: [] }, "/v1/employees")).toEqual({ rows: [], key: "items" });
     expect(() => rowsOf({}, "/v1/employees")).toThrowError(/varken items eller data/);
+  });
+
+  /* TransPA svarar "Invalid limit" och fäller hela anropet när man ber
+     om fler än 100 rader — inte en tyst nedklippning. Diagnostiken bad
+     om 300 och föll därför i drift. */
+  it("klämmer limit till API:ts tak", async () => {
+    const { impl, calls } = fakeFetch(() => listPage([], null));
+    await new TranspaClient({ credentials, fetchImpl: impl }).request("/v1/employees", {
+      limit: 300,
+    });
+
+    const call = calls.find((c) => c.includes("/v1/employees"))!;
+    expect(call).toContain(`limit=${MAX_LIMIT}`);
+    expect(call).not.toContain("limit=300");
+  });
+
+  it("lämnar ett limit under taket i fred", async () => {
+    const { impl, calls } = fakeFetch(() => listPage([], null));
+    await new TranspaClient({ credentials, fetchImpl: impl }).request("/v1/employees", { limit: 1 });
+    expect(calls.find((c) => c.includes("/v1/employees"))!).toContain("limit=1");
+  });
+
+  it("skickar inget limit när inget begärts", async () => {
+    const { impl, calls } = fakeFetch(() => listPage([], null));
+    await new TranspaClient({ credentials, fetchImpl: impl }).request("/v1/stationPlaces");
+    expect(calls.find((c) => c.includes("/v1/stationPlaces"))!).not.toContain("limit=");
   });
 });

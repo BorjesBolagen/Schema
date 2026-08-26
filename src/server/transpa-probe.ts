@@ -323,8 +323,14 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
 
 /** Så många distinkta värden som visas per fält. Fler säger inget mer. */
 const TOP_VALUES = 20;
-/** Så många personer frågan bygger på. Räcker gott för att se ett mönster. */
-const GROUPING_SAMPLE = 300;
+/**
+ * Så många sidor personal frågan bläddrar igenom.
+ *
+ * En sida är högst 100 rader — TransPA:s tak — så fem sidor räcker för
+ * Börjes 301 personer och sätter ändå en gräns för en tenant som skulle
+ * vara mycket större.
+ */
+const GROUPING_PAGES = 5;
 
 /** Fälten som skulle kunna bära orten. Namnen kom ur en riktig körning. */
 const GROUP_FIELDS = ["grouping", "professionGroup"];
@@ -350,19 +356,20 @@ function groupValue(raw: unknown): string | null {
 
 async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<GroupingProbe> {
   try {
-    const stationsRaw = await client.request<unknown>("/v1/stationPlaces", { limit: 200, scopes });
-    const stations = rowsOf<Record<string, unknown>>(stationsRaw, "/v1/stationPlaces").rows;
+    /* Bläddring, inte en stor sida: stationPlaces har ingen
+       limit-parameter alls, och där den finns är taket 100. */
+    const stations = await client.list<Record<string, unknown>>("/v1/stationPlaces", { scopes });
     const stationNames = stations
       .map((s) => (typeof s.name === "string" ? s.name : ""))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, "sv"));
     const known = new Set(stationNames.map(norm));
 
-    const peopleRaw = await client.request<unknown>("/v1/employees", {
-      limit: GROUPING_SAMPLE,
-      scopes,
-    });
-    const people = rowsOf<Record<string, unknown>>(peopleRaw, "/v1/employees").rows;
+    const people = await client.list<Record<string, unknown>>(
+      "/v1/employees",
+      { scopes },
+      GROUPING_PAGES,
+    );
 
     const fields: GroupFieldProbe[] = GROUP_FIELDS.map((field) => {
       const counts = new Map<string, number>();
