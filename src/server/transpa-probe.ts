@@ -219,6 +219,14 @@ const SAMPLE_SHAPE_OF = new Set([
  * dag har Visma öppnat resursen, och då är det värt att veta.
  */
 const SHIFT_CANDIDATES = [
+  /* /v1/shifts stod först i listan, föll ur när jag skrev om vägarna,
+     och sidan fortsatte ändå påstå att den svarat 404. Den provas igen:
+     Swagger-UI:t har en tagg "timereports and shifts" med operationen
+     get-shift, så resursen finns — frågan är bara var. */
+  "/v1/shifts",
+  "/v1/timereports",
+  "/v1/timeReports/shifts",
+  "/v1/employees/{id}/timeReports",
   "/v1/workShifts",
   "/v1/employeeShifts",
   "/v1/shiftSchedules",
@@ -246,18 +254,53 @@ const GUESSES: Array<[string, string]> = [
  * api.mytranspa.com/doc/openapi/swaggerui/, och själva dokumentet
  * brukar ligga i närheten under något av namnen nedan.
  */
-const SPEC_URLS = [
+/**
+ * Swagger-UI:t, som vet var specen ligger.
+ *
+ * Att gissa spec-URL:en var fel metod: tio gissningar gav tio 404 och
+ * slutsatsen "specen finns inte" — vilket var fel. Den ligger bakom
+ * gränssnittet, och sidan bär adressen till sin egen spec, antingen
+ * inline eller i swagger-initializer.js. Den läses ur i stället.
+ */
+const SWAGGER_UI_URLS = [
+  "https://api.mytranspa.com/doc/openapi/swaggerui/",
+  "https://api.mytranspa.com/doc/openapi/swaggerui/index.html",
+];
+
+/** Sista utväg om UI:t inte går att läsa. */
+const SPEC_FALLBACKS = [
   "https://api.mytranspa.com/doc/openapi/openapi.json",
   "https://api.mytranspa.com/doc/openapi/swagger.json",
-  "https://api.mytranspa.com/doc/openapi/v1/swagger.json",
   "https://api.mytranspa.com/doc/openapi/v1/openapi.json",
-  "https://api.mytranspa.com/doc/openapi/swaggerui/swagger.json",
-  "https://api.mytranspa.com/doc/openapi/spec.json",
-  "https://api.mytranspa.com/doc/openapi/openapi.yaml",
-  "https://api.mytranspa.com/publicApi/swagger/v1/swagger.json",
-  "https://api.mytranspa.com/publicApi/openapi.json",
-  "https://api.mytranspa.com/swagger/v1/swagger.json",
 ];
+
+/**
+ * Plockar ut adresser till spec-filer ur en Swagger-UI-sida.
+ *
+ * Swagger UI skriver antingen `url: "..."` eller `urls: [{url: "..."}]`,
+ * i sidan eller i sin initializer. Relativa adresser löses mot sidan.
+ */
+export function specUrlsFrom(html: string, base: string): string[] {
+  const found = new Set<string>();
+
+  for (const m of html.matchAll(/["'](?:config)?[Uu]rl["']\s*:\s*["']([^"']+)["']/g)) {
+    found.add(m[1]);
+  }
+  for (const m of html.matchAll(/["']([^"'\s]+\.(?:json|yaml|yml))["']/g)) {
+    found.add(m[1]);
+  }
+
+  return [...found]
+    .filter((u) => !/\.(js|css|png|svg|ico|map)$/i.test(u))
+    .map((u) => {
+      try {
+        return new URL(u, base).toString();
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+}
 
 /**
  * Alla vägar sidan redovisar, i den ordning de visas.
@@ -430,33 +473,90 @@ async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<G
   }
 }
 
-async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
-  let last: SpecProbe = { url: SPEC_URLS[0], outcome: "missing" };
+/** Ett hämtat spec-dokument, eller varför det inte gick. */
+async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe | null> {
+  try {
+    const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) return null;
 
-  for (const url of SPEC_URLS) {
+    const spec = (await response.json()) as {
+      paths?: Record<string, Record<string, unknown>>;
+      info?: { version?: string };
+    };
+    if (!spec.paths || Object.keys(spec.paths).length === 0) return null;
+
+    /* Vägarna med metod, så det syns om en resurs bara går att läsa en
+       i taget — get-shift kan vara /v1/shifts/{id} utan listväg. */
+    const paths = Object.entries(spec.paths)
+      .map(([path, ops]) => {
+        const methods = Object.keys(ops ?? {})
+          .filter((m) => ["get", "post", "put", "patch", "delete"].includes(m.toLowerCase()))
+          .map((m) => m.toUpperCase())
+          .sort();
+        return methods.length ? `${path}  [${methods.join(" ")}]` : path;
+      })
+      .sort();
+
+    return { url, outcome: "ok", status: response.status, version: spec.info?.version, paths };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Letar rätt på OpenAPI-specen.
+ *
+ * Först genom att läsa Swagger-UI-sidan och plocka ut adressen den
+ * själv använder — inklusive dess initializer, där adressen oftast
+ * står. Gissningarna finns kvar men sist: de gav tio 404 och en
+ * felaktig slutsats förra gången.
+ */
+async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
+  const tried: string[] = [];
+
+  for (const uiUrl of SWAGGER_UI_URLS) {
+    let html: string;
     try {
-      const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+      const response = await fetchImpl(uiUrl, { headers: { Accept: "text/html" } });
       if (!response.ok) {
-        last = { url, outcome: response.status === 404 ? "missing" : "error", status: response.status };
+        tried.push(`${uiUrl} → ${response.status}`);
         continue;
       }
-      const spec = (await response.json()) as {
-        paths?: Record<string, unknown>;
-        info?: { version?: string };
-      };
-      return {
-        url,
-        outcome: "ok",
-        status: response.status,
-        version: spec.info?.version,
-        paths: Object.keys(spec.paths ?? {}).sort(),
-      };
+      html = await response.text();
     } catch (error) {
-      const d = describe(error);
-      last = { url, outcome: d.outcome, status: d.status };
+      tried.push(`${uiUrl} → ${error instanceof Error ? error.message : "fel"}`);
+      continue;
+    }
+
+    /* Initializern räknas som en del av sidan: Swagger UI lägger ofta
+       adressen där i stället för i HTML:en. */
+    const candidates = specUrlsFrom(html, uiUrl);
+    try {
+      const init = await fetchImpl(new URL("swagger-initializer.js", uiUrl).toString());
+      if (init.ok) candidates.push(...specUrlsFrom(await init.text(), uiUrl));
+    } catch {
+      /* Finns inte alltid. */
+    }
+
+    for (const url of [...new Set(candidates)]) {
+      const found = await readSpec(url, fetchImpl);
+      if (found) return found;
+      tried.push(url);
     }
   }
-  return last;
+
+  for (const url of SPEC_FALLBACKS) {
+    const found = await readSpec(url, fetchImpl);
+    if (found) return found;
+    tried.push(url);
+  }
+
+  return {
+    url: SWAGGER_UI_URLS[0],
+    outcome: "missing",
+    // Vilka som provats, så nästa gissning inte upprepar en av dem.
+    paths: tried.map((t) => `provad: ${t}`),
+  };
 }
 
 export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<TenantReport> {

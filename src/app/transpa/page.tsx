@@ -120,12 +120,11 @@ export default async function TranspaPage() {
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Frågan om passen är avgjord:</strong> scopet{" "}
-        <code>transpaapi:shifts:read</code> är beviljat, men varje tänkbar väg svarar 404, även med
-        ett riktigt person-id. Detsamma gäller frånvaro, semester och scheman. TransPA:s Public API
-        levererar alltså inga planerade pass — arbetsmönstren i verktyget är grunden, inte en
-        parentes. Kvar står <code>/v1/trips</code>, och frågan där är om turerna är planerade eller
-        körda.
+        adress aldrig syns här. <strong>Jakten på passen pågår.</strong> Swagger-UI:t har en tagg{" "}
+        <em>timereports and shifts</em> med operationen <code>get-shift</code>, så resursen finns —
+        men inte på någon av vägarna nedan. Sidan hämtar därför OpenAPI-specen ur Swagger-UI:t i
+        stället för att gissa adresser, och listar då varje väg API:t faktiskt har. Hittas den är
+        arbetsmönstren i verktyget en parentes i stället för grunden.
       </p>
 
       {missing ? (
@@ -311,7 +310,7 @@ export default async function TranspaPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-semibold">OpenAPI-specen</h2>
+        <h2 className="text-sm font-semibold">OpenAPI-specen — hela API:t</h2>
         {report.spec?.outcome === "ok" ? (
           <>
             <p className="mt-1 text-xs text-(--color-muted)">
@@ -319,20 +318,65 @@ export default async function TranspaPage() {
               {report.spec.version && ` · version ${report.spec.version}`} ·{" "}
               {report.spec.paths?.length} sökvägar
             </p>
-            <ul className="mt-2 max-h-72 overflow-y-auto rounded border border-(--color-line) bg-white p-3 font-mono text-xs">
-              {report.spec.paths?.map((path) => (
-                <li key={path} className="py-0.5">
-                  {path}
-                </li>
-              ))}
-            </ul>
+
+            {/* Passen är det vi letar efter. Ligger de i listan ska de
+                inte behöva letas upp för hand bland sextio rader. */}
+            {(() => {
+              const hits = (report.spec.paths ?? []).filter((p) =>
+                /shift|schedul|absen|vacation|timereport|leave/i.test(p),
+              );
+              return hits.length > 0 ? (
+                <div className="mt-2 rounded border border-(--color-accent) bg-amber-50 p-3">
+                  <p className="text-sm font-medium">
+                    Vägar som rör pass, scheman eller frånvaro ({hits.length})
+                  </p>
+                  <ul className="mt-1 font-mono text-xs">
+                    {hits.map((path) => (
+                      <li key={path} className="py-0.5">
+                        {path}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-(--color-warn)">
+                  Ingen väg i specen rör pass, scheman eller frånvaro. Då är frågan avgjord.
+                </p>
+              );
+            })()}
+
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-(--color-muted)">
+                Alla {report.spec.paths?.length} sökvägar
+              </summary>
+              <ul className="mt-2 max-h-96 overflow-y-auto rounded border border-(--color-line) bg-white p-3 font-mono text-xs">
+                {report.spec.paths?.map((path) => (
+                  <li key={path} className="py-0.5">
+                    {path}
+                  </li>
+                ))}
+              </ul>
+            </details>
           </>
         ) : (
-          <p className="mt-1 text-xs text-(--color-muted)">
-            Kunde inte hämtas ({OUTCOME[report.spec?.outcome ?? "not-run"].label.toLowerCase()}).
-            Specen ligger bakom Vismas Swagger-UI på{" "}
-            <code>api.mytranspa.com/doc/openapi/swaggerui/</code> och kan öppnas i en webbläsare.
-          </p>
+          <>
+            <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
+              Kunde inte hämtas. Sidan läser numera Swagger-UI:t på{" "}
+              <code>api.mytranspa.com/doc/openapi/swaggerui/</code> och plockar ut adressen den
+              själv använder, i stället för att gissa. Går inte heller det behöver specen hämtas för
+              hand: öppna UI:t i en webbläsare, leta upp anropet till spec-filen under
+              Nätverk-fliken, och skicka adressen.
+            </p>
+            {report.spec?.paths && report.spec.paths.length > 0 && (
+              <ul className="mt-2 rounded border border-(--color-line) bg-white p-3 font-mono text-xs text-(--color-muted)">
+                {report.spec.paths.map((line) => (
+                  <li key={line} className="py-0.5">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </section>
 
