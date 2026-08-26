@@ -170,6 +170,15 @@ export const employee = pgTable(
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     signature: text("signature"),
+    /**
+     * Yrkesroll från TransPA: driver, other eller garage.
+     *
+     * Hos Börjes är 281 av 301 chaufförer — de tjugo övriga ska inte
+     * skräpa i personallistorna när ett schema läggs. Det är också det
+     * enda gruppfält TransPA faktiskt fyller i: `grouping` är tomt för
+     * varenda person, och ingetdera bär stationsort.
+     */
+    professionGroup: text("profession_group"),
     isActive: boolean("is_active").notNull().default(true),
 
     /**

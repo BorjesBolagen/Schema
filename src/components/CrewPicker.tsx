@@ -8,7 +8,22 @@ export interface PickerEmployee {
   name: string;
   employeeNumber: string | null;
   stationPlace: string | null;
+  professionGroup: string | null;
 }
+
+/**
+ * TransPA:s roller på svenska. Okända värden visas som de är.
+ *
+ * Hos Börjes är 281 av 301 chaufförer. De tjugo övriga — garage och
+ * "other" — hör sällan hemma på en fjärrtavla, och filtret finns för
+ * att de inte ska ligga i vägen. De göms inte som standard: en tavla
+ * kan mycket väl behöva en garageman.
+ */
+export const ROLE_LABEL: Record<string, string> = {
+  driver: "chaufför",
+  other: "övrig",
+  garage: "garage",
+};
 
 /**
  * Personalväljaren.
@@ -32,6 +47,7 @@ export function CrewPicker({
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set(selected));
   const [station, setStation] = useState<string>("");
+  const [role, setRole] = useState<string>("");
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -43,14 +59,23 @@ export function CrewPicker({
     [employees],
   );
 
+  const roles = useMemo(
+    () =>
+      [...new Set(employees.map((e) => e.professionGroup).filter((r): r is string => !!r))].sort(
+        (a, b) => a.localeCompare(b, "sv"),
+      ),
+    [employees],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return employees.filter(
       (e) =>
         (!station || e.stationPlace === station) &&
+        (!role || e.professionGroup === role) &&
         (!q || e.name.toLowerCase().includes(q) || (e.employeeNumber ?? "").includes(q)),
     );
-  }, [employees, station, query]);
+  }, [employees, station, role, query]);
 
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -89,6 +114,25 @@ export function CrewPicker({
             </select>
           </label>
 
+          {roles.length > 0 && (
+            <label className="text-xs text-(--color-muted)">
+              Roll{" "}
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                aria-label="Filtrera på roll"
+                className="rounded border border-(--color-line) px-2 py-1 text-sm text-(--color-ink)"
+              >
+                <option value="">Alla</option>
+                {roles.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r] ?? r}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -120,6 +164,9 @@ export function CrewPicker({
                 <input type="checkbox" checked={picked.has(e.id)} onChange={() => toggle(e.id)} />
                 <span className="flex-1">{e.name}</span>
                 <span className="w-28 text-xs text-(--color-muted)">{e.stationPlace ?? "—"}</span>
+                <span className="w-20 text-xs text-(--color-muted)">
+                  {e.professionGroup ? (ROLE_LABEL[e.professionGroup] ?? e.professionGroup) : ""}
+                </span>
                 <span className="w-24 text-right text-xs text-(--color-muted)">
                   {e.employeeNumber ? `anst.nr ${e.employeeNumber}` : ""}
                 </span>

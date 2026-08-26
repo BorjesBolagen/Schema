@@ -21,6 +21,19 @@ interface Props {
 
 type Tab = "personal" | "fordon" | "orter";
 
+/**
+ * TransPA:s roller på svenska.
+ *
+ * Okända värden visas som de är — listan är deras, inte vår, och en
+ * roll vi inte känner igen ska synas snarare än döljas bakom en
+ * översättning som inte finns.
+ */
+const ROLE_LABEL: Record<string, string> = {
+  driver: "chaufför",
+  other: "övrig",
+  garage: "garage",
+};
+
 const field =
   "rounded border border-(--color-line) bg-white px-3 py-2 text-sm text-(--color-ink)";
 
@@ -110,12 +123,21 @@ function EmployeeTab({
   const [showInactive, setShowInactive] = useState(false);
   const [query, setQuery] = useState("");
   const [onlyWithout, setOnlyWithout] = useState(false);
+  const [role, setRole] = useState("");
+
+  /* Rollerna som faktiskt finns, inte en hårdkodad lista — TransPA
+     skickar driver, other och garage hos Börjes, men det är deras data
+     och kan se annorlunda ut i ett annat bolag. */
+  const roles = [
+    ...new Set(employees.map((e) => e.professionGroup).filter((r): r is string => !!r)),
+  ].sort((a, b) => a.localeCompare(b, "sv"));
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkStation, setBulkStation] = useState("");
 
   const shown = employees.filter((e) => {
     if (!showInactive && !e.isActive) return false;
     if (onlyWithout && e.stationPlaceId) return false;
+    if (role && e.professionGroup !== role) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -206,6 +228,24 @@ function EmployeeTab({
           <input type="checkbox" checked={onlyWithout} onChange={(e) => setOnlyWithout(e.target.checked)} />
           Bara utan stationsort
         </label>
+        {roles.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-(--color-muted)">
+            Roll
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              aria-label="Filtrera på roll"
+              className={`w-32 ${field}`}
+            >
+              <option value="">alla</option>
+              {roles.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABEL[r] ?? r}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <span className="text-xs text-(--color-muted)">{shown.length} visas</span>
       </div>
 
@@ -259,6 +299,7 @@ function EmployeeTab({
               </th>
               <th className="py-2 pr-4 font-medium">Namn</th>
               <th className="py-2 pr-4 font-medium">Anst.nr</th>
+              <th className="py-2 pr-4 font-medium">Roll</th>
               <th className="py-2 pr-4 font-medium">Stationsort</th>
               <th className="py-2 font-medium" />
             </tr>
@@ -287,6 +328,9 @@ function EmployeeTab({
                   )}
                 </td>
                 <td className="py-2 pr-4 text-xs text-(--color-muted)">{e.employeeNumber ?? "—"}</td>
+                <td className="py-2 pr-4 text-xs text-(--color-muted)">
+                  {e.professionGroup ? (ROLE_LABEL[e.professionGroup] ?? e.professionGroup) : "—"}
+                </td>
                 <td className="py-2 pr-4">
                   <select
                     value={e.stationPlaceId ?? ""}

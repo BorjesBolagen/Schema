@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CrewMember } from "@/server/board-week";
-import type { PickerEmployee } from "./CrewPicker";
+import { ROLE_LABEL, type PickerEmployee } from "./CrewPicker";
 import { shortDayLabel } from "@/lib/week";
 import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
 import { dragId } from "./dnd";
@@ -86,6 +86,9 @@ function SearchCard({ person }: { person: PickerEmployee }) {
       <span className="text-[11px] text-(--color-muted)">
         {person.stationPlace ?? "ingen ort"}
         {person.employeeNumber ? ` · ${person.employeeNumber}` : ""}
+        {person.professionGroup && person.professionGroup !== "driver"
+          ? ` · ${ROLE_LABEL[person.professionGroup] ?? person.professionGroup}`
+          : ""}
       </span>
     </li>
   );

@@ -23,6 +23,8 @@ export interface ManagedEmployee {
   lastName: string;
   employeeNumber: string | null;
   stationPlaceId: string | null;
+  /** driver, other eller garage — TransPA:s yrkesroll. Null när okänd. */
+  professionGroup: string | null;
   isActive: boolean;
   fromTranspa: boolean;
 }
@@ -59,6 +61,7 @@ export async function listEmployees(): Promise<ManagedEmployee[]> {
     lastName: e.lastName,
     employeeNumber: e.employeeNumber,
     stationPlaceId: e.stationPlaceId,
+    professionGroup: e.professionGroup,
     isActive: e.isActive,
     fromTranspa: !!e.transpaId,
   }));

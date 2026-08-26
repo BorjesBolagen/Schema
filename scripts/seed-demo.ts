@@ -82,6 +82,8 @@ const employees = await db
       lastName,
       employeeNumber: String(2000 + i),
       stationPlaceId: station[place],
+      // Som hos Börjes: nästan alla kör, ett par gör något annat.
+      professionGroup: i === 10 ? "garage" : i === 11 ? "other" : "driver",
     })),
   )
   .returning();

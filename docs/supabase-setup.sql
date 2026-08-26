@@ -1,6 +1,6 @@
 -- Genererad av scripts/build-setup-sql.ts — redigera inte för hand.
 -- Klistra in i Supabase → SQL Editor och kör.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql
 
 BEGIN;
 
@@ -354,6 +354,18 @@ BEGIN
     ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM authenticated;
   END IF;
 END $$;
+
+-- 0003_profession_group.sql
+-- Yrkesroll från TransPA.
+--
+-- Körningen mot Börjes tenant 2026-08-26: 281 chaufförer, 18 "other"
+-- och 2 "garage" av 301 personer. Fältet finns för att de tjugo som
+-- inte kör ska gå att sortera bort när ett schema läggs — inte för att
+-- det säger något om var någon är stationerad. Det gör det inte:
+-- varken professionGroup eller grouping bär ort, och grouping är tomt
+-- för samtliga.
+
+ALTER TABLE "employee" ADD COLUMN IF NOT EXISTS "profession_group" text;
 
 COMMIT;
 

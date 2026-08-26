@@ -25,6 +25,7 @@ interface TranspaEmployee {
   lastName?: string;
   employeeNumber?: number | string;
   signature?: string;
+  professionGroup?: string;
   isActive?: boolean;
 }
 
@@ -215,6 +216,7 @@ async function syncTenant(
           firstName: r.firstName ?? "",
           lastName: r.lastName ?? "",
           signature: str(r.signature),
+          professionGroup: str(r.professionGroup),
           isActive: r.isActive ?? true,
           transpaTenantId: tenant.id,
         }));
@@ -232,6 +234,7 @@ async function syncTenant(
               firstName: sql`excluded.first_name`,
               lastName: sql`excluded.last_name`,
               signature: sql`excluded.signature`,
+              professionGroup: sql`excluded.profession_group`,
               isActive: sql`excluded.is_active`,
               updatedAt: new Date(),
             },

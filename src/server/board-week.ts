@@ -85,6 +85,8 @@ export interface BoardWeek {
     name: string;
     employeeNumber: string | null;
     stationPlace: string | null;
+    /** TransPA:s yrkesroll — chaufför, garage eller övrig. */
+    professionGroup: string | null;
   }>;
 
   /* Underlag för redigeringsvyerna. */
@@ -136,6 +138,7 @@ interface BoardWeekBundle {
     lastName: string;
     employeeNumber: string | null;
     stationPlaceId: string | null;
+    professionGroup: string | null;
     isActive: boolean;
   }>;
   vehicles: Array<{ id: string; displayName: string; isActive: boolean }>;
@@ -261,7 +264,7 @@ async function runGetBoardWeek(
       (select coalesce(json_agg(json_build_object(
         'id', e.id, 'firstName', e.first_name, 'lastName', e.last_name,
         'employeeNumber', e.employee_number, 'stationPlaceId', e.station_place_id,
-        'isActive', e.is_active)), '[]'::json)
+        'professionGroup', e.profession_group, 'isActive', e.is_active)), '[]'::json)
        from employee e) as employees,
 
       (select coalesce(json_agg(json_build_object(
@@ -521,6 +524,7 @@ async function runGetBoardWeek(
         name: fullDisplayName(e),
         employeeNumber: e.employeeNumber,
         stationPlace: e.stationPlaceId ? (stationById.get(e.stationPlaceId)?.name ?? null) : null,
+        professionGroup: e.professionGroup,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "sv")),
     groups: groups
