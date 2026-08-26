@@ -77,6 +77,17 @@ export default async function TranspaPage() {
           report.trips.past?.statuses.join(", ") || "—"
         }`
       : null,
+    report.grouping?.outcome === "ok"
+      ? "grupper:\n" +
+        report.grouping.fields
+          .map(
+            (f) =>
+              `    ${f.field}: ${f.distinct} olika, ${f.matchesStation} matchar ort, ${f.blank} tomma\n` +
+              `      ${f.values.map((v) => `${v.value} (${v.count})`).join(" · ")}`,
+          )
+          .join("\n") +
+        `\n    stationsorter: ${report.grouping.stationNames.join(", ")}`
+      : null,
     "",
     ...report.endpoints.map(
       (e) =>
@@ -162,6 +173,65 @@ export default async function TranspaPage() {
                     ? "Bara turer bakåt i tiden. /v1/trips är historik, inte plan — den kan föreslå ett arbetsmönster, men inte ersätta det."
                     : "Inga turer alls i fönstret. Det säger ingenting säkert; prova igen en vecka då det körts."}
               </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {report.grouping && (
+        <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
+          <p className="font-medium">Kan stationsorten hämtas i stället för att sättas för hand?</p>
+          {report.grouping.outcome !== "ok" ? (
+            <p className="mt-1 text-xs text-(--color-warn)">
+              Gick inte att avgöra: {report.grouping.detail}
+            </p>
+          ) : (
+            <>
+              <p className="mt-1 text-xs text-(--color-muted)">
+                Bygger på {report.grouping.sampled} personer och {report.grouping.stationNames.length}{" "}
+                stationsorter. Bara gruppnamn och antal visas — aldrig vem som har vilket.
+              </p>
+
+              {report.grouping.fields.map((f) => {
+                const share = f.distinct > 0 ? f.matchesStation / f.distinct : 0;
+                return (
+                  <div key={f.field} className="mt-3 border-t border-(--color-line) pt-3">
+                    <p>
+                      <code>{f.field}</code>
+                      <span className="ml-2 text-xs text-(--color-muted)">
+                        {f.distinct} olika värden · {f.matchesStation} matchar en stationsort ·{" "}
+                        {f.blank} utan värde
+                      </span>
+                    </p>
+                    <p
+                      className={`mt-1 text-sm ${
+                        share >= 0.6 ? "text-(--color-accent)" : "text-(--color-muted)"
+                      }`}
+                    >
+                      {f.distinct === 0
+                        ? "Fältet är tomt för alla — bär ingenting."
+                        : share >= 0.6
+                          ? "Ser ut att vara orten. Då kan kopplingen göras automatiskt i stället för på 301 personer för hand."
+                          : "Matchar inte stationsorterna — det här är något annat."}
+                    </p>
+                    {f.values.length > 0 && (
+                      <p className="mt-1 font-mono text-xs break-words text-(--color-muted)">
+                        {f.values.map((v) => `${v.value} (${v.count})`).join(" · ")}
+                        {f.distinct > f.values.length ? ` … +${f.distinct - f.values.length} till` : ""}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs text-(--color-muted)">
+                  Stationsorterna i TransPA ({report.grouping.stationNames.length})
+                </summary>
+                <p className="mt-1 font-mono text-xs break-words text-(--color-muted)">
+                  {report.grouping.stationNames.join(" · ")}
+                </p>
+              </details>
             </>
           )}
         </div>

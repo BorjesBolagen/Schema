@@ -236,3 +236,76 @@ describe("turer: planerade eller körda", () => {
   });
 });
 
+/**
+ * Frågan sonden ska svara på: går stationsorten att härleda ur något
+ * fält TransPA redan skickar, eller måste 301 personer få den för hand?
+ */
+describe("gruppfälten mot stationsorterna", () => {
+  const person = (grouping: unknown, professionGroup: unknown = "Chaufför") => ({
+    id: "e1",
+    firstName: "A",
+    grouping,
+    professionGroup,
+  });
+
+  const withPeople = (people: unknown[], stations: string[]) =>
+    fakeFetch((url) => {
+      if (url.includes("/v1/stationPlaces")) {
+        return new Response(
+          JSON.stringify({ items: stations.map((name, i) => ({ id: `s${i}`, name })), cursor: {} }),
+        );
+      }
+      if (url.includes("/v1/employees")) {
+        return new Response(JSON.stringify({ items: people, cursor: {} }));
+      }
+      return new Response(JSON.stringify({ items: [], cursor: {} }));
+    });
+
+  it("ser att fältet är orten när värdena matchar", async () => {
+    const report = await probeTenant(
+      withPeople(
+        [person("Nybro"), person("Nybro"), person("Hultsfred")],
+        ["Nybro", "Hultsfred", "Gävle"],
+      ),
+    );
+    const g = report.grouping!.fields.find((f) => f.field === "grouping")!;
+
+    expect(g.distinct).toBe(2);
+    expect(g.matchesStation).toBe(2);
+    expect(g.values[0]).toEqual({ value: "Nybro", count: 2 });
+  });
+
+  it("ser att fältet är något annat när det inte matchar", async () => {
+    const report = await probeTenant(withPeople([person("Fjärr"), person("Distribution")], ["Nybro"]));
+    const g = report.grouping!.fields.find((f) => f.field === "grouping")!;
+
+    expect(g.matchesStation).toBe(0);
+  });
+
+  /* "nybro " och "Nybro" är samma ort. Utan normaliseringen skulle ett
+     efterföljande mellanslag få det att se ut som att fältet inte
+     matchade alls. */
+  it("bryr sig inte om skiftläge eller mellanslag", async () => {
+    const report = await probeTenant(withPeople([person(" nybro ")], ["Nybro"]));
+    expect(report.grouping!.fields[0].matchesStation).toBe(1);
+  });
+
+  it("läser namnet även när fältet är ett objekt", async () => {
+    const report = await probeTenant(withPeople([person({ id: "g1", name: "Nybro" })], ["Nybro"]));
+    expect(report.grouping!.fields[0].values[0].value).toBe("Nybro");
+  });
+
+  it("räknar dem som saknar värde", async () => {
+    const report = await probeTenant(withPeople([person(null), person(""), person("Nybro")], ["Nybro"]));
+    expect(report.grouping!.fields[0].blank).toBe(2);
+  });
+
+  /* Gruppnamn är inte personuppgifter, men kopplingen mellan person och
+     grupp är ett steg närmare att vara det — och behövs inte för att
+     svara på frågan. */
+  it("släpper aldrig ut vem som hör till vilken grupp", async () => {
+    const report = await probeTenant(withPeople([person("Nybro")], ["Nybro"]));
+    expect(JSON.stringify(report.grouping)).not.toContain("e1");
+  });
+});
+

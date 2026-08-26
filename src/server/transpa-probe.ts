@@ -78,6 +78,40 @@ export interface TripsWindow {
   verdict?: "planerade" | "bara-korda" | "inga-turer";
 }
 
+/**
+ * Vad bär `grouping` och `professionGroup` egentligen?
+ *
+ * Synken hämtade 301 personer, och ingen av dem har stationsort —
+ * TransPA:s Employee bär ingen. Att sätta orten för hand på 301
+ * personer är dagsverke, så frågan är om något av de två okända
+ * gruppfälten redan är orten. Stämmer värdena mot de 17 stationsorter
+ * vi hämtat kan kopplingen göras automatiskt i stället.
+ *
+ * Bara distinkta värden och antal redovisas — aldrig vem som har
+ * vilket. En gruppbeteckning är inte en personuppgift; kopplingen
+ * mellan person och grupp vore ett steg närmare att vara det, och
+ * behövs inte för att svara på frågan.
+ */
+export interface GroupFieldProbe {
+  field: string;
+  /** Distinkta värden, högst så många som TOP_VALUES anger. */
+  values: Array<{ value: string; count: number }>;
+  distinct: number;
+  /** Hur många av värdena som matchar en känd stationsort. */
+  matchesStation: number;
+  /** Personer utan värde i fältet. */
+  blank: number;
+}
+
+export interface GroupingProbe {
+  outcome: ProbeOutcome;
+  detail?: string;
+  /** Antal personer frågan bygger på. */
+  sampled: number;
+  stationNames: string[];
+  fields: GroupFieldProbe[];
+}
+
 export interface SpecProbe {
   url: string;
   outcome: ProbeOutcome;
@@ -94,6 +128,7 @@ export interface TenantReport {
   token: { outcome: ProbeOutcome; detail?: string; scopes: string[] };
   spec?: SpecProbe;
   trips?: TripsWindow;
+  grouping?: GroupingProbe;
   endpoints: EndpointProbe[];
   ranAt: string;
 }
@@ -286,6 +321,82 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
   }
 }
 
+/** Så många distinkta värden som visas per fält. Fler säger inget mer. */
+const TOP_VALUES = 20;
+/** Så många personer frågan bygger på. Räcker gott för att se ett mönster. */
+const GROUPING_SAMPLE = 300;
+
+/** Fälten som skulle kunna bära orten. Namnen kom ur en riktig körning. */
+const GROUP_FIELDS = ["grouping", "professionGroup"];
+
+/** Jämför utan hänsyn till skiftläge och kringmellanslag — "Nybro " är Nybro. */
+const norm = (v: string) => v.trim().toLowerCase();
+
+/**
+ * Ett gruppfälts värde som text, oavsett om TransPA skickar en sträng
+ * eller ett objekt med namn i.
+ */
+function groupValue(raw: unknown): string | null {
+  if (typeof raw === "string") return raw.trim() || null;
+  if (typeof raw === "number") return String(raw);
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    for (const key of ["name", "Name", "description", "value"]) {
+      if (typeof o[key] === "string" && o[key].trim()) return (o[key] as string).trim();
+    }
+  }
+  return null;
+}
+
+async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<GroupingProbe> {
+  try {
+    const stationsRaw = await client.request<unknown>("/v1/stationPlaces", { limit: 200, scopes });
+    const stations = rowsOf<Record<string, unknown>>(stationsRaw, "/v1/stationPlaces").rows;
+    const stationNames = stations
+      .map((s) => (typeof s.name === "string" ? s.name : ""))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "sv"));
+    const known = new Set(stationNames.map(norm));
+
+    const peopleRaw = await client.request<unknown>("/v1/employees", {
+      limit: GROUPING_SAMPLE,
+      scopes,
+    });
+    const people = rowsOf<Record<string, unknown>>(peopleRaw, "/v1/employees").rows;
+
+    const fields: GroupFieldProbe[] = GROUP_FIELDS.map((field) => {
+      const counts = new Map<string, number>();
+      let blank = 0;
+
+      for (const person of people) {
+        const value = groupValue(person[field]);
+        if (!value) {
+          blank++;
+          continue;
+        }
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+      }
+
+      const values = [...counts.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, "sv"));
+
+      return {
+        field,
+        values: values.slice(0, TOP_VALUES),
+        distinct: values.length,
+        matchesStation: values.filter((v) => known.has(norm(v.value))).length,
+        blank,
+      };
+    });
+
+    return { outcome: "ok", sampled: people.length, stationNames, fields };
+  } catch (error) {
+    const d = describe(error);
+    return { ...d, sampled: 0, stationNames: [], fields: [] };
+  }
+}
+
 async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
   let last: SpecProbe = { url: SPEC_URLS[0], outcome: "missing" };
 
@@ -458,9 +569,14 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     ? await probeTrips(client, scopes)
     : undefined;
 
+  const grouping = endpoints.some((e) => e.path === "/v1/employees" && e.outcome === "ok")
+    ? await probeGrouping(client, scopes)
+    : undefined;
+
   return {
     hasCredentials: true,
     trips,
+    grouping,
     tenantId: credentials.tenantId,
     employeeSample: { keys: sampleEmployeeKeys, id: sampleEmployeeId },
     token: { outcome: tokenOutcome, detail: tokenDetail, scopes },
