@@ -1,16 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { CollisionDetection, DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import type { BoardWeek, CellAssignment } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
 import {
   assignEmployee,
+  assignEmployeeWeek,
   fillWeek,
   moveAssignment,
   removeAssignment,
   type FillResult,
+  type WeekPlacement,
 } from "@/app/actions";
 import { WeekGrid } from "./WeekGrid";
 import { CrewPanel } from "./CrewPanel";
@@ -28,6 +38,20 @@ interface Props {
   canDelete?: boolean;
 }
 
+/**
+ * Vad pekaren står över vinner.
+ *
+ * dnd-kits standard (rectIntersection) mäter det dragna elementets
+ * rektangel, inte pekaren. Radhuvudet ligger kant i kant med veckans
+ * första cell, så en dragning som siktade på raden landade i cellen
+ * i stället — hela veckan blev en enda dag. rectIntersection finns kvar
+ * som reserv för tangentbordsdragning, där ingen pekare finns.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const byPointer = pointerWithin(args);
+  return byPointer.length > 0 ? byPointer : rectIntersection(args);
+};
+
 export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [open, setOpen] = useState<CellAssignment | null>(null);
@@ -35,6 +59,15 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
   type Panel = "board" | "base" | "patterns" | null;
   const [panel, setPanel] = useState<Panel>(null);
   const [fillReport, setFillReport] = useState<FillResult | null>(null);
+  const [weekPlacement, setWeekPlacement] = useState<(WeekPlacement & { name: string }) | null>(
+    null,
+  );
+
+  /** Namnet på en person, oavsett om hen redan är med i bemanningen. */
+  const nameOf = (employeeId: string) =>
+    data.crew.find((c) => c.employeeId === employeeId)?.name ??
+    allEmployees.find((e) => e.id === employeeId)?.name ??
+    "Personen";
   const [pending, startTransition] = useTransition();
 
   /* ⇧ under dragningen kopierar i stället för att flytta. */
@@ -115,6 +148,22 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         }
         return;
       }
+      /* Radhuvudet lägger ut hela veckan; en cell lägger ut en dag.
+         Ett befintligt pass kan bara flyttas till en cell — att släppa
+         det på raden vore tvetydigt. */
+      if (target.kind === "row") {
+        if (source.kind !== "crew") return;
+        const result = await assignEmployeeWeek({
+          boardRowId: target.boardRowId,
+          employeeId: source.employeeId,
+          year: data.year,
+          week: data.week,
+          boardSlug: data.board.slug,
+        });
+        setWeekPlacement({ name: nameOf(source.employeeId), ...result });
+        return;
+      }
+
       if (source.kind === "crew") {
         await assignEmployee({
           boardRowId: target.boardRowId,
@@ -145,6 +194,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
     <DndContext
       // Fast id så serverns och klientens aria-attribut blir lika.
       id="board"
+      collisionDetection={collisionDetection}
       sensors={sensors}
       onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
       onDragCancel={() => setDragging(null)}
@@ -181,6 +231,28 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           </span>
         )}
 
+        {weekPlacement && (
+          <span
+            className={`text-xs ${
+              weekPlacement.missingPattern ? "text-(--color-warn)" : "text-(--color-muted)"
+            }`}
+          >
+            {weekPlacement.missingPattern ? (
+              <>
+                {weekPlacement.name} saknar arbetsmönster — inget lades ut. Sätt mönstret under
+                Arbetsmönster först.
+              </>
+            ) : (
+              <>
+                {weekPlacement.name}: {weekPlacement.placed} pass utlagda
+                {weekPlacement.skipped.some((x) => x.reason === "frånvaro") &&
+                  `, ${weekPlacement.skipped.filter((x) => x.reason === "frånvaro").length} dagar frånvaro`}
+                {weekPlacement.addedToCrew && ", tillagd i bemanningen"}
+              </>
+            )}
+          </span>
+        )}
+
         <span className="ml-auto flex gap-2">
           <button
             type="button"
@@ -210,7 +282,12 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         <div className="min-w-0 flex-1">
           <WeekGrid data={data} onOpen={setOpen} dropCheck={dropCheck} />
         </div>
-        <CrewPanel crew={data.crew} dates={data.dates} onOpenPicker={() => setPicker(true)} />
+        <CrewPanel
+          crew={data.crew}
+          dates={data.dates}
+          allEmployees={allEmployees}
+          onOpenPicker={() => setPicker(true)}
+        />
       </div>
 
       <DragOverlay>

@@ -46,6 +46,41 @@ function Pass({
   );
 }
 
+/**
+ * Radhuvudet, som också är en släppzon för hela veckan.
+ *
+ * Släpps en person här läggs hens arbetsdagar ut på raden för hela
+ * veckan — en bil bemannas i en rörelse i stället för fem. Zonen tänds
+ * bara när det är en person som dras: ett befintligt pass hör hemma i
+ * en cell, och att låta det landa på raden vore tvetydigt.
+ */
+function RowHeader({ row }: { row: BoardWeek["rows"][number] }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: dragId.row(row.id) });
+  const draggingPerson = String(active?.id ?? "").startsWith("crew:");
+
+  return (
+    <th
+      ref={setNodeRef}
+      scope="row"
+      className={`sticky left-0 z-10 border-b border-(--color-line) px-3 py-2 text-left font-medium whitespace-nowrap ${
+        draggingPerson && isOver
+          ? "bg-(--color-accent) text-white"
+          : draggingPerson
+            ? "bg-amber-50"
+            : "bg-white"
+      }`}
+      style={row.color ? { borderLeft: `3px solid ${row.color}` } : undefined}
+    >
+      {row.label}
+      {draggingPerson && (
+        <span className="block text-[10px] font-normal">
+          {isOver ? "Släpp → hela veckan" : "hela veckan"}
+        </span>
+      )}
+    </th>
+  );
+}
+
 function ShiftCell({
   row,
   date,
@@ -159,13 +194,7 @@ export function WeekGrid({
                   </tr>
                 )}
                 <tr className="align-top">
-                  <th
-                    scope="row"
-                    className="sticky left-0 z-10 border-b border-(--color-line) bg-white px-3 py-2 text-left font-medium whitespace-nowrap"
-                    style={row.color ? { borderLeft: `3px solid ${row.color}` } : undefined}
-                  >
-                    {row.label}
-                  </th>
+                  <RowHeader row={row} />
                   <td className="border-b border-(--color-line) px-3 py-2 text-(--color-muted) whitespace-nowrap">
                     {row.sublabel}
                   </td>

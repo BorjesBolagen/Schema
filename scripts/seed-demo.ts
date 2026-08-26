@@ -159,6 +159,10 @@ const patterns: Array<[string, number, Array<[number, number[], "day" | "night"]
   ["Johan", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
   // Max jobbar men har ingen bil — hamnar i "Ej utlagda".
   ["Max", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
+  /* Fredrik står utanför bemanningen men har mönster — så går det att
+     prova att söka fram någon som inte hör till tavlan och dra ut hen
+     på en rad, vilket lägger ut hela veckan. */
+  ["Fredrik", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
   // Alma går ett rullande fyraveckorsschema.
   [
     "Alma",

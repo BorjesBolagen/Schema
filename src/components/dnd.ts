@@ -10,6 +10,9 @@ export const dragId = {
   crew: (employeeId: string) => `crew:${employeeId}`,
   assignment: (assignmentId: string) => `asg:${assignmentId}`,
   cell: (boardRowId: string, date: string, shift: Shift) => `cell:${boardRowId}|${date}|${shift}`,
+  /* Radhuvudet: släpps en person här läggs hela hens vecka ut på
+     raden, enligt arbetsmönstret. En cell tar en enskild dag. */
+  row: (boardRowId: string) => `row:${boardRowId}`,
   crewPanel: "crew-panel",
 } as const;
 
@@ -19,6 +22,7 @@ export type DragSource =
 
 export type DropTarget =
   | { kind: "cell"; boardRowId: string; date: string; shift: Shift }
+  | { kind: "row"; boardRowId: string }
   | { kind: "crew-panel" };
 
 export function parseDragId(id: string): DragSource | null {
@@ -29,6 +33,10 @@ export function parseDragId(id: string): DragSource | null {
 
 export function parseDropId(id: string): DropTarget | null {
   if (id === dragId.crewPanel) return { kind: "crew-panel" };
+  if (id.startsWith("row:")) {
+    const boardRowId = id.slice(4);
+    if (boardRowId) return { kind: "row", boardRowId };
+  }
   if (id.startsWith("cell:")) {
     const [boardRowId, date, shift] = id.slice(5).split("|");
     if (boardRowId && date && (shift === "day" || shift === "night")) {

@@ -56,6 +56,143 @@ export async function assignEmployee(input: {
   refresh(input.boardSlug);
 }
 
+export interface WeekPlacement {
+  placed: number;
+  /** Dagar personen inte kunde läggas ut, med orsak. */
+  skipped: Array<{ date: string; reason: "frånvaro" | "redan utlagd" }>;
+  /** Sant när personen lades till i tavlans bemanning på köpet. */
+  addedToCrew: boolean;
+  /** Sant när personen saknar arbetsmönster — då blir veckan tom. */
+  missingPattern: boolean;
+}
+
+/**
+ * Lägger ut en persons hela vecka på en rad.
+ *
+ * Det här är vad som händer när någon släpps på radhuvudet i stället
+ * för i en enskild cell: personens arbetsdagar läses för veckan tavlan
+ * visar, och hen läggs ut på alla dagar hen jobbar. Poängen är att en
+ * bil bemannas i en rörelse i stället för fem.
+ *
+ * Arbetsdagarna kommer från arbetsmönstret — TransPA har inga planerade
+ * pass att hämta, det är kontrollerat. Saknar personen mönster blir
+ * veckan tom, och det sägs rakt ut i stället för att se ut som att
+ * dragningen inte fungerade.
+ *
+ * Personen läggs till i bemanningen om hen inte redan finns där, så att
+ * en sökträff går att dra ut direkt utan att först gå via
+ * personalväljaren.
+ */
+export async function assignEmployeeWeek(input: {
+  boardRowId: string;
+  employeeId: string;
+  year: number;
+  week: number;
+  boardSlug: string;
+}): Promise<WeekPlacement> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  const db = getDb();
+
+  const [row] = await db
+    .select()
+    .from(schema.boardRow)
+    .where(and(eq(schema.boardRow.id, input.boardRowId), eq(schema.boardRow.boardId, board.id)));
+  // Raden måste tillhöra tavlan — annars vore det en väg att skriva på
+  // en tavla man inte har tillgång till.
+  if (!row) return { placed: 0, skipped: [], addedToCrew: false, missingPattern: false };
+
+  const dates = weekDates(input.year, input.week, board.weekStartsOn, board.visibleWeekdays);
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+
+  const [inCrew] = await db
+    .select({ employeeId: schema.boardCrew.employeeId })
+    .from(schema.boardCrew)
+    .where(
+      and(
+        eq(schema.boardCrew.boardId, board.id),
+        eq(schema.boardCrew.employeeId, input.employeeId),
+      ),
+    );
+  if (!inCrew) {
+    await db
+      .insert(schema.boardCrew)
+      .values({ boardId: board.id, employeeId: input.employeeId })
+      .onConflictDoNothing();
+  }
+
+  const { workDays } = await getWorkDayProvider().getWorkDays([input.employeeId], first, last);
+  const absences = await db
+    .select()
+    .from(schema.absence)
+    .where(
+      and(
+        eq(schema.absence.employeeId, input.employeeId),
+        lte(schema.absence.fromDate, last),
+        gte(schema.absence.toDate, first),
+      ),
+    );
+  const away = (date: string) => absences.some((a) => a.fromDate <= date && a.toDate >= date);
+
+  const existing = await db
+    .select()
+    .from(schema.assignment)
+    .where(
+      and(
+        eq(schema.assignment.boardRowId, input.boardRowId),
+        gte(schema.assignment.date, first),
+        lte(schema.assignment.date, last),
+      ),
+    );
+
+  const visible = new Set(board.visibleShifts);
+  const skipped: WeekPlacement["skipped"] = [];
+  const create: Array<typeof schema.assignment.$inferInsert> = [];
+
+  for (const day of workDays) {
+    if (!dates.includes(day.date) || !visible.has(day.shift)) continue;
+    if (away(day.date)) {
+      skipped.push({ date: day.date, reason: "frånvaro" });
+      continue;
+    }
+
+    const inCell = existing.filter((a) => a.date === day.date && a.shift === day.shift);
+    if (inCell.some((a) => a.employeeId === input.employeeId)) {
+      skipped.push({ date: day.date, reason: "redan utlagd" });
+      continue;
+    }
+
+    // Nästa lediga plats i cellen — samma regel som när ett enskilt
+    // pass läggs ut för hand.
+    const used = new Set([
+      ...inCell.map((a) => a.slot),
+      ...create.filter((c) => c.date === day.date && c.shift === day.shift).map((c) => c.slot!),
+    ]);
+    let slot = 0;
+    while (used.has(slot)) slot++;
+
+    create.push({
+      boardRowId: input.boardRowId,
+      date: day.date,
+      shift: day.shift,
+      slot,
+      employeeId: input.employeeId,
+      source: "manual",
+    });
+  }
+
+  if (create.length) await db.insert(schema.assignment).values(create);
+  refresh(input.boardSlug);
+
+  return {
+    placed: create.length,
+    skipped,
+    addedToCrew: !inCrew,
+    missingPattern: workDays.length === 0,
+  };
+}
+
 /**
  * Flyttar ett pass till en annan cell.
  *

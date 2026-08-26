@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CrewMember } from "@/server/board-week";
+import type { PickerEmployee } from "./CrewPicker";
 import { shortDayLabel } from "@/lib/week";
 import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
 import { dragId } from "./dnd";
@@ -55,6 +57,40 @@ function CrewCard({ member, dates }: { member: CrewMember; dates: string[] }) {
   );
 }
 
+/** Så många sökträffar som visas. Fler blir en lista att läsa, inte att välja ur. */
+const MAX_HITS = 10;
+
+/**
+ * En sökträff, dragbar direkt.
+ *
+ * Skiljer sig från CrewCard genom att personen ännu inte hör till
+ * tavlan — hen läggs till i bemanningen när hen släpps på en rad. Därför
+ * visas stationsort och anställningsnummer i stället för veckans dagar:
+ * det är det som skiljer två personer med samma förnamn åt.
+ */
+function SearchCard({ person }: { person: PickerEmployee }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: dragId.crew(person.id),
+  });
+
+  return (
+    <li
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`cursor-grab rounded border border-dashed border-(--color-accent) bg-white px-2 py-1.5 ${
+        isDragging ? "opacity-40" : ""
+      }`}
+    >
+      <span className="block text-sm font-medium">{person.name}</span>
+      <span className="text-[11px] text-(--color-muted)">
+        {person.stationPlace ?? "ingen ort"}
+        {person.employeeNumber ? ` · ${person.employeeNumber}` : ""}
+      </span>
+    </li>
+  );
+}
+
 /**
  * Sidopanelen — dragkällan, och veckans kvitto.
  *
@@ -65,15 +101,38 @@ function CrewCard({ member, dates }: { member: CrewMember; dates: string[] }) {
 export function CrewPanel({
   crew,
   dates,
+  allEmployees,
   onOpenPicker,
 }: {
   crew: CrewMember[];
   dates: string[];
+  allEmployees: PickerEmployee[];
   onOpenPicker: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: dragId.crewPanel });
   const unplaced = crew.filter((c) => c.unplaced.length > 0);
   const rest = crew.filter((c) => c.unplaced.length === 0);
+  const [query, setQuery] = useState("");
+
+  /**
+   * Söker i hela personalregistret, inte bara i bemanningen.
+   *
+   * Poängen är att slippa gå via personalväljaren för att lägga till en
+   * person: sök, dra ut träffen på en rad, klart. De som redan är med
+   * utelämnas — de står ju redan i listan nedanför.
+   */
+  const hits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const inCrew = new Set(crew.map((c) => c.employeeId));
+    return allEmployees
+      .filter(
+        (e) =>
+          !inCrew.has(e.id) &&
+          (e.name.toLowerCase().includes(q) || (e.employeeNumber ?? "").includes(q)),
+      )
+      .slice(0, MAX_HITS);
+  }, [allEmployees, crew, query]);
 
   return (
     <aside
@@ -92,6 +151,36 @@ export function CrewPanel({
           + lägg till
         </button>
       </div>
+
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Sök i all personal …"
+        aria-label="Sök i all personal"
+        className="mt-2 w-full rounded border border-(--color-line) bg-white px-2 py-1 text-sm"
+      />
+
+      {query.trim().length >= 2 && (
+        <div className="mt-2">
+          {hits.length === 0 ? (
+            <p className="text-xs text-(--color-muted)">
+              Ingen träff utanför bemanningen. Är personalen synkad från TransPA?
+            </p>
+          ) : (
+            <>
+              <p className="text-[11px] text-(--color-muted)">
+                Dra en träff till en rad för att lägga ut hela veckan.
+              </p>
+              <ul className="mt-1.5 space-y-1.5">
+                {hits.map((p) => (
+                  <SearchCard key={p.id} person={p} />
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
 
       {crew.length === 0 && (
         <p className="mt-3 text-xs text-(--color-muted)">

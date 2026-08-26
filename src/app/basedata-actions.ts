@@ -97,6 +97,28 @@ export async function editEmployee(
   return result;
 }
 
+/**
+ * Sätter stationsort på flera personer i ett svep.
+ *
+ * TransPA:s Employee bär ingen stationsort — den ägs här. Med flera
+ * hundra personer i registret är en rullgardin per rad ingen väg fram;
+ * det är den här som gör kopplingen görbar över huvud taget.
+ */
+export async function setStationPlaceForMany(
+  employeeIds: string[],
+  stationPlaceId: string | null,
+): Promise<BaseDataResult> {
+  await requireAdmin();
+  for (const id of employeeIds) {
+    const result = await updateEmployee(id, { stationPlaceId });
+    // Faller en rad avbryts hela ändringen — hellre ett tydligt fel än
+    // en halvt genomförd massättning som ingen ser.
+    if (!result.ok) return result;
+  }
+  refresh();
+  return { ok: true };
+}
+
 export async function createVehicle(input: {
   displayName: string;
   registrationNumber?: string;

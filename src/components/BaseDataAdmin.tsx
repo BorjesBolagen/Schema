@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import {
   createEmployee,
+  setStationPlaceForMany,
   createStation,
   createVehicle,
   deleteStation,
@@ -107,8 +108,37 @@ function EmployeeTab({
   const [employeeNumber, setEmployeeNumber] = useState("");
   const [stationPlaceId, setStationPlaceId] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+  const [query, setQuery] = useState("");
+  const [onlyWithout, setOnlyWithout] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkStation, setBulkStation] = useState("");
 
-  const shown = employees.filter((e) => showInactive || e.isActive);
+  const shown = employees.filter((e) => {
+    if (!showInactive && !e.isActive) return false;
+    if (onlyWithout && e.stationPlaceId) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      `${e.firstName} ${e.lastName}`.toLowerCase().includes(q) ||
+      (e.employeeNumber ?? "").includes(q)
+    );
+  });
+
+  /* Kryssrutan i huvudet gäller det som syns, inte hela registret —
+     annars skulle ett filter kunna dölja vem man råkar ändra på. */
+  const allShownPicked = shown.length > 0 && shown.every((e) => picked.has(e.id));
+  const toggleAllShown = () =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const e of shown) allShownPicked ? next.delete(e.id) : next.add(e.id);
+      return next;
+    });
+
+  const applyStation = () =>
+    run(
+      () => setStationPlaceForMany([...picked], bulkStation || null),
+      () => setPicked(new Set()),
+    );
 
   const add = () =>
     run(
@@ -159,10 +189,59 @@ function EmployeeTab({
         </button>
       </div>
 
-      <label className="mt-4 flex items-center gap-2 text-xs text-(--color-muted)">
-        <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
-        Visa avslutade
-      </label>
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Sök namn eller anst.nr …"
+          aria-label="Sök personal"
+          className={`w-56 ${field}`}
+        />
+        <label className="flex items-center gap-2 text-xs text-(--color-muted)">
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          Visa avslutade
+        </label>
+        <label className="flex items-center gap-2 text-xs text-(--color-muted)">
+          <input type="checkbox" checked={onlyWithout} onChange={(e) => setOnlyWithout(e.target.checked)} />
+          Bara utan stationsort
+        </label>
+        <span className="text-xs text-(--color-muted)">{shown.length} visas</span>
+      </div>
+
+      {picked.size > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded border border-(--color-accent) bg-amber-50 px-4 py-2">
+          <span className="text-sm font-medium">{picked.size} valda</span>
+          <label className="text-xs text-(--color-muted)">
+            Sätt stationsort
+            <select
+              value={bulkStation}
+              onChange={(e) => setBulkStation(e.target.value)}
+              className={`mt-1 block w-40 ${field}`}
+            >
+              <option value="">— (ingen)</option>
+              {stations.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            onClick={applyStation}
+            disabled={pending}
+            className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            Sätt på {picked.size}
+          </button>
+          <button
+            onClick={() => setPicked(new Set())}
+            className="text-xs text-(--color-muted) hover:underline"
+          >
+            Avmarkera
+          </button>
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <p className="mt-4 text-sm text-(--color-muted)">Ingen personal ännu.</p>
@@ -170,6 +249,14 @@ function EmployeeTab({
         <table className="mt-3 w-full border-collapse text-sm">
           <thead>
             <tr className="text-left text-xs tracking-wide text-(--color-muted) uppercase">
+              <th className="py-2 pr-2 font-medium">
+                <input
+                  type="checkbox"
+                  checked={allShownPicked}
+                  onChange={toggleAllShown}
+                  aria-label="Markera alla som visas"
+                />
+              </th>
               <th className="py-2 pr-4 font-medium">Namn</th>
               <th className="py-2 pr-4 font-medium">Anst.nr</th>
               <th className="py-2 pr-4 font-medium">Stationsort</th>
@@ -179,6 +266,20 @@ function EmployeeTab({
           <tbody>
             {shown.map((e) => (
               <tr key={e.id} className={`border-t border-(--color-line) ${e.isActive ? "" : "opacity-50"}`}>
+                <td className="py-2 pr-2">
+                  <input
+                    type="checkbox"
+                    checked={picked.has(e.id)}
+                    onChange={() =>
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        next.has(e.id) ? next.delete(e.id) : next.add(e.id);
+                        return next;
+                      })
+                    }
+                    aria-label={`Markera ${e.firstName} ${e.lastName}`}
+                  />
+                </td>
                 <td className="py-2 pr-4">
                   {e.firstName} {e.lastName}
                   {e.fromTranspa && (
