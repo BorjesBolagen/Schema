@@ -22,9 +22,52 @@ export class TranspaApiError extends Error {
   }
 }
 
+/**
+ * Listsvar från TransPA.
+ *
+ * Raderna ligger under `items` — så heter nyckeln i Vismas egen
+ * OpenAPI-modell (InlineResponse2001: `cursor` + `items`). Jag antog
+ * först `data`, vilket gjorde att varje lista tyst blev tom: fel nyckel
+ * ger undefined, inte ett fel. `data` står kvar som andrahandsval
+ * eftersom den genererade klienten är föråldrad och det live-API:t
+ * svarar är det som gäller — men vilken nyckel som faktiskt bar
+ * raderna redovisas i stället för att döljas.
+ */
 export interface ListResponse<T> {
-  data: T[];
+  items?: T[];
+  data?: T[];
   cursor?: { nextToken?: string | null } | null;
+}
+
+export const ROW_KEYS = ["items", "data"] as const;
+export type RowKey = (typeof ROW_KEYS)[number];
+
+export class TranspaShapeError extends Error {
+  constructor(
+    readonly path: string,
+    readonly keys: string[],
+  ) {
+    super(
+      `Svaret från ${path} har varken items eller data som lista. ` +
+        `Toppnycklar: ${keys.length ? keys.join(", ") : "inga"}.`,
+    );
+    this.name = "TranspaShapeError";
+  }
+}
+
+/**
+ * Plockar ut raderna och talar om vilken nyckel de låg under.
+ *
+ * Kastar hellre än att returnera tomt när ingen av nycklarna bär en
+ * lista. Ett tyst [] är precis det som gjorde att synken rapporterade
+ * lyckat utan att ha hämtat en enda person.
+ */
+export function rowsOf<T>(response: unknown, path: string): { rows: T[]; key: RowKey } {
+  const body = (response ?? {}) as Record<string, unknown>;
+  for (const key of ROW_KEYS) {
+    if (Array.isArray(body[key])) return { rows: body[key] as T[], key };
+  }
+  throw new TranspaShapeError(path, Object.keys(body));
 }
 
 export interface RequestOptions {
@@ -102,7 +145,7 @@ export class TranspaClient {
 
     for (let page = 0; page < maxPages; page++) {
       const response: ListResponse<T> = await this.request(path, { ...options, cursor });
-      out.push(...(response.data ?? []));
+      out.push(...rowsOf<T>(response, path).rows);
 
       const next = response.cursor?.nextToken;
       if (!next || next === cursor) break;

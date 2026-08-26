@@ -31,12 +31,12 @@ describe("probeTenant", () => {
       if (url.includes("/v1/trips")) {
         return new Response(
           JSON.stringify({
-            data: [{ id: "t1", employeeId: "e1", vehicleId: "v1", startDateTime: "2026-01-01" }],
+            items: [{ id: "t1", employeeId: "e1", vehicleId: "v1", startDateTime: "2026-01-01" }],
             cursor: { nextToken: null },
           }),
         );
       }
-      return new Response(JSON.stringify({ data: [], cursor: { nextToken: null } }));
+      return new Response(JSON.stringify({ items: [], cursor: { nextToken: null } }));
     });
 
     const report = await probeTenant(fetchImpl);
@@ -44,20 +44,25 @@ describe("probeTenant", () => {
 
     expect(trips.outcome).toBe("ok");
     expect(trips.sampleKeys).toEqual(["employeeId", "id", "startDateTime", "vehicleId"]);
+    // Vilken nyckel raderna låg under redovisas i stället för att antas.
+    expect(trips.rowKey).toBe("items");
+    expect(trips.sample).toBe(1);
     // Bara fältnamnen — inget av värdena "t1", "e1" osv i utdatat.
     expect(JSON.stringify(trips)).not.toContain("e1");
   });
 
   it("lämnar sampleKeys osatt för endpoints utanför listan, och tomt när svaret är tomt", async () => {
-    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ data: [], cursor: { nextToken: null } })));
+    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ items: [], cursor: { nextToken: null } })));
     const report = await probeTenant(fetchImpl);
 
     const trips = report.endpoints.find((e) => e.path === "/v1/trips")!;
     expect(trips.outcome).toBe("empty");
     expect(trips.sampleKeys).toEqual([]);
 
-    const vehicles = report.endpoints.find((e) => e.path === "/v1/vehicles")!;
-    expect(vehicles.sampleKeys).toBeUndefined();
+    /* stationPlaces stod här förut, men den visar numera fältnamn —
+       poängen är en väg som avsiktligt står utanför listan. */
+    const alive = report.endpoints.find((e) => e.path === "/v1/alive")!;
+    expect(alive.sampleKeys).toBeUndefined();
   });
 });
 
@@ -69,14 +74,14 @@ describe("jakten på passen", () => {
       sedda.push(path);
       if (path.endsWith("/v1/employees")) {
         return new Response(
-          JSON.stringify({ data: [{ id: "emp-42", firstName: "A" }], cursor: { nextToken: null } }),
+          JSON.stringify({ items: [{ id: "emp-42", firstName: "A" }], cursor: { nextToken: null } }),
         );
       }
       // Bara underresursen finns — precis som i verkligheten, där
       // /v1/shifts svarar 404 trots att scopet är beviljat.
       if (path === "/publicApi/v1/employees/emp-42/shifts") {
         return new Response(
-          JSON.stringify({ data: [{ date: "2026-08-24", startTime: "06:00" }], cursor: {} }),
+          JSON.stringify({ items: [{ date: "2026-08-24", startTime: "06:00" }], cursor: {} }),
         );
       }
       return new Response(JSON.stringify({ title: "Not found" }), { status: 404 });
@@ -94,7 +99,7 @@ describe("jakten på passen", () => {
     const sedda: string[] = [];
     const fetchImpl = fakeFetch((url) => {
       sedda.push(new URL(url).pathname);
-      return new Response(JSON.stringify({ data: [], cursor: {} }));
+      return new Response(JSON.stringify({ items: [], cursor: {} }));
     });
 
     const report = await probeTenant(fetchImpl);
@@ -118,7 +123,7 @@ describe("person-id ur svaret", () => {
       if (path.endsWith("/v1/employees")) {
         return new Response(
           JSON.stringify({
-            data: [{ Id: "PASCAL-1", FirstName: "A", LastName: "B" }],
+            items: [{ Id: "PASCAL-1", FirstName: "A", LastName: "B" }],
             cursor: { nextToken: null },
           }),
         );
@@ -133,7 +138,7 @@ describe("person-id ur svaret", () => {
   });
 
   it("listar underresurserna även när inget id gick att plocka ut", async () => {
-    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ data: [], cursor: {} })));
+    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ items: [], cursor: {} })));
     const report = await probeTenant(fetchImpl);
 
     expect(report.employeeSample?.id).toBeNull();
@@ -158,5 +163,18 @@ describe("samma vägar redovisas oavsett hur långt körningen kom", () => {
     expect(report.token.outcome).not.toBe("ok");
     expect(report.endpoints.some((e) => e.label === "Pass under en person")).toBe(true);
     expect(report.endpoints.every((e) => e.outcome === "not-run")).toBe(true);
+  });
+
+  /* 200 med en form vi inte känner igen är inte "tomt svar". Det var
+     precis så /v1/employees såg ut när raderna låg under items och
+     koden läste data: sidan sa att svaret saknade fält. */
+  it("skiljer okänt kuvert från tomt svar", async () => {
+    const fetchImpl = fakeFetch(() => new Response(JSON.stringify({ result: [{ id: "x" }] })));
+    const report = await probeTenant(fetchImpl);
+    const employees = report.endpoints.find((e) => e.path === "/v1/employees")!;
+
+    expect(employees.outcome).toBe("error");
+    expect(employees.status).toBe(200);
+    expect(employees.detail).toMatch(/varken items eller data/);
   });
 });

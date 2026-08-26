@@ -32,8 +32,16 @@ export function SyncButton({ disabled }: { disabled: boolean }) {
                   ) : r.error ? (
                     <span className="text-(--color-danger)">{r.error}</span>
                   ) : (
-                    <span className="text-(--color-muted)">
-                      {r.written} av {r.fetched} skrivna
+                    <span
+                      /* Noll hämtade rader är inte ett lyckat resultat.
+                         Det såg det ut som förut, i samma grå text som
+                         en riktig hämtning — och en tom synk är precis
+                         det man behöver upptäcka. */
+                      className={r.fetched === 0 ? "text-(--color-danger)" : "text-(--color-muted)"}
+                    >
+                      {r.fetched === 0
+                        ? "inga rader kom tillbaka — kontrollera scope och bolag"
+                        : `${r.written} av ${r.fetched} skrivna`}
                     </span>
                   )}
                 </td>

@@ -1,5 +1,11 @@
 import "server-only";
-import { TranspaApiError, TranspaClient, API_BASE } from "@/lib/transpa/client";
+import {
+  TranspaApiError,
+  TranspaClient,
+  TranspaShapeError,
+  API_BASE,
+  rowsOf,
+} from "@/lib/transpa/client";
 import {
   BASE_SCOPE,
   READ_SCOPES,
@@ -35,6 +41,12 @@ export interface EndpointProbe {
    * klartext för den som tittar.
    */
   sampleKeys?: string[];
+  /**
+   * Vilken toppnyckel raderna låg under — `items` enligt Vismas modell.
+   * Redovisas i stället för att antas, eftersom det var just det
+   * antagandet som gjorde varje lista tyst tom.
+   */
+  rowKey?: string;
 }
 
 export interface SpecProbe {
@@ -84,7 +96,23 @@ const KNOWN: Array<[string, string]> = [
  * svarsformen. /v1/employees avgör om stationPlaceId finns där eller
  * måste sättas i appen; den kända (föråldrade) modellen saknar den.
  */
-const SAMPLE_SHAPE_OF = new Set(["/v1/trips", "/v1/employees", "/v1/workTasks", "/v1/workGroups"]);
+/**
+ * Vägar där fältnamnen visas.
+ *
+ * stationPlaces kom till efter att Vismas modell visat sig sakna
+ * stationPlaceId på Employee: saknas kopplingen på personen måste den
+ * sättas här, och då behöver vi se vad stationsorten själv bär.
+ * vehicles finns med trots att fordon skrivs in för hand — formen
+ * avgör om vi kan hämta dem senare utan att gissa.
+ */
+const SAMPLE_SHAPE_OF = new Set([
+  "/v1/trips",
+  "/v1/employees",
+  "/v1/workTasks",
+  "/v1/workGroups",
+  "/v1/stationPlaces",
+  "/v1/vehicles",
+]);
 
 /**
  * Gissningar. `transpaapi:workgroups:read` är beviljat men vägen är
@@ -174,6 +202,12 @@ function describe(error: unknown): { outcome: ProbeOutcome; status?: number; det
   }
   if (error instanceof TranspaAuthError) {
     return { outcome: "error", status: error.status, detail: error.message };
+  }
+  /* Vägen svarade 200 — det är formen som inte känns igen. Skiljs från
+     ett vanligt fel eftersom åtgärden är en annan: här finns resursen,
+     men raderna ligger under en nyckel vi inte läser. */
+  if (error instanceof TranspaShapeError) {
+    return { outcome: "error", status: 200, detail: error.message };
   }
   return { outcome: "error", detail: error instanceof Error ? error.message : String(error) };
 }
@@ -268,11 +302,8 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
   let sampleEmployeeId: string | null = null;
   let sampleEmployeeKeys: string[] = [];
   try {
-    const r = await client.request<{ data?: Array<Record<string, unknown>> }>("/v1/employees", {
-      limit: 1,
-      scopes,
-    });
-    const first = r?.data?.[0];
+    const r = await client.request<unknown>("/v1/employees", { limit: 1, scopes });
+    const first = rowsOf<Record<string, unknown>>(r, "/v1/employees").rows[0];
     if (first && typeof first === "object") {
       sampleEmployeeKeys = Object.keys(first);
       /* Fältnamnet gissas inte. Vismas genererade klient är PascalCase
@@ -308,12 +339,22 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     }
 
     try {
-      const response = await client.request<{ data?: unknown[] }>(path, {
+      const response = await client.request<unknown>(path, {
         limit: path === "/v1/alive" ? undefined : 1,
         scopes,
       });
-      const rows = Array.isArray(response?.data) ? response.data.length : undefined;
-      const first = response?.data?.[0];
+      /* /v1/alive svarar inte med en lista, så där finns inget kuvert
+         att packa upp — och en form som inte känns igen ska synas som
+         sin egen utgång, inte som ett tomt svar. */
+      let rows: number | undefined;
+      let first: unknown;
+      let rowKey: string | undefined;
+      if (path !== "/v1/alive") {
+        const unpacked = rowsOf<unknown>(response, path);
+        rows = unpacked.rows.length;
+        first = unpacked.rows[0];
+        rowKey = unpacked.key;
+      }
       // Tomt svar ger [] snarare än undefined, för att skilja "frågade
       // men inget kom" från "frågade inte" — annars visar sidan varken
       // fältnamn eller meddelandet om att svaret var tomt.
@@ -330,6 +371,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
         status: 200,
         sample: rows,
         sampleKeys,
+        rowKey,
       });
     } catch (error) {
       endpoints.push({ path, label, known, ...describe(error) });

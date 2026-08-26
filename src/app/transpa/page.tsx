@@ -33,6 +33,20 @@ function Row({ probe }: { probe: EndpointProbe }) {
       </td>
       <td className="py-1.5 text-xs text-(--color-muted)">
         {probe.detail ?? (probe.status ? `HTTP ${probe.status}` : "")}
+        {probe.sample !== undefined && (
+          <span className="ml-2">
+            · {probe.sample} rad{probe.sample === 1 ? "" : "er"}
+            {probe.rowKey ? ` under ${probe.rowKey}` : ""}
+          </span>
+        )}
+        {/* Fältnamnen är hela poängen med sidan — de avgör om
+            stationsort finns i TransPA eller måste sättas här. Bara
+            namnen, aldrig värdena. */}
+        {probe.sampleKeys && (
+          <div className="mt-1 font-mono break-words">
+            {probe.sampleKeys.join(", ") || "(tomt svar — inga fält att visa)"}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -61,6 +75,7 @@ export default async function TranspaPage() {
       (e) =>
         `${e.path}  ${e.outcome}${e.status ? ` (${e.status})` : ""}` +
         `${e.detail ? `  ${e.detail}` : ""}` +
+        `${e.sample !== undefined ? `  ${e.sample} rader${e.rowKey ? ` under ${e.rowKey}` : ""}` : ""}` +
         `${e.sampleKeys ? `\n    fält: ${e.sampleKeys.join(", ") || "(tomt svar)"}` : ""}`,
     ),
     "",

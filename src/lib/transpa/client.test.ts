@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { TranspaClient, TranspaApiError } from "./client";
+import { TranspaClient, TranspaApiError, TranspaShapeError, rowsOf } from "./client";
 import { clearTokenCache } from "./auth";
 
 const credentials = { clientId: "id", clientSecret: "hemlis", tenantId: "t1" };
@@ -18,8 +18,12 @@ function fakeFetch(handler: (url: string, init?: RequestInit) => Response) {
   return { impl, calls };
 }
 
-const listPage = (data: unknown[], nextToken: string | null) =>
-  new Response(JSON.stringify({ data, cursor: { nextToken } }));
+/* Kuvertet TransPA faktiskt skickar: raderna under `items`, enligt
+   Vismas egen OpenAPI-modell. Testet använde tidigare `data` — samma
+   felantagande som koden — och därför gick det igenom medan varje
+   riktig lista blev tom. */
+const listPage = (items: unknown[], nextToken: string | null) =>
+  new Response(JSON.stringify({ items, cursor: { nextToken } }));
 
 beforeEach(() => clearTokenCache());
 
@@ -88,5 +92,37 @@ describe("TranspaClient", () => {
       status: 404,
       path: "/v1/shifts",
     });
+  });
+
+  it("läser raderna ur items, inte ur data", async () => {
+    const { impl } = fakeFetch(
+      () => new Response(JSON.stringify({ items: [{ id: "a" }, { id: "b" }], cursor: { nextToken: null } })),
+    );
+    const rows = await new TranspaClient({ credentials, fetchImpl: impl }).list("/v1/employees");
+    expect(rows).toHaveLength(2);
+  });
+
+  /* Den genererade klienten är föråldrad, så live-API:t kan skilja sig
+     från modellen. Faller det tillbaka ska det ändå fungera. */
+  it("godtar data som andrahandsnyckel", async () => {
+    const { impl } = fakeFetch(
+      () => new Response(JSON.stringify({ data: [{ id: "a" }], cursor: { nextToken: null } })),
+    );
+    const rows = await new TranspaClient({ credentials, fetchImpl: impl }).list("/v1/employees");
+    expect(rows).toHaveLength(1);
+  });
+
+  /* Det här är felet som kostade oss en synk som rapporterade lyckat
+     utan att ha hämtat något. En form vi inte känner igen ska smälla,
+     inte ge tomt. */
+  it("kastar hellre än att returnera tomt när kuvertet inte känns igen", async () => {
+    const { impl } = fakeFetch(() => new Response(JSON.stringify({ result: [{ id: "a" }] })));
+    await expect(new TranspaClient({ credentials, fetchImpl: impl }).list("/v1/employees"))
+      .rejects.toBeInstanceOf(TranspaShapeError);
+  });
+
+  it("skiljer en tom sida från en okänd form", async () => {
+    expect(rowsOf({ items: [] }, "/v1/employees")).toEqual({ rows: [], key: "items" });
+    expect(() => rowsOf({}, "/v1/employees")).toThrowError(/varken items eller data/);
   });
 });
