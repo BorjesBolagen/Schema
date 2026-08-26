@@ -60,3 +60,45 @@ describe("probeTenant", () => {
     expect(vehicles.sampleKeys).toBeUndefined();
   });
 });
+
+describe("jakten på passen", () => {
+  it("hittar passen under en person och använder ett riktigt id", async () => {
+    const sedda: string[] = [];
+    const fetchImpl = fakeFetch((url) => {
+      const path = new URL(url).pathname;
+      sedda.push(path);
+      if (path.endsWith("/v1/employees")) {
+        return new Response(
+          JSON.stringify({ data: [{ id: "emp-42", firstName: "A" }], cursor: { nextToken: null } }),
+        );
+      }
+      // Bara underresursen finns — precis som i verkligheten, där
+      // /v1/shifts svarar 404 trots att scopet är beviljat.
+      if (path === "/publicApi/v1/employees/emp-42/shifts") {
+        return new Response(
+          JSON.stringify({ data: [{ date: "2026-08-24", startTime: "06:00" }], cursor: {} }),
+        );
+      }
+      return new Response(JSON.stringify({ title: "Not found" }), { status: 404 });
+    });
+
+    const report = await probeTenant(fetchImpl);
+    const träff = report.endpoints.find((e) => e.path === "/v1/employees/emp-42/shifts");
+
+    expect(träff?.outcome).toBe("ok");
+    // Id:t ska komma från personallistan, inte vara påhittat.
+    expect(sedda).toContain("/publicApi/v1/employees/emp-42/shifts");
+  });
+
+  it("provar inte underresurser när ingen person gick att hämta", async () => {
+    const sedda: string[] = [];
+    const fetchImpl = fakeFetch((url) => {
+      sedda.push(new URL(url).pathname);
+      return new Response(JSON.stringify({ data: [], cursor: {} }));
+    });
+
+    await probeTenant(fetchImpl);
+    expect(sedda.some((p) => p.includes("{id}"))).toBe(false);
+    expect(sedda.some((p) => /\/v1\/employees\/[^/]+\/shifts/.test(p))).toBe(false);
+  });
+});

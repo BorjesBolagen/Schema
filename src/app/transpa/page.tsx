@@ -98,10 +98,11 @@ export default async function TranspaPage() {
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Gissade vägar</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Namn vi gissar på — antingen för att scopet finns men vägen är okänd (
-          <code>/v1/workGroups</code>, för <code>transpaapi:workgroups:read</code>), eller för att
-          varken scope eller väg är bekräftat (frånvaro, semester, tidrapporter). Svarar någon av
-          de sistnämnda något annat än <em>finns inte</em> är det värt att begära det scopet också.
+          Scopet <code>transpaapi:shifts:read</code> är beviljat, men <code>/v1/shifts</code>
+          svarar 404 — resursen finns alltså, på en annan väg. Raderna med
+          <em> Pass </em> nedan provar de troligaste, inklusive under en riktig person. Övriga är
+          rena gissningar på frånvaro och semester; svarar någon av dem annat än <em>finns
+          inte</em> är det värt att begära det scopet också.
         </p>
         <table className="mt-2 w-full border-collapse">
           <tbody>
@@ -112,8 +113,9 @@ export default async function TranspaPage() {
         </table>
         {found.length > 0 && (
           <p className="mt-3 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-            {found.length === 1 ? "En endpoint svarade" : `${found.length} endpoints svarade`}:{" "}
-            {found.map((f) => f.path).join(", ")}. Det är den vägen arbetsdagarna ska hämtas.
+            {found.length === 1 ? "En väg svarade" : `${found.length} vägar svarade`}:{" "}
+            {found.map((f) => f.path).join(", ")}. Titta på fältnamnen för att avgöra vad den
+            faktiskt innehåller — att en väg svarar säger inte att den bär arbetsdagar.
           </p>
         )}
       </section>
@@ -147,8 +149,9 @@ export default async function TranspaPage() {
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Synk av grunddata</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Hämtar personal, fordon, fordonsgrupper, trafikområden och stationsorter. Bilarnas
-          visningsnamn och personalens stationsort ägs lokalt och skrivs aldrig över.
+          Hämtar personal och stationsorter, ett bolag i taget, och märker varje person med sitt
+          bolag. Fordon hämtas inte — de skrivs in för hand under Grunddata. Personalens
+          stationsort ägs lokalt och skrivs aldrig över.
         </p>
         <div className="mt-3">
           <SyncButton disabled={missing} />

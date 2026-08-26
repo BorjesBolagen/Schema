@@ -69,8 +69,8 @@ const KNOWN: Array<[string, string]> = [
   ["/v1/vehicles", "Fordon"],
   ["/v1/stationPlaces", "Stationsorter"],
   ["/v1/workTasks", "Arbetsuppgifter"],
+  ["/v1/workGroups", "Arbetsgrupper"],
   ["/v1/trips", "Turer"],
-  ["/v1/shifts", "Pass"],
 ];
 
 /**
@@ -82,7 +82,7 @@ const KNOWN: Array<[string, string]> = [
  * svarsformen. /v1/employees avgör om stationPlaceId finns där eller
  * måste sättas i appen; den kända (föråldrade) modellen saknar den.
  */
-const SAMPLE_SHAPE_OF = new Set(["/v1/shifts", "/v1/trips", "/v1/employees"]);
+const SAMPLE_SHAPE_OF = new Set(["/v1/trips", "/v1/employees", "/v1/workTasks", "/v1/workGroups"]);
 
 /**
  * Gissningar. `transpaapi:workgroups:read` är beviljat men vägen är
@@ -93,12 +93,35 @@ const SAMPLE_SHAPE_OF = new Set(["/v1/shifts", "/v1/trips", "/v1/employees"]);
  * beviljade, så de är nedgraderade till gissningar här — de kan ändå
  * svara om de ligger bakom grundscopet.
  */
+/**
+ * Jakten på passen.
+ *
+ * `transpaapi:shifts:read` är beviljat, så resursen finns — men
+ * /v1/shifts svarar 404. Vägen heter alltså något annat. Mönstret hos
+ * de endpoints som fungerar är scopet i camelCase (`workgroups` →
+ * /v1/workGroups), vilket borde gett /v1/shifts; att det inte gör det
+ * pekar mot att passen ligger under en annan resurs, troligast under
+ * personen de gäller.
+ *
+ * Kandidater med {id} i sig provas mot en riktig person, hämtad ur
+ * /v1/employees först — annars går de inte att skilja från en felstavad
+ * väg.
+ */
+const SHIFT_CANDIDATES = [
+  "/v1/workShifts",
+  "/v1/employeeShifts",
+  "/v1/shiftSchedules",
+  "/v1/shift",
+  "/v1/employees/{id}/shifts",
+  "/v1/employees/{id}/workShifts",
+  "/v1/employees/{id}/schedule",
+];
+
 const GUESSES: Array<[string, string]> = [
-  ["/v1/workGroups", "Arbetsgrupper"],
-  ["/v1/vehicleGroups", "Fordonsgrupper"],
-  ["/v1/trafficAreas", "Trafikområden"],
   ["/v1/schedules", "Scheman"],
   ["/v1/absences", "Frånvaro"],
+  ["/v1/absence", "Frånvaro (singular)"],
+  ["/v1/vacations", "Semester"],
   ["/v1/timeReports", "Tidrapporter"],
   ["/v1/workSchedules", "Arbetsscheman"],
 ];
@@ -207,7 +230,28 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
   const client = new TranspaClient({ credentials, fetchImpl });
   const endpoints: EndpointProbe[] = [];
 
-  for (const [path, label] of [...KNOWN, ...GUESSES]) {
+  /* En riktig person, för de kandidater som är underresurser. Utan ett
+     id skulle /v1/employees/{id}/shifts svara 404 oavsett om vägen
+     finns, och svaret vore värdelöst. */
+  let sampleEmployeeId: string | null = null;
+  try {
+    const r = await client.request<{ data?: Array<{ id?: string }> }>("/v1/employees", {
+      limit: 1,
+      scopes,
+    });
+    sampleEmployeeId = r?.data?.[0]?.id ?? null;
+  } catch {
+    /* Går det inte syns det ändå på raden för /v1/employees nedan. */
+  }
+
+  const shiftPaths: Array<[string, string]> = SHIFT_CANDIDATES.filter(
+    (c) => !c.includes("{id}") || sampleEmployeeId,
+  ).map((c) => [
+    c.replace("{id}", sampleEmployeeId ?? ""),
+    c.includes("{id}") ? `Pass under en person (${c.split("/").pop()})` : "Pass",
+  ]);
+
+  for (const [path, label] of [...KNOWN, ...shiftPaths, ...GUESSES]) {
     const known = KNOWN.some(([p]) => p === path);
     try {
       const response = await client.request<{ data?: unknown[] }>(path, {

@@ -308,6 +308,22 @@ körning — `SCOPE_FOR` i `src/server/transpa-sync.ts` styr det, och
 läser scopen ur samma lista som resten av koden. Får ni fler scopes
 beviljade räcker det att lägga till dem i `READ_SCOPES`.
 
+**Vad tenanten faktiskt svarade** (2026-08-25, via `/transpa`):
+
+| Väg | |
+|---|---|
+| `/v1/alive`, `/v1/employees`, `/v1/vehicles`, `/v1/stationPlaces`, `/v1/workTasks`, `/v1/workGroups`, `/v1/trips` | svarar |
+| `/v1/shifts` | **404** — trots att scopet är beviljat |
+| `/v1/vehicleGroups`, `/v1/trafficAreas` | nekas, inget scope |
+| `/v1/schedules`, `/v1/absences`, `/v1/timeReports`, `/v1/workSchedules` | finns inte |
+
+Att `shifts` har ett beviljat scope men ingen väg på `/v1/shifts` är
+det som avgör nästa steg: resursen finns, men ligger någon annanstans —
+troligast under personen den gäller. `/transpa` provar därför en rad
+kandidater, och de som är underresurser provas mot en riktig person
+hämtad ur `/v1/employees`. Hittas ingen väg är `/v1/trips` reserven att
+härleda arbetsdagar ur.
+
 Listan ovan är rättad mot Börjes verkliga scope-katalog i Visma
 Developer Portal (2026-08-24): resursen heter `workgroups`, inte
 `vehiclegroups` som den föråldrade klienten antydde, och `trafficareas`
