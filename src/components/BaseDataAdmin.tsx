@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   createEmployee,
   setStationPlaceForMany,
+  setWorkPatternForMany,
   createStation,
   createVehicle,
   deleteStation,
@@ -28,6 +29,17 @@ type Tab = "personal" | "fordon" | "orter";
  * roll vi inte känner igen ska synas snarare än döljas bakom en
  * översättning som inte finns.
  */
+/** Veckodagarna i den ordning ett schema läses, inte i JS ordning. */
+const WEEKDAY_CHIPS = [
+  { value: 1, label: "Mån" },
+  { value: 2, label: "Tis" },
+  { value: 3, label: "Ons" },
+  { value: 4, label: "Tors" },
+  { value: 5, label: "Fre" },
+  { value: 6, label: "Lör" },
+  { value: 0, label: "Sön" },
+];
+
 const ROLE_LABEL: Record<string, string> = {
   driver: "chaufför",
   other: "övrig",
@@ -123,6 +135,7 @@ function EmployeeTab({
   const [showInactive, setShowInactive] = useState(false);
   const [query, setQuery] = useState("");
   const [onlyWithout, setOnlyWithout] = useState(false);
+  const [onlyNoPattern, setOnlyNoPattern] = useState(false);
   const [role, setRole] = useState("");
 
   /* Rollerna som faktiskt finns, inte en hårdkodad lista — TransPA
@@ -133,11 +146,16 @@ function EmployeeTab({
   ].sort((a, b) => a.localeCompare(b, "sv"));
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkStation, setBulkStation] = useState("");
+  /* Måndag–fredag dag är förvalt eftersom det är vad de allra flesta
+     kör. Undantagen — natt, rullscheman — rättas per person efteråt. */
+  const [bulkDays, setBulkDays] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]));
+  const [bulkShift, setBulkShift] = useState<"day" | "night">("day");
 
   const shown = employees.filter((e) => {
     if (!showInactive && !e.isActive) return false;
     if (onlyWithout && e.stationPlaceId) return false;
     if (role && e.professionGroup !== role) return false;
+    if (onlyNoPattern && e.pattern) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -161,6 +179,27 @@ function EmployeeTab({
       () => setStationPlaceForMany([...picked], bulkStation || null),
       () => setPicked(new Set()),
     );
+
+  const applyPattern = () =>
+    run(
+      () =>
+        setWorkPatternForMany([...picked], {
+          cycleWeeks: 1,
+          // Ankaret spelar ingen roll för en cykel på en vecka, men
+          // kolumnen är obligatorisk.
+          anchorDate: new Date().toISOString().slice(0, 10),
+          weekStartsOn: 1,
+          days: [...bulkDays].map((weekday) => ({ cycleWeek: 0, weekday, shift: bulkShift })),
+        }),
+      () => setPicked(new Set()),
+    );
+
+  const toggleBulkDay = (weekday: number) =>
+    setBulkDays((prev) => {
+      const next = new Set(prev);
+      next.has(weekday) ? next.delete(weekday) : next.add(weekday);
+      return next;
+    });
 
   const add = () =>
     run(
@@ -228,6 +267,14 @@ function EmployeeTab({
           <input type="checkbox" checked={onlyWithout} onChange={(e) => setOnlyWithout(e.target.checked)} />
           Bara utan stationsort
         </label>
+        <label className="flex items-center gap-2 text-xs text-(--color-muted)">
+          <input
+            type="checkbox"
+            checked={onlyNoPattern}
+            onChange={(e) => setOnlyNoPattern(e.target.checked)}
+          />
+          Bara utan arbetsmönster
+        </label>
         {roles.length > 0 && (
           <label className="flex items-center gap-2 text-xs text-(--color-muted)">
             Roll
@@ -280,11 +327,61 @@ function EmployeeTab({
           >
             Avmarkera
           </button>
+
+          {/* Arbetsmönstret är enda källan till arbetsdagar — TransPA
+              har inga pass att hämta — så det måste gå att sätta på
+              många på en gång. */}
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-(--color-accent)/30 pt-2">
+            <span className="text-xs text-(--color-muted)">Arbetsmönster</span>
+            {WEEKDAY_CHIPS.map((d) => (
+              <label
+                key={d.value}
+                className={`cursor-pointer rounded border px-2 py-1 text-xs ${
+                  bulkDays.has(d.value)
+                    ? "border-(--color-accent) bg-(--color-accent) text-white"
+                    : "border-(--color-line) bg-white text-(--color-muted)"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={bulkDays.has(d.value)}
+                  onChange={() => toggleBulkDay(d.value)}
+                  aria-label={d.label}
+                  className="sr-only"
+                />
+                {d.label}
+              </label>
+            ))}
+            <select
+              value={bulkShift}
+              onChange={(e) => setBulkShift(e.target.value as "day" | "night")}
+              aria-label="Skift"
+              className={`w-24 ${field}`}
+            >
+              <option value="day">☀️ dag</option>
+              <option value="night">🌙 natt</option>
+            </select>
+            <button
+              onClick={applyPattern}
+              disabled={pending || bulkDays.size === 0}
+              className="rounded bg-(--color-accent) px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              Sätt mönster på {picked.size}
+            </button>
+            <span className="text-xs text-(--color-muted)">ersätter befintliga mönster</span>
+          </div>
         </div>
       )}
 
       {shown.length === 0 ? (
-        <p className="mt-4 text-sm text-(--color-muted)">Ingen personal ännu.</p>
+        // Skilj "registret är tomt" från "filtret döljer alla" — med
+        // filter påslagna är det senare det vanliga, och det förra vore
+        // ett skrämmande felaktigt besked.
+        <p className="mt-4 text-sm text-(--color-muted)">
+          {employees.length === 0
+            ? "Ingen personal ännu."
+            : "Ingen matchar filtren. Alla i urvalet är alltså klara — eller så är filtret för smalt."}
+        </p>
       ) : (
         <table className="mt-3 w-full border-collapse text-sm">
           <thead>
@@ -300,6 +397,7 @@ function EmployeeTab({
               <th className="py-2 pr-4 font-medium">Namn</th>
               <th className="py-2 pr-4 font-medium">Anst.nr</th>
               <th className="py-2 pr-4 font-medium">Roll</th>
+              <th className="py-2 pr-4 font-medium">Arbetsmönster</th>
               <th className="py-2 pr-4 font-medium">Stationsort</th>
               <th className="py-2 font-medium" />
             </tr>
@@ -330,6 +428,11 @@ function EmployeeTab({
                 <td className="py-2 pr-4 text-xs text-(--color-muted)">{e.employeeNumber ?? "—"}</td>
                 <td className="py-2 pr-4 text-xs text-(--color-muted)">
                   {e.professionGroup ? (ROLE_LABEL[e.professionGroup] ?? e.professionGroup) : "—"}
+                </td>
+                {/* Utan mönster går personen inte att lägga ut på en
+                    tavla — därför framhävt snarare än nedtonat. */}
+                <td className="py-2 pr-4 text-xs whitespace-nowrap">
+                  {e.pattern ?? <span className="text-(--color-warn)">saknas</span>}
                 </td>
                 <td className="py-2 pr-4">
                   <select

@@ -9,6 +9,7 @@ import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
+import { writePattern, type PatternDayInput } from "@/server/patterns";
 import {
   suggestPatternsFromTrips,
   type SuggestionReport,
@@ -619,11 +620,7 @@ export async function deleteBoardGroup(groupId: string, boardSlug: string): Prom
  * Arbetsmönster
  * ------------------------------------------------------------------ */
 
-export interface PatternDayInput {
-  cycleWeek: number;
-  weekday: number;
-  shift: Shift;
-}
+export type { PatternDayInput };
 
 /**
  * Sparar en persons arbetsmönster.
@@ -710,35 +707,6 @@ export async function applyWorkPatternToMany(input: {
 }
 
 /** Skriver om en persons mönster. Det tidigare ersätts. */
-async function writePattern(
-  employeeId: string,
-  input: { cycleWeeks: number; anchorDate: string; weekStartsOn: number; days: PatternDayInput[] },
-): Promise<void> {
-  const db = getDb();
-  const cycleWeeks = Math.min(8, Math.max(1, Math.round(input.cycleWeeks)));
-
-  await db.delete(schema.workPattern).where(eq(schema.workPattern.employeeId, employeeId));
-  if (input.days.length === 0) return;
-
-  const [pattern] = await db
-    .insert(schema.workPattern)
-    .values({
-      employeeId,
-      cycleWeeks,
-      anchorDate: input.anchorDate,
-      weekStartsOn: input.weekStartsOn,
-    })
-    .returning();
-
-  // Dagar utanför cykeln skulle aldrig kunna träffa och filtreras bort.
-  const days = input.days.filter((d) => d.cycleWeek < cycleWeeks);
-  if (days.length) {
-    await db
-      .insert(schema.workPatternDay)
-      .values(days.map((d) => ({ ...d, workPatternId: pattern.id })))
-      .onConflictDoNothing();
-  }
-}
 
 /* ------------------------------------------------------------------ *
  * Frånvaro och semester

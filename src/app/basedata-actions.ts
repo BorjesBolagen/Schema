@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin, requireUser } from "@/server/auth";
+import { writePattern, type PatternDayInput } from "@/server/patterns";
 import {
   boardRemovalFacts,
   createBoard,
@@ -115,6 +116,28 @@ export async function setStationPlaceForMany(
     // en halvt genomförd massättning som ingen ser.
     if (!result.ok) return result;
   }
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * Lägger samma arbetsmönster på flera personer.
+ *
+ * Mönstren är enda källan till arbetsdagar — TransPA har varken pass,
+ * frånvaro eller semester att hämta, och turerna är för glesa för att
+ * bära ett veckomönster. Med 301 personer i registret är ett mönster i
+ * taget inte en väg fram, och nästan alla kör måndag till fredag dagtid.
+ *
+ * Skriver över befintliga mönster för de valda. Det är avsikten: den
+ * som markerar trettio personer och sätter mån–fre menar det. Urvalet
+ * görs i listan, där det syns vilka som träffas.
+ */
+export async function setWorkPatternForMany(
+  employeeIds: string[],
+  input: { cycleWeeks: number; anchorDate: string; weekStartsOn: number; days: PatternDayInput[] },
+): Promise<BaseDataResult> {
+  await requireAdmin();
+  for (const id of employeeIds) await writePattern(id, input);
   refresh();
   return { ok: true };
 }

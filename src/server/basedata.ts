@@ -25,6 +25,12 @@ export interface ManagedEmployee {
   stationPlaceId: string | null;
   /** driver, other eller garage — TransPA:s yrkesroll. Null när okänd. */
   professionGroup: string | null;
+  /**
+   * Kort beskrivning av arbetsmönstret, eller null när personen saknar
+   * ett. Mönstret är enda källan till arbetsdagar, så vem som saknar
+   * det är det som avgör vem som inte går att lägga ut på en tavla.
+   */
+  pattern: string | null;
   isActive: boolean;
   fromTranspa: boolean;
 }
@@ -51,10 +57,54 @@ export async function listStations(): Promise<ManagedStation[]> {
   return rows.map((s) => ({ id: s.id, name: s.name, fromTranspa: !!s.transpaId }));
 }
 
+const DAY_SHORT = ["sön", "mån", "tis", "ons", "tors", "fre", "lör"];
+
+/**
+ * Mönstret som en rad text: "mån–fre ☀️", "mån, ons 🌙", "4 v. cykel".
+ *
+ * Sammanhängande veckodagar skrivs som ett spann eftersom mån–fre är
+ * det överlägset vanligaste och en uppräkning då blir brus. Cykler
+ * längre än en vecka beskrivs inte i detalj — de går inte att sammanfatta
+ * ärligt på en rad, och den som behöver se dem öppnar mönsterredigeraren.
+ */
+export function describePattern(cycleWeeks: number, days: Array<{ weekday: number; shift: string }>): string {
+  if (days.length === 0) return "inga dagar";
+  if (cycleWeeks > 1) return `${cycleWeeks} v. cykel`;
+
+  const shifts = [...new Set(days.map((d) => d.shift))];
+  const icon = shifts.length > 1 ? "☀️🌙" : shifts[0] === "night" ? "🌙" : "☀️";
+
+  // Måndag först, söndag sist — så ett schema läses.
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const present = order.filter((w) => days.some((d) => d.weekday === w));
+  const contiguous = present.every((w, i) => i === 0 || order.indexOf(w) === order.indexOf(present[i - 1]) + 1);
+
+  const label =
+    present.length > 2 && contiguous
+      ? `${DAY_SHORT[present[0]]}–${DAY_SHORT[present[present.length - 1]]}`
+      : present.map((w) => DAY_SHORT[w]).join(", ");
+
+  return `${label} ${icon}`;
+}
+
 export async function listEmployees(): Promise<ManagedEmployee[]> {
   const rows = await readWithTimeout(() =>
     getDb().select().from(schema.employee).orderBy(asc(schema.employee.lastName), asc(schema.employee.firstName)),
   );
+  const patterns = await readWithTimeout(() => getDb().select().from(schema.workPattern));
+  const patternDays = await readWithTimeout(() => getDb().select().from(schema.workPatternDay));
+
+  const daysByPattern = new Map<string, Array<{ weekday: number; shift: string }>>();
+  for (const d of patternDays) {
+    daysByPattern.set(d.workPatternId, [...(daysByPattern.get(d.workPatternId) ?? []), d]);
+  }
+  const byEmployee = new Map(
+    patterns.map((p) => [
+      p.employeeId,
+      describePattern(p.cycleWeeks, daysByPattern.get(p.id) ?? []),
+    ]),
+  );
+
   return rows.map((e) => ({
     id: e.id,
     firstName: e.firstName,
@@ -62,6 +112,7 @@ export async function listEmployees(): Promise<ManagedEmployee[]> {
     employeeNumber: e.employeeNumber,
     stationPlaceId: e.stationPlaceId,
     professionGroup: e.professionGroup,
+    pattern: byEmployee.get(e.id) ?? null,
     isActive: e.isActive,
     fromTranspa: !!e.transpaId,
   }));

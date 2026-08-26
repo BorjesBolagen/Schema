@@ -1,10 +1,11 @@
 import "server-only";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
 import { batchByFilterLength, condition, joinConditions } from "@/lib/transpa/filter";
 import { suggestPatterns, type PatternSuggestion, type TripLike } from "@/lib/trip-patterns";
+import { writePattern } from "./patterns";
 
 /**
  * Arbetsdagar och TransPA — vad som faktiskt går, och vad som inte gör det.
@@ -164,7 +165,6 @@ export async function suggestPatternsFromTrips(
 /**
  * Skriver ett föreslaget mönster till en person.
  *
- * Ersätter dagarna i personens gällande mönster, eller skapar ett nytt.
  * Cykellängden sätts till 1: turhistoriken kan visa vilka veckodagar
  * någon kör, men att skilja en fyraveckorscykel från oregelbundenhet
  * kräver mer underlag än vi har. Rullscheman läggs in för hand.
@@ -173,28 +173,10 @@ export async function applySuggestion(
   employeeId: string,
   days: Array<{ weekday: number; shift: "day" | "night" }>,
 ): Promise<void> {
-  const db = getDb();
-
-  const [existing] = await db
-    .select({ id: schema.workPattern.id })
-    .from(schema.workPattern)
-    .where(eq(schema.workPattern.employeeId, employeeId))
-    .limit(1);
-
-  const anchorDate = new Date().toISOString().slice(0, 10);
-  const patternId =
-    existing?.id ??
-    (
-      await db
-        .insert(schema.workPattern)
-        .values({ employeeId, cycleWeeks: 1, anchorDate, weekStartsOn: 1 })
-        .returning({ id: schema.workPattern.id })
-    )[0].id;
-
-  await db.delete(schema.workPatternDay).where(eq(schema.workPatternDay.workPatternId, patternId));
-  if (days.length > 0) {
-    await db
-      .insert(schema.workPatternDay)
-      .values(days.map((d) => ({ workPatternId: patternId, cycleWeek: 0, ...d })));
-  }
+  await writePattern(employeeId, {
+    cycleWeeks: 1,
+    anchorDate: new Date().toISOString().slice(0, 10),
+    weekStartsOn: 1,
+    days: days.map((d) => ({ ...d, cycleWeek: 0 })),
+  });
 }
