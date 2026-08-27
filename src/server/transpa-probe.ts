@@ -1,5 +1,6 @@
 import "server-only";
 import { overlapsRange } from "@/lib/transpa/filter";
+import { describeSpecPaths, parseOpenApiYaml } from "@/lib/transpa/openapi-yaml";
 import {
   TranspaApiError,
   TranspaClient,
@@ -547,10 +548,33 @@ export function looksLikeTranspa(
 /** Ett hämtat spec-dokument, eller varför det inte gick. */
 async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe | null> {
   try {
-    const response = await fetchImpl(url, { headers: { Accept: "application/json" } });
+    const response = await fetchImpl(url, {
+      headers: { Accept: "application/json, application/yaml, text/yaml, */*" },
+    });
     if (!response.ok) return null;
 
-    const spec = (await response.json()) as {
+    const text = await response.text();
+
+    /* TransPA:s spec ligger som YAML. Adressen fanns i Swagger-UI-sidan
+       hela tiden, men läsningen försökte tolka den som JSON och gav upp
+       — och sidan rapporterade att specen inte gick att hämta. */
+    if (!text.trimStart().startsWith("{")) {
+      const parsed = parseOpenApiYaml(text);
+      if (parsed.paths.length === 0) return null;
+      const paths = describeSpecPaths(parsed);
+      if (
+        !looksLikeTranspa(
+          url,
+          { servers: parsed.servers.map((u) => ({ url: u })), info: { title: parsed.title } },
+          parsed.paths.map((x) => x.path),
+        )
+      ) {
+        return null;
+      }
+      return { url, outcome: "ok", status: response.status, version: parsed.version, paths };
+    }
+
+    const spec = JSON.parse(text) as {
       paths?: Record<string, Record<string, unknown>>;
       info?: { version?: string; title?: string };
       servers?: Array<{ url?: string }>;

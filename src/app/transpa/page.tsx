@@ -120,11 +120,11 @@ export default async function TranspaPage() {
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Passen är hittade.</strong>{" "}
-        <code>/v1/timeReports/shifts</code> svarar inte 404 utan nekar med namnet på det scope som
-        saknas — vägen finns alltså, och det som återstår är att få behörigheten beviljad. Sidan
-        hämtar också OpenAPI-specen ur Swagger-UI:t, men godtar den bara om den kan visa att den
-        är TransPA:s: Swagger UI levereras med ett demo-API som annars tas för facit.
+        adress aldrig syns här. <strong>En gren som lever.</strong>{" "}
+        <code>/v1/timeReports/*</code> svarar inte 404 utan nekar med namnet på ett scope vi inte
+        bett om. Vägarna finns alltså — men om de bär planerade pass eller rapporterad tid avgörs
+        av specen, inte av namnet. Sidan läser den ur Swagger-UI:t, i både JSON och YAML, och
+        godtar den bara om den kan visa att den är TransPA:s.
       </p>
 
       {missing ? (
@@ -156,9 +156,7 @@ export default async function TranspaPage() {
         const scopes = [...new Set(denied.map((e) => e.requiredScope).filter(Boolean))];
         return (
           <div className="mt-6 rounded border-2 border-(--color-accent) bg-amber-50 p-4">
-            <p className="font-medium">
-              Passen finns — vi saknar bara behörighet
-            </p>
+            <p className="font-medium">Grenen finns — vi saknar behörighet att se in i den</p>
             <ul className="mt-2 space-y-1 text-sm">
               {denied.map((e) => (
                 <li key={e.path}>
@@ -168,18 +166,31 @@ export default async function TranspaPage() {
               ))}
             </ul>
             {scopes.length > 0 && (
-              <p className="mt-3 max-w-[68ch] text-sm">
-                Begär{" "}
-                {scopes.map((sc, i) => (
-                  <span key={sc}>
-                    {i > 0 && ", "}
-                    <code className="font-semibold">{sc}</code>
-                  </span>
-                ))}{" "}
-                i Visma Developer Portal, under samma applikation som de övriga scopen. När det är
-                beviljat hämtas arbetsdagarna därifrån, och arbetsmönstren blir en reserv för dem
-                TransPA saknar besked om — inte grunden.
-              </p>
+              <>
+                <p className="mt-3 max-w-[68ch] text-sm">
+                  Begär{" "}
+                  {scopes.map((sc, i) => (
+                    <span key={sc}>
+                      {i > 0 && ", "}
+                      <code className="font-semibold">{sc}</code>
+                    </span>
+                  ))}{" "}
+                  i Visma Developer Portal, under samma applikation som de övriga scopen.
+                </p>
+                {/* Ett 403 bevisar att vägen är registrerad, inte vad den
+                    innehåller. Namnet tidrapport pekar mot rapporterad
+                    tid, alltså historik som turerna — inte planerade
+                    pass. Det ska inte påstås åt något håll här. */}
+                <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
+                  Vad grenen bär går inte att avgöra härifrån. <em>Tidrapport</em> antyder
+                  rapporterad tid — alltså historik, som turerna — men samma gren har också{" "}
+                  <code>schedules</code>, och Swagger-taggen heter <em>timereports and shifts</em>,
+                  som två skilda saker. Att <code>/v1/timeReports</code> självt svarar 404 medan
+                  undervägarna svarar 403 talar för att de är riktiga rutter och inte en
+                  scope-spärr på hela grenen. Scopet är läsbehörighet och kostar inget att begära;
+                  det är billigaste sättet att få svaret.
+                </p>
+              </>
             )}
           </div>
         );

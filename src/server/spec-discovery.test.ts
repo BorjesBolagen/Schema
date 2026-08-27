@@ -129,3 +129,27 @@ describe("scopeFromDenial", () => {
   });
 });
 
+/**
+ * TransPA:s spec ligger som openapi.yaml. Adressen plockades ut ur
+ * sidan men förkastades, eftersom läsningen bara klarade JSON — och
+ * sidan rapporterade att specen inte fanns.
+ */
+describe("yaml-specen", () => {
+  it("förkastar inte .yaml vid utvinningen", () => {
+    const html = `SwaggerUIBundle({ url: "../openapi.yaml" })`;
+    expect(specUrlsFrom(html, BASE)).toContain(
+      "https://api.mytranspa.com/doc/openapi/openapi.yaml",
+    );
+  });
+
+  it("känner igen en yaml-spec som TransPA:s via servern", () => {
+    expect(
+      looksLikeTranspa(
+        "https://api.mytranspa.com/doc/openapi/openapi.yaml",
+        { servers: [{ url: "https://api.mytranspa.com/publicApi" }] },
+        ["/v1/alive"],
+      ),
+    ).toBe(true);
+  });
+});
+
