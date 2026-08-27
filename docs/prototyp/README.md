@@ -14,9 +14,9 @@ Det den täcker:
 - veckotavlan med dag- och nattskift, gruppering och konfliktmärkning
 - bemanningspanelen med arbetsdagar och *Ej utlagda*
 - dra och släpp: ut ur panelen, mellan celler, tillbaka för att ta bort
-- *Fyll veckan* ur bas-schema och arbetsmönster
+- *Fyll veckan* ur bas-schema och hämtade pass
 - vy-växling mellan bilar och personer
-- tavelredigering, bas-schema och arbetsmönster
+- tavelredigering och bas-schema
 - semesterårsvyn med dragmarkering och bemanningsräkning
 
 Det den inte har: flera tavlor, personalväljaren, Excel-export, utskrift

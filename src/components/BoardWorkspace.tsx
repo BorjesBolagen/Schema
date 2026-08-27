@@ -30,7 +30,6 @@ import { CrewPicker, type PickerEmployee } from "./CrewPicker";
 import { AssignmentEditor } from "./AssignmentEditor";
 import { BoardEditor } from "./BoardEditor";
 import { BaseScheduleEditor } from "./BaseScheduleEditor";
-import { WorkPatternEditor } from "./WorkPatternEditor";
 import { parseDragId, parseDropId } from "./dnd";
 
 interface Props {
@@ -58,7 +57,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
   const [dragging, setDragging] = useState<string | null>(null);
   const [open, setOpen] = useState<CellAssignment | null>(null);
   const [picker, setPicker] = useState(false);
-  type Panel = "board" | "base" | "patterns" | null;
+  type Panel = "board" | "base" | null;
   const [panel, setPanel] = useState<Panel>(null);
   const [fillReport, setFillReport] = useState<FillResult | null>(null);
   const [weekPlacement, setWeekPlacement] = useState<(WeekPlacement & { name: string }) | null>(
@@ -277,13 +276,13 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         {weekPlacement && (
           <span
             className={`text-xs ${
-              weekPlacement.missingPattern ? "text-(--color-warn)" : "text-(--color-muted)"
+              weekPlacement.missingSchedule ? "text-(--color-warn)" : "text-(--color-muted)"
             }`}
           >
-            {weekPlacement.missingPattern ? (
+            {weekPlacement.missingSchedule ? (
               <>
-                {weekPlacement.name} saknar arbetsmönster — inget lades ut. Sätt mönstret under
-                Arbetsmönster först.
+                {weekPlacement.name} har inget hämtat schema den här veckan — inget lades ut.
+                Tryck 2 · Hämta schema först.
               </>
             ) : (
               <>
@@ -309,13 +308,6 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
             className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
           >
             1 · Bas-schema
-          </button>
-          <button
-            type="button"
-            onClick={() => setPanel("patterns")}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-          >
-            Arbetsmönster
           </button>
           <button
             type="button"
@@ -389,7 +381,6 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
       )}
 
       {panel === "base" && <BaseScheduleEditor data={data} onClose={() => setPanel(null)} />}
-      {panel === "patterns" && <WorkPatternEditor data={data} onClose={() => setPanel(null)} />}
     </DndContext>
   );
 }

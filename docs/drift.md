@@ -182,11 +182,12 @@ Databasen är tom efter uppsättningen — TransPA-synken är inte på plats
    efteråt under **⚙ Tavla**.
 4. I tavlan: **👥 Bemanning** väljer vilka personer tavlan hanterar —
    filtrera på stationsort och *Välj alla*.
-5. **Arbetsmönster**: klicka i måndag–fredag och tryck *Använd på N
-   personer*. Det lägger mönstret på alla i bemanningen som saknar ett.
-   Justera sedan de få som kör annorlunda, en i taget.
-6. **Bas-schema** kopplar person till bil — inga dagar anges, det avgör
-   arbetsdagarna. Därefter fyller **Fyll veckan** tavlan.
+5. **Bas-schema** kopplar person till bil — inga dagar anges, det
+   avgör arbetsdagarna.
+6. **2 · Hämta schema** hämtar veckans pass ur TransPA för tavlans
+   bemanning, en person i taget. Personer utan TransPA-koppling räknas
+   upp i svaret. Därefter fyller **3 · Fyll veckan** tavlan utifrån de
+   hämtade passen.
 
 ## 5. Användare och behörighet
 

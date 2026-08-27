@@ -2,7 +2,7 @@
  * Demounderlag för utveckling.
  *
  * Inte kunddata — bara tillräckligt för att köra igenom flödet:
- * bemanning, bas-schema, arbetsmönster och "Fyll veckan". Skarp data
+ * bemanning, bas-schema, pass och "Fyll veckan". Skarp data
  * kommer från TransPA-synken.
  *
  *   npx tsx scripts/seed-demo.ts --db ./.pgdata
@@ -149,47 +149,6 @@ const baseEntries = await db
   ])
   .returning();
 
-const anchor = mondayOfWeek(2026, 1);
-
-/** [namn, cykelveckor, dagar per cykelvecka] */
-const patterns: Array<[string, number, Array<[number, number[], "day" | "night"]>]> = [
-  ["Elin", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
-  ["Peter", 1, [[0, [1, 2, 3, 4], "night"]]],
-  // Björn kör måndag, tisdag, torsdag, fredag — Roger fyller onsdagen.
-  ["Björn", 1, [[0, [1, 2, 4, 5], "day"]]],
-  ["Roger", 1, [[0, [3], "day"]]],
-  ["Johan", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
-  // Max jobbar men har ingen bil — hamnar i "Ej utlagda".
-  ["Max", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
-  /* Fredrik står utanför bemanningen men har mönster — så går det att
-     prova att söka fram någon som inte hör till tavlan och dra ut hen
-     på en rad, vilket lägger ut hela veckan. */
-  ["Fredrik", 1, [[0, [1, 2, 3, 4, 5], "day"]]],
-  // Alma går ett rullande fyraveckorsschema.
-  [
-    "Alma",
-    4,
-    [
-      [0, [1, 2, 3], "day"],
-      [1, [4, 5], "day"],
-      [2, [1, 3, 5], "night"],
-      [3, [2, 4], "day"],
-    ],
-  ],
-];
-
-for (const [name, cycleWeeks, spec] of patterns) {
-  const [pattern] = await db
-    .insert(schema.workPattern)
-    .values({ employeeId: byName[name].id, cycleWeeks, anchorDate: anchor })
-    .returning();
-  await db.insert(schema.workPatternDay).values(
-    spec.flatMap(([cycleWeek, weekdays, shift]) =>
-      weekdays.map((weekday) => ({ workPatternId: pattern.id, cycleWeek, weekday, shift })),
-    ),
-  );
-}
-
 /* Frånvaro spridd över året, så semestervyn har något att visa och
    bemanningsraden dippar under sommaren precis som i verkligheten. */
 const week = (w: number, len = 1) => ({
@@ -217,6 +176,53 @@ const absenceRows = await db
 /* Fyll veckorna runt idag, så appen visar ett bemannat schema direkt. */
 const today = isoWeek(toIso(new Date()));
 let filled = 0;
+/**
+ * Pass, som om de kommit från TransPA.
+ *
+ * Arbetsmönstren är borttagna — TransPA är källan till arbetsdagar — så
+ * demot behöver riktiga pass att lägga ut. Formen är den TransPA
+ * faktiskt skickar: en starttidpunkt och en längd, inget slutdatum.
+ */
+const demoShifts: Array<[string, number[], number, number]> = [
+  // [namn, veckodagar, starttimme svensk tid, timmar]
+  ["Elin", [1, 2, 3, 4, 5], 6, 9],
+  ["Peter", [1, 2, 3, 4], 22, 9],
+  // Björn kör måndag, tisdag, torsdag, fredag — Roger fyller onsdagen.
+  ["Björn", [1, 2, 4, 5], 6, 10],
+  ["Roger", [3], 6, 10],
+  ["Johan", [1, 2, 3, 4, 5], 7, 9],
+  // Max jobbar men har ingen bil — hamnar i "Ej utlagda".
+  ["Max", [1, 2, 3, 4, 5], 6, 8],
+  ["Alma", [4, 5], 6, 9],
+  ["Fredrik", [1, 2, 3, 4, 5], 6, 8],
+];
+
+/* Sommartid är UTC+2. Demot ligger i augusti, så en fast timme räcker —
+   omräkningen som gäller på riktigt sitter i localParts. */
+const utcHour = (localHour: number) => (localHour - 2 + 24) % 24;
+
+for (let i = -1; i <= 3; i++) {
+  const week = today.week + i;
+  if (week < 1 || week > 52) continue;
+  const dates = weekDates(today.year, week, board.weekStartsOn, board.visibleWeekdays);
+
+  const rows = demoShifts.flatMap(([name, weekdays, startHour, hours]) =>
+    dates
+      .filter((d) => weekdays.includes(new Date(`${d}T00:00:00Z`).getUTCDay()))
+      .map((date) => ({
+        transpaId: `demo-${name}-${date}`,
+        employeeId: byName[name].id,
+        date,
+        shift: (startHour >= 17 || startHour < 4 ? "night" : "day") as "day" | "night",
+        startsAt: new Date(`${date}T${String(utcHour(startHour)).padStart(2, "0")}:00:00Z`),
+        workMinutes: hours * 60,
+        isExtraShift: false,
+        name: "Demo",
+      })),
+  );
+  if (rows.length) await db.insert(schema.transpaShift).values(rows).onConflictDoNothing();
+}
+
 for (let i = -1; i <= 3; i++) {
   const week = today.week + i;
   if (week < 1 || week > 52) continue;
@@ -250,6 +256,6 @@ console.log(`Tavla: ${board.name}  →  /tavla/${board.slug}`);
 console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${today.year}&vecka=${today.week}`);
 console.log(`Semesterplanering       →  /tavla/${board.slug}/semester?ar=2026`);
 console.log(`Personal: ${employees.length}, bemanning: ${crew.length}, rader: ${rows.length}`);
-console.log(`Bas-schema, arbetsmönster och ${filled} utlagda pass inlagda.`);
+console.log(`Bas-schema, pass och ${filled} utlagda pass inlagda.`);
 
 await closeDb(db);

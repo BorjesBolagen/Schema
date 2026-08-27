@@ -9,13 +9,8 @@ import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
-import { writePattern, type PatternDayInput } from "@/server/patterns";
 import { fetchWeekShifts, type ShiftFetchResult } from "@/server/shift-fetch";
 export type { ShiftFetchResult };
-import {
-  suggestPatternsFromTrips,
-  type SuggestionReport,
-} from "@/server/transpa-work-days";
 
 const refresh = (slug: string) => revalidatePath(`/tavla/${slug}`);
 
@@ -65,8 +60,8 @@ export interface WeekPlacement {
   skipped: Array<{ date: string; reason: "frånvaro" | "redan utlagd" }>;
   /** Sant när personen lades till i tavlans bemanning på köpet. */
   addedToCrew: boolean;
-  /** Sant när personen saknar arbetsmönster — då blir veckan tom. */
-  missingPattern: boolean;
+  /** Sant när personen inte har något hämtat schema veckan — då blir veckan tom. */
+  missingSchedule: boolean;
 }
 
 /**
@@ -77,10 +72,9 @@ export interface WeekPlacement {
  * visar, och hen läggs ut på alla dagar hen jobbar. Poängen är att en
  * bil bemannas i en rörelse i stället för fem.
  *
- * Arbetsdagarna kommer från arbetsmönstret — TransPA har inga planerade
- * pass att hämta, det är kontrollerat. Saknar personen mönster blir
- * veckan tom, och det sägs rakt ut i stället för att se ut som att
- * dragningen inte fungerade.
+ * Arbetsdagarna kommer ur de pass som hämtats från TransPA. Har ingen
+ * tryckt "Hämta schema" för veckan blir den tom, och det sägs rakt ut i
+ * stället för att se ut som att dragningen inte fungerade.
  *
  * Personen läggs till i bemanningen om hen inte redan finns där, så att
  * en sökträff går att dra ut direkt utan att först gå via
@@ -103,7 +97,7 @@ export async function assignEmployeeWeek(input: {
     .where(and(eq(schema.boardRow.id, input.boardRowId), eq(schema.boardRow.boardId, board.id)));
   // Raden måste tillhöra tavlan — annars vore det en väg att skriva på
   // en tavla man inte har tillgång till.
-  if (!row) return { placed: 0, skipped: [], addedToCrew: false, missingPattern: false };
+  if (!row) return { placed: 0, skipped: [], addedToCrew: false, missingSchedule: false };
 
   const dates = weekDates(input.year, input.week, board.weekStartsOn, board.visibleWeekdays);
   const first = dates[0];
@@ -192,7 +186,7 @@ export async function assignEmployeeWeek(input: {
     placed: create.length,
     skipped,
     addedToCrew: !inCrew,
-    missingPattern: workDays.length === 0,
+    missingSchedule: workDays.length === 0,
   };
 }
 
@@ -619,40 +613,9 @@ export async function deleteBoardGroup(groupId: string, boardSlug: string): Prom
 }
 
 /* ------------------------------------------------------------------ *
- * Arbetsmönster
+ * Schemahämtning
  * ------------------------------------------------------------------ */
 
-export type { PatternDayInput };
-
-/**
- * Sparar en persons arbetsmönster.
- *
- * Ett mönster per person i taget — det tidigare ersätts. Historiska
- * mönster med giltighetsperiod hanteras när TransPA-hämtningen finns;
- * tills dess är det här reservkällan och ska vara enkel att rätta.
- */
-export async function saveWorkPattern(input: {
-  employeeId: string;
-  cycleWeeks: number;
-  anchorDate: string;
-  weekStartsOn: number;
-  days: PatternDayInput[];
-  boardSlug: string;
-}): Promise<void> {
-  const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
-  await writePattern(input.employeeId, input);
-  refresh(input.boardSlug);
-}
-
-/**
- * Lägger samma mönster på flera personer.
- *
- * Nästan alla kör måndag till fredag. Att klicka i det en person i taget
- * för ett helt åkeri är ett rent tidsslöseri, och det som annars står
- * mellan en tom databas och en veckotavla som fylls. Vilka som träffas
- * avgörs av anroparen — normalt de som saknar mönster.
- */
 /**
  * Hämtar veckans pass från TransPA för tavlans bemanning.
  *
@@ -689,60 +652,7 @@ export async function fetchShiftsForWeek(input: {
   return result;
 }
 
-/**
- * Föreslår mönster ur turhistoriken i TransPA.
- *
- * TransPA har inga planerade pass — det är avgjort — men /v1/trips bär
- * körda turer, och ur några veckors turer syns vilka dagar och vilket
- * skift en person faktiskt kör. Förslaget fylls i åt planeraren, som
- * får godkänna det. Osäkra dagar föreslås inte utan redovisas separat.
- *
- * Bara tavlans egen bemanning, av samma skäl som applyWorkPatternToMany:
- * en planerare ska inte kunna läsa ut arbetstider för folk hen inte
- * hanterar.
- */
-export async function suggestPatternsForBoard(input: {
-  boardSlug: string;
-  weeksBack?: number;
-}): Promise<SuggestionReport> {
-  const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
 
-  const crew = await getDb()
-    .select({ employeeId: schema.boardCrew.employeeId })
-    .from(schema.boardCrew)
-    .where(eq(schema.boardCrew.boardId, board.id));
-
-  return suggestPatternsFromTrips(
-    crew.map((c) => c.employeeId),
-    input.weeksBack,
-  );
-}
-
-export async function applyWorkPatternToMany(input: {
-  employeeIds: string[];
-  cycleWeeks: number;
-  anchorDate: string;
-  weekStartsOn: number;
-  days: PatternDayInput[];
-  boardSlug: string;
-}): Promise<{ applied: number }> {
-  const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
-
-  // Bara tavlans egen bemanning — annars skulle en planerare kunna
-  // skriva om mönstret för folk hen inte hanterar.
-  const crew = await getDb()
-    .select({ employeeId: schema.boardCrew.employeeId })
-    .from(schema.boardCrew)
-    .where(eq(schema.boardCrew.boardId, board.id));
-  const allowed = new Set(crew.map((c) => c.employeeId));
-  const targets = input.employeeIds.filter((id) => allowed.has(id));
-
-  for (const employeeId of targets) await writePattern(employeeId, input);
-  refresh(input.boardSlug);
-  return { applied: targets.length };
-}
 
 /** Skriver om en persons mönster. Det tidigare ersätts. */
 

@@ -1,4 +1,3 @@
-import { localParts } from "@/lib/trip-patterns";
 import type { Shift, WorkDay } from "@/lib/work-days";
 
 /**
@@ -16,6 +15,31 @@ import type { Shift, WorkDay } from "@/lib/work-days";
  * `adjustedWorkTimeInMinutes`, som enligt Vismas eget schema räknas
  * fram av resursen calculateAdjustedWorkTime.
  */
+
+/**
+ * Datum och timme i svensk lokaltid.
+ *
+ * TransPA skickar UTC. Ett pass som startar 22:30Z en måndag i augusti
+ * är tisdag 00:30 här — fel dag och fel skift om tidpunkten läses rakt
+ * av, vilket är hela skälet till att omräkningen finns.
+ */
+const STOCKHOLM = "Europe/Stockholm";
+
+export function localParts(iso: string, timeZone = STOCKHOLM): { date: string; hour: number } {
+  const parts = new Intl.DateTimeFormat("sv-SE", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  // hourCycle h23 ger "24" för midnatt i vissa körningar; normalisera.
+  const hour = Number(get("hour")) % 24;
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, hour };
+}
 
 export interface TranspaShift {
   id?: string;

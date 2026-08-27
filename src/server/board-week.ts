@@ -101,14 +101,6 @@ export interface BoardWeek {
     validFrom: string | null;
     validTo: string | null;
   }>;
-  /** Arbetsmönstren för bemanningen, för mönsterredigeraren. */
-  patterns: Array<{
-    employeeId: string;
-    cycleWeeks: number;
-    anchorDate: string;
-    weekStartsOn: number;
-    days: Array<{ cycleWeek: number; weekday: number; shift: Shift }>;
-  }>;
 }
 
 
@@ -172,21 +164,6 @@ interface BoardWeekBundle {
     type: string;
     note: string | null;
   }>;
-  patterns: Array<{
-    id: string;
-    employeeId: string;
-    cycleWeeks: number;
-    anchorDate: string;
-    weekStartsOn: number;
-    validFrom: string | null;
-    validTo: string | null;
-  }>;
-  pattern_days: Array<{
-    workPatternId: string;
-    cycleWeek: number;
-    weekday: number;
-    shift: Shift;
-  }>;
 }
 
 export async function getBoardBySlug(slug: string) {
@@ -247,7 +224,6 @@ async function runGetBoardWeek(
    * använder, så inget mellanlager behövs för att översätta
    * kolumnnamnen.
    */
-  const crewOfBoard = sql`select c.employee_id from board_crew c where c.board_id = ${board.id}`;
   const bundleRows = rowsFromExecute<BoardWeekBundle>(
     await db.execute(sql`
     select
@@ -298,20 +274,7 @@ async function runGetBoardWeek(
       (select coalesce(json_agg(json_build_object(
         'employeeId', x.employee_id, 'fromDate', x.from_date, 'toDate', x.to_date,
         'type', x.type, 'note', x.note)), '[]'::json)
-       from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences,
-
-      (select coalesce(json_agg(json_build_object(
-        'id', w.id, 'employeeId', w.employee_id, 'cycleWeeks', w.cycle_weeks,
-        'anchorDate', w.anchor_date, 'weekStartsOn', w.week_starts_on,
-        'validFrom', w.valid_from, 'validTo', w.valid_to)), '[]'::json)
-       from work_pattern w where w.employee_id in (${crewOfBoard})) as patterns,
-
-      (select coalesce(json_agg(json_build_object(
-        'workPatternId', d.work_pattern_id, 'cycleWeek', d.cycle_week,
-        'weekday', d.weekday, 'shift', d.shift)), '[]'::json)
-       from work_pattern_day d
-       where d.work_pattern_id in (
-         select w.id from work_pattern w where w.employee_id in (${crewOfBoard}))) as pattern_days
+       from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences
     `),
   );
 
@@ -332,8 +295,6 @@ async function runGetBoardWeek(
   const allBoards = bundle.all_boards;
   const rawAssignments = bundle.assignments;
   const rawAbsences = bundle.absences;
-  const patternRows = bundle.patterns;
-  const patternDays = bundle.pattern_days;
 
   const employeeById = new Map(employees.map((e) => [e.id, e]));
   const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
@@ -371,7 +332,7 @@ async function runGetBoardWeek(
 
   /* Arbetsdagar för tavlans bemanning. */
   const crewIds = crewRows.map((c) => c.employeeId);
-  const provider = getWorkDayProvider(undefined, { patterns: patternRows, days: patternDays });
+  const provider = getWorkDayProvider();
   const workDayResult =
     crewIds.length > 0
       ? await provider.getWorkDays(crewIds, first, last)
@@ -546,15 +507,6 @@ async function runGetBoardWeek(
       shift: b.shift,
       validFrom: b.validFrom,
       validTo: b.validTo,
-    })),
-    patterns: patternRows.map((p) => ({
-      employeeId: p.employeeId,
-      cycleWeeks: p.cycleWeeks,
-      anchorDate: p.anchorDate,
-      weekStartsOn: p.weekStartsOn,
-      days: patternDays
-        .filter((d) => d.workPatternId === p.id)
-        .map((d) => ({ cycleWeek: d.cycleWeek, weekday: d.weekday, shift: d.shift })),
     })),
   };
 }

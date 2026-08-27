@@ -1,9 +1,11 @@
 /**
- * Provar vägen från tom databas hela vägen till en bemannad vecka:
- * logga in, skapa en tavla, lägg in stationsort, personal och fordon,
- * välj bemanning, ge alla ett mönster på en gång, koppla bas-schemat
- * och fyll veckan. Det är den väg en ny installation tar innan
- * TransPA-synken finns, och den ska inte gå i stå någonstans.
+ * Provar vägen en ny installation tar: logga in, skapa en tavla, lägg
+ * in stationsort, personal och fordon, välj bemanning, koppla
+ * bas-schemat och begär veckans schema.
+ *
+ * Personalen läggs in för hand här och saknar därför TransPA-koppling.
+ * Då finns inga arbetsdagar, och det ska sägas rakt ut i stället för
+ * att veckan tyst blir tom — det är just det testet kontrollerar.
  *
  *   BASE_URL=… E2E_EMAIL=… E2E_PASSWORD=… npx tsx scripts/e2e-tomstart.ts
  */
@@ -98,21 +100,7 @@ await page.waitForTimeout(1500);
 const crewText = await page.locator("aside").innerText();
 check("hela orten blev bemanning", CREW.every((p) => crewText.includes(p[0] + " " + p[1])));
 
-/* ---- Ett mönster på hela bemanningen ---- */
-await page.getByRole("button", { name: "Arbetsmönster" }).click();
-await page.waitForSelector("text=Arbetsmönster");
-for (const day of ["Mån", "Tis", "Ons", "Tors", "Fre"]) {
-  await page.getByRole("button", { name: `${day} Dag` }).click();
-}
-const bulk = page.getByRole("button", { name: /Använd på \d+ person/ });
-check("knappen räknar alla utan mönster", (await bulk.innerText()).includes(String(CREW.length)));
-await bulk.click();
-await page.waitForTimeout(2000);
-check("mönstret lades på alla", (await page.locator("text=/✓ lagt på \\d+ personer/").count()) > 0);
-await page.getByRole("button", { name: "Klar" }).click();
-await page.waitForTimeout(800);
-
-/* ---- Bas-schema och Fyll veckan ---- */
+/* ---- Bas-schema och veckans schema ---- */
 await page.getByRole("button", { name: "Bas-schema" }).click();
 await page.waitForTimeout(500);
 const dialog = page.locator("div.fixed");
@@ -129,10 +117,20 @@ check(
 await page.getByRole("button", { name: "Klar" }).click();
 await page.waitForTimeout(600);
 
-await page.getByRole("button", { name: "Fyll veckan" }).click();
+/* Handinlagd personal har ingen TransPA-koppling. Hämtningen ska säga
+   det med namn i stället för att se ut som en tom vecka. */
+await page.getByRole("button", { name: /Hämta schema/ }).click();
+await page.waitForTimeout(4000);
+const fetchNote = await page.locator("div.mb-3").innerText();
+check(
+  "hämtningen säger att ingen är kopplad till TransPA",
+  fetchNote.includes("utan TransPA-koppling") || fetchNote.includes("Ingen är kopplad"),
+);
+
+await page.getByRole("button", { name: /Fyll veckan/ }).click();
 await page.waitForTimeout(3000);
 const row = await page.locator('tbody tr:has(th:text-is("Bil 1"))').innerText();
-check("veckan bemannas ur bas-schemat", row.includes("Björn Westman"));
+check("utan hämtat schema läggs inga pass ut", !row.includes("Björn Westman"));
 
 await browser.close();
 

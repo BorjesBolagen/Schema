@@ -1,7 +1,7 @@
 /**
  * Hela flödet en trafikansvarig ska klara utan utvecklare:
- * bygga om tavlans layout, ge en person ett arbetsmönster, koppla hen
- * till en bil i bas-schemat och se att veckan bemannas.
+ * bygga om tavlans layout, koppla en person till en bil i bas-schemat
+ * och se att veckan bemannas ur hens hämtade pass.
  */
 import { chromium } from "playwright-core";
 import { signIn } from "./e2e-helpers";
@@ -62,23 +62,7 @@ check("ny rad BT57/58 finns", after.includes("BT57/58"));
 check("fredagen borta", !cols.some((c) => c.startsWith("Fre")));
 check("bilnumren dolda", !/^BT08$/m.test(gridText));
 
-/* ---- 2. Ge Max ett arbetsmönster på fredag också ---- */
-await page.getByRole("button", { name: "Arbetsmönster" }).click();
-await page.waitForTimeout(500);
-await pick(page.locator("select").first(), "Max Kellgren");
-await page.waitForTimeout(400);
-const before = await page.locator("text=/\\d+ pass per cykel/").innerText();
-await page.getByRole("button", { name: "Tors Dag" }).click();
-await page.getByRole("button", { name: "Spara mönster" }).click();
-await page.waitForTimeout(1200);
-const saved = await page.locator("text=✓ sparat").count();
-console.log("\nArbetsmönster:");
-check("mönstret sparades", saved > 0);
-console.log(`    (${before} → ${await page.locator("text=/\\d+ pass per cykel/").innerText()})`);
-await page.getByRole("button", { name: "Klar" }).click();
-await page.waitForTimeout(600);
-
-/* ---- 3. Koppla Max till den nya raden ---- */
+/* ---- 2. Koppla Max till den nya raden ---- */
 await page.getByRole("button", { name: "Bas-schema" }).click();
 await page.waitForTimeout(500);
 const dialog = page.locator("div.fixed");
@@ -94,8 +78,8 @@ check("Max kopplad till BT57/58", coupled);
 await page.getByRole("button", { name: "Klar" }).click();
 await page.waitForTimeout(600);
 
-/* ---- 4. Fyll veckan ---- */
-await page.getByRole("button", { name: "Fyll veckan" }).click();
+/* ---- 3. Fyll veckan ---- */
+await page.getByRole("button", { name: /Fyll veckan/ }).click();
 await page.waitForTimeout(2500);
 const newRow = await page.locator('tbody tr:has(th:text-is("BT57/58"))').innerText();
 console.log("\nEfter Fyll veckan:");

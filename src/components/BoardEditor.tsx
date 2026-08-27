@@ -458,7 +458,7 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete 
             {removal === null ? (
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <p className="max-w-[52ch] flex-1 text-xs text-(--color-muted)">
-                  Tavlan och allt som hör till den försvinner. Personal, fordon, arbetsmönster och
+                  Tavlan och allt som hör till den försvinner. Personal, fordon, hämtade pass och
                   registrerad frånvaro påverkas inte — frånvaron hör till personen, inte till tavlan.
                 </p>
                 <button

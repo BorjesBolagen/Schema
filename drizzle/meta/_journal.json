@@ -36,6 +36,13 @@
       "when": 1787657711770,
       "tag": "0004_transpa_shifts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787657712770,
+      "tag": "0005_drop_work_patterns",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 
 await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
-await page.getByRole("button", { name: "Fyll veckan" }).click();
+await page.getByRole("button", { name: /Fyll veckan/ }).click();
 await page.waitForTimeout(2500);
 await page.screenshot({ path: "/tmp/filled.png" });
 

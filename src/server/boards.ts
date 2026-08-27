@@ -161,7 +161,7 @@ export async function boardRemovalFacts(boardId: string): Promise<BoardRemovalFa
  * Tar bort en tavla med allt som hänger på den.
  *
  * Raderna, passen, bemanningen och bas-schemat följer med genom
- * cascade. Personal, fordon, arbetsmönster och registrerad frånvaro
+ * cascade. Personal, fordon, hämtade pass och registrerad frånvaro
  * ligger utanför tavlan och rörs inte — frånvaron hör till personen,
  * inte till den tavla hen råkade stå på.
  */

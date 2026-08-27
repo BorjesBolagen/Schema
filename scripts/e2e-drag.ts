@@ -31,7 +31,7 @@ const centre = async (p: Page, selector: string, nth = 0) => {
 
 await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
-await page.getByRole("button", { name: "Fyll veckan" }).click();
+await page.getByRole("button", { name: /Fyll veckan/ }).click();
 await page.waitForTimeout(2500);
 
 const rowText = async (label: string) =>

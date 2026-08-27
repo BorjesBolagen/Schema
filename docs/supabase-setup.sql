@@ -1,6 +1,6 @@
 -- Genererad av scripts/build-setup-sql.ts — redigera inte för hand.
 -- Klistra in i Supabase → SQL Editor och kör.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql
 
 BEGIN;
 
@@ -402,6 +402,18 @@ CREATE INDEX IF NOT EXISTS "transpa_shift_date_idx" ON "transpa_shift" ("date");
 
 ALTER TABLE "transpa_shift" ENABLE ROW LEVEL SECURITY;
 
+-- 0005_drop_work_patterns.sql
+-- Arbetsmönstren tas bort.
+--
+-- De fanns som reserv medan det var oklart om TransPA kunde leverera
+-- arbetsdagar. Det kan den: /v1/shifts/ ger planerade pass per person,
+-- och de synkas till transpa_shift. Två källor att hålla i synk var
+-- precis det dubbelarbete verktyget skulle ta bort.
+
+DROP TABLE IF EXISTS "work_pattern_day";
+
+DROP TABLE IF EXISTS "work_pattern";
+
 COMMIT;
 
 -- Markera migrationerna som körda, så npm run db:migrate inte
@@ -422,3 +434,5 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'e9763d9ebc
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'e9763d9ebc8edf8b80d54a3d2f65281e4bbed7a6df90043d08c74e7d06c15097');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '561712ebc5d19e753753246dfcc89deef1ec5103edaff0b8055ba62fa9b9828f', 1787657711770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '561712ebc5d19e753753246dfcc89deef1ec5103edaff0b8055ba62fa9b9828f');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'd399d11c6a7ba6bdd27c948f3fe72ce1341146b12210b581920e3001ad429e40', 1787657712770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'd399d11c6a7ba6bdd27c948f3fe72ce1341146b12210b581920e3001ad429e40');

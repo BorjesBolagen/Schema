@@ -1,7 +1,7 @@
 /**
  * Johans flöde, i en riktig webbläsare:
  * sök fram en person ur hela registret, dra ut hen på en rad, och få
- * hela veckan utlagd enligt hens arbetsmönster.
+ * hela veckan utlagd enligt hens hämtade pass.
  */
 import { chromium } from "playwright-core";
 import { signIn } from "./e2e-helpers";
@@ -53,7 +53,7 @@ console.log("   HF03 efter:", after.replace(/\s+/g, " ").slice(0, 160));
 
 const note = (await page.locator("body").innerText())
   .split("\n")
-  .find((l) => /pass utlagda|saknar arbetsmönster/.test(l));
+  .find((l) => /pass utlagda|inget hämtat schema/.test(l));
 console.log("   återkoppling:", note ?? "(ingen)");
 
 const placed = (after.match(/Fredrik/g) ?? []).length;

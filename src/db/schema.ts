@@ -216,34 +216,12 @@ export const vehicle = pgTable("vehicle", {
 });
 
 /* ------------------------------------------------------------------ *
- * Arbetsmönster
+ * Arbetsdagar
  *
- * Hur en person jobbar ska komma från TransPA. Tills det går läses det
- * härifrån. En cykel på 1 vecka är ett vanligt veckoschema; Värnamos
- * roterande upplägg med pass 1–4 är en cykel på 4. Ankardatumet avgör
- * var i cykeln en given vecka hamnar.
+ * Hur en person jobbar kommer från TransPA och ingen annanstans ifrån.
+ * De lokala arbetsmönstren som fyllde luckan innan hämtningen fungerade
+ * är borttagna — två sanningar om samma sak är en för mycket.
  * ------------------------------------------------------------------ */
-
-export const workPattern = pgTable(
-  "work_pattern",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    employeeId: uuid("employee_id")
-      .notNull()
-      .references(() => employee.id, { onDelete: "cascade" }),
-    cycleWeeks: integer("cycle_weeks").notNull().default(1),
-    /** Måndagen i den vecka som är cykelvecka 0. */
-    anchorDate: date("anchor_date").notNull(),
-    /** 0 = söndagen hör till veckan som följer, som Värnamos rullschema. */
-    weekStartsOn: integer("week_starts_on").notNull().default(1),
-    validFrom: date("valid_from"),
-    validTo: date("valid_to"),
-    note: text("note"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [index("work_pattern_employee_idx").on(t.employeeId)],
-);
 
 /**
  * Pass hämtade från TransPA.
@@ -280,22 +258,6 @@ export const transpaShift = pgTable(
     index("transpa_shift_lookup_idx").on(t.employeeId, t.date),
     index("transpa_shift_date_idx").on(t.date),
   ],
-);
-
-export const workPatternDay = pgTable(
-  "work_pattern_day",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    workPatternId: uuid("work_pattern_id")
-      .notNull()
-      .references(() => workPattern.id, { onDelete: "cascade" }),
-    /** 0 … cycleWeeks-1 */
-    cycleWeek: integer("cycle_week").notNull().default(0),
-    /** 0 = söndag … 6 = lördag */
-    weekday: integer("weekday").notNull(),
-    shift: shift("shift").notNull().default("day"),
-  },
-  (t) => [unique("work_pattern_day_uq").on(t.workPatternId, t.cycleWeek, t.weekday, t.shift)],
 );
 
 /* ------------------------------------------------------------------ *

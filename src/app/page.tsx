@@ -4,6 +4,7 @@ import { visibleBoards } from "@/server/access";
 import { TEMPLATE_LABELS } from "@/server/boards";
 import { isoWeek, toIso } from "@/lib/week";
 import { NewBoardForm } from "@/components/NewBoardForm";
+import { RemoveBoardButton } from "@/components/RemoveBoardButton";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,11 @@ export default async function Home() {
                 >
                   Semester
                 </Link>
+                {/* Bara admin. En planerare ska inte kunna radera en
+                    kollegas tavla från listan. */}
+                {user.role === "admin" && (
+                  <RemoveBoardButton boardId={b.id} boardName={b.name} />
+                )}
               </li>
             ))}
           </ul>
