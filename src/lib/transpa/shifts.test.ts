@@ -536,3 +536,63 @@ describe("classifyByPeriod", () => {
     expect(classifyByPeriod(p("2026-08-17", 7), null)).toBe("day");
   });
 });
+
+/**
+ * Verkliga pass ur tenanten, hämtade 17–28 augusti 2026.
+ *
+ * En chaufför som kör Värnamo–Stockholm tur och retur, bara natt. Fyra
+ * av de sju passen började 16:00 och stod på dagraden; benämningen sade
+ * "16.00-03.00" rakt ut. Det var det Johan såg.
+ *
+ * Passen bär ingen partsOfDay här, så sluttiden räknas ur arbetstiden —
+ * och det räcker: tio timmars arbete från 16:00 passerar midnatt ändå.
+ * Notera samtidigt att den uppskattningen ger 02:00 medan benämningen
+ * säger 03:00. Skillnaden är rasten, som arbetstiden inte räknar. Just
+ * här spelar det ingen roll eftersom båda ligger efter midnatt, men det
+ * är precis varför sluttiden ska läsas ur partsOfDay när den finns.
+ */
+describe("nattchaufför Värnamo–Stockholm, verkliga pass", () => {
+  const z = (d: string, h: number) => `${d}T${String(h - 2).padStart(2, "0")}:00:00Z`;
+  const pass = (date: string, hour: number) => ({
+    id: `${date}-${hour}`,
+    startDateTime: z(date, hour),
+    adjustedWorkTimeInMinutes: 600,
+  });
+
+  const veckan = [
+    pass("2026-08-17", 16), // "16.00-03.00, Vmo-Sto ner"
+    pass("2026-08-18", 19), // "Vmo-Sto upp 19.00"
+    pass("2026-08-19", 16),
+    pass("2026-08-24", 18), // "Vmo-Sthlm Upp"
+    pass("2026-08-25", 16),
+    pass("2026-08-26", 18),
+    pass("2026-08-27", 16),
+  ];
+
+  it("läser alla sju passen som natt", () => {
+    const skift = veckan.map((s) => shiftToWorkDay(s, "e1")!.shift);
+    expect(skift).toEqual(Array(7).fill("night"));
+  });
+
+  it("lämnar varje pass på den dag det började", () => {
+    expect(veckan.map((s) => shiftToWorkDay(s, "e1")!.date)).toEqual([
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-24",
+      "2026-08-25",
+      "2026-08-26",
+      "2026-08-27",
+    ]);
+  });
+
+  /* Sju pass, sju arbetsdagar — ingen ska dyka upp på två dagar, och
+     inga två ska slås ihop. */
+  it("ger sju arbetsdagar, varken fler eller färre", () => {
+    expect(workDaysForPerson(veckan, "e1")).toHaveLength(7);
+  });
+
+  it("märker den uppskattade sluttiden som ungefärlig", () => {
+    expect(shiftEnd(veckan[0])!.exact).toBe(false);
+  });
+});
