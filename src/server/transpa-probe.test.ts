@@ -404,6 +404,13 @@ paths:
   /v1/shifts/:
     get:
       summary: Return a list of Shifts
+      parameters:
+        - name: from
+          in: query
+          required: true
+        - name: to
+          in: query
+          required: true
   /v1/employees:
     get:
       summary: Return a list of Employees
@@ -454,5 +461,22 @@ paths:
     );
     expect(report.shiftVariants).toBeUndefined();
   });
-});
 
+  /* Poängen med hela variantmätningen: specen säger vad som krävs, så
+     en variant ska skicka just det i stället för att jag gissar en
+     gång till. */
+  it("provar med specens obligatoriska parametrar", async () => {
+    const sedda: string[] = [];
+    const report = await probeTenant(
+      withSpec((url) => {
+        sedda.push(url);
+        return new Response("nix", { status: 404 });
+      }),
+    );
+
+    const medParametrar = report.shiftVariants!.find((v) => v.what.includes("obligatoriska"));
+    expect(medParametrar).toBeDefined();
+    expect(medParametrar!.what).toContain("from, to");
+    expect(sedda.some((u) => u.includes("from=") && u.includes("to="))).toBe(true);
+  });
+});

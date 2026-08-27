@@ -171,6 +171,13 @@ export interface SpecProbe {
    * servern någon annanstans än den vi anropar är det förklaringen.
    */
   servers?: string[];
+  /**
+   * Obligatoriska frågeparametrar per väg, för GET.
+   *
+   * Det är den saknade biten: en väg som står i specen men svarar 404
+   * kan helt enkelt kräva parametrar anropet inte skickar.
+   */
+  requiredQuery?: Record<string, string[]>;
 }
 
 export interface TenantReport {
@@ -613,6 +620,15 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       ) {
         return null;
       }
+      const requiredQuery: Record<string, string[]> = {};
+      for (const entry of parsed.paths) {
+        const get = entry.operations.find((o) => o.method === "GET");
+        const names = (get?.parameters ?? [])
+          .filter((x) => x.required && (x.location ?? "query") === "query")
+          .map((x) => x.name);
+        if (names.length) requiredQuery[entry.path] = names;
+      }
+
       return {
         url,
         outcome: "ok",
@@ -620,6 +636,7 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         version: parsed.version,
         paths,
         servers: parsed.servers,
+        requiredQuery,
       };
     }
 
@@ -672,13 +689,31 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
  * är just klientens antaganden — frågeparametrarna och bas-URL:en — som
  * ska kunna uteslutas.
  */
+/**
+ * Ett rimligt värde för en parameter, utifrån vad den heter.
+ *
+ * Specen säger vilka parametrar som krävs men inte vad de ska
+ * innehålla. Datumnamn får den innevarande veckan, id-namn får personen
+ * vi redan hämtat, och resten får ett värde som åtminstone är giltigt.
+ */
+function guessParamValue(name: string, employeeId: string | null): string {
+  const n = name.toLowerCase();
+  const now = Date.now();
+  if (/(from|start|begin|after)/.test(n)) return new Date(now - 7 * 86_400_000).toISOString();
+  if (/(to|end|until|before)/.test(n)) return new Date(now + 7 * 86_400_000).toISOString();
+  if (/date/.test(n)) return new Date(now).toISOString();
+  if (/employee/.test(n) && employeeId) return employeeId;
+  if (/(limit|take|size|count)/.test(n)) return "1";
+  return "1";
+}
+
 async function probeShiftVariants(
   token: string,
-  specServers: string[],
+  spec: SpecProbe,
   employeeId: string | null,
   fetchImpl: typeof fetch,
 ): Promise<PathVariant[]> {
-  const bases = [...new Set([API_BASE, ...specServers.filter(Boolean)])];
+  const bases = [...new Set([API_BASE, ...(spec.servers ?? []).filter(Boolean)])];
 
   const attempts: Array<{ url: string; what: string }> = [];
   for (const base of bases) {
@@ -688,6 +723,21 @@ async function probeShiftVariants(
       { url: `${base}/v1/shifts`, what: `utan snedstreck, utan parametrar${where}` },
       { url: `${base}/v1/shifts/?limit=1`, what: `med snedstreck och limit${where}` },
     );
+
+    /* Det här är varianten som betyder något: specens egna
+       obligatoriska parametrar, ifyllda. Saknas de kan API:t svara 404
+       i stället för 400, och då ser vägen ut att inte finnas. */
+    const required = spec.requiredQuery?.["/v1/shifts/"] ?? spec.requiredQuery?.["/v1/shifts"];
+    if (required?.length) {
+      const query = new URLSearchParams(
+        required.map((name) => [name, guessParamValue(name, employeeId)]),
+      );
+      attempts.push({
+        url: `${base}/v1/shifts/?${query}`,
+        what: `med specens obligatoriska parametrar: ${required.join(", ")}${where}`,
+      });
+    }
+
     if (employeeId) {
       attempts.push({
         url: `${base}/v1/employees/${employeeId}/shifts/`,
@@ -945,7 +995,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     shiftsMissing && spec.outcome === "ok"
       ? await probeShiftVariants(
           await getAccessToken(credentials, scopes, fetchImpl),
-          spec.servers ?? [],
+          spec,
           sampleEmployeeId,
           fetchImpl,
         ).catch(() => undefined)

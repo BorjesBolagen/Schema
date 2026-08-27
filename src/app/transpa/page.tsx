@@ -196,9 +196,12 @@ export default async function TranspaPage() {
         <div className="mt-6 rounded border-2 border-(--color-warn) bg-amber-50 p-4 text-sm">
           <p className="font-medium">Passvägen står i specen men svarar inte</p>
           <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-            <code>/v1/shifts/</code> finns i specen och <code>transpaapi:shifts:read</code> är
-            beviljat — ändå kommer 404. Varianterna nedan provas var för sig i stället för att
-            gissa vad som skiljer: snedstrecket, frågeparametrarna eller bas-URL:en.
+            <code>/v1/shifts/</code> finns i specen, <code>transpaapi:shifts:read</code> är
+            beviljat och modulen är påslagen — ändå kommer 404. Då är felet i anropet.
+            Varianterna nedan provas var för sig i stället för att gissa: med och utan
+            snedstreck, med specens <em>egna obligatoriska parametrar</em> ifyllda, och mot den
+            bas specen anger. Saknas en parameter API:t kräver kan svaret bli 404 i stället för
+            400, och då ser vägen ut att inte finnas.
           </p>
           <table className="mt-3 w-full border-collapse">
             <tbody>
@@ -222,8 +225,9 @@ export default async function TranspaPage() {
             </tbody>
           </table>
           <p className="mt-3 max-w-[68ch] text-xs text-(--color-muted)">
-            Svarar ingen av dem är resursen inte påslagen för er tenant, och då är det Visma som
-            behöver aktivera den — specen beskriver hela produkten, inte just er installation.
+            Svarar den med parametrar men inte de andra är det parametrarna som fattades, och
+            hämtningen skrivs mot den formen. Svarar ingen av dem behöver Visma tillfrågas om
+            hur anropet ska se ut för er tenant.
           </p>
         </div>
       )}

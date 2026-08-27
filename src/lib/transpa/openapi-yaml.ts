@@ -12,10 +12,25 @@
  * men specens egen beskrivning av operationen avgör den.
  */
 
+export interface SpecParameter {
+  name: string;
+  /** query, path, header … */
+  location?: string;
+  required: boolean;
+}
+
 export interface SpecOperation {
   method: string;
   summary?: string;
   tags?: string[];
+  /**
+   * Parametrarna operationen tar.
+   *
+   * Läses för att en obligatorisk frågeparameter som saknas är en av de
+   * få förklaringarna till att en väg som står i specen ändå svarar
+   * 404 — och det är precis vad /v1/shifts/ gör.
+   */
+  parameters: SpecParameter[];
 }
 
 export interface SpecPath {
@@ -85,6 +100,8 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
   let operation: SpecOperation | null = null;
   let operationIndent = -1;
   let inTags = false;
+  let inParams = false;
+  let param: SpecParameter | null = null;
 
   for (const line of lines) {
     if (!line.trim() || line.trim().startsWith("#")) continue;
@@ -99,6 +116,8 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
       current = null;
       operation = null;
       inTags = false;
+      inParams = false;
+      param = null;
       continue;
     }
 
@@ -126,6 +145,8 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
       out.paths.push(current);
       operation = null;
       inTags = false;
+      inParams = false;
+      param = null;
       continue;
     }
 
@@ -135,9 +156,11 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
     if (kv && METHODS.includes(kv.key.toLowerCase()) && indent > currentIndent) {
       if (operationIndent === -1) operationIndent = indent;
       if (indent === operationIndent) {
-        operation = { method: kv.key.toUpperCase() };
+        operation = { method: kv.key.toUpperCase(), parameters: [] };
         current.operations.push(operation);
         inTags = false;
+        inParams = false;
+        param = null;
         continue;
       }
     }
@@ -154,11 +177,50 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
       inTags = false;
     }
 
+    /* Parameterlistan. Varje post börjar med bindestreck och bär name,
+       in och required på följande rader:
+
+           parameters:
+             - name: from
+               in: query
+               required: true
+
+       En obligatorisk parameter som inte skickas är en av de få
+       förklaringarna till att en väg som står i specen svarar 404. */
+    if (inParams) {
+      const item = /^(\s*)-\s*(.*)$/.exec(line);
+      if (item) {
+        param = { name: "", required: false };
+        operation.parameters.push(param);
+        const inline = keyValue(item[2]);
+        if (inline?.key === "name") param.name = inline.value;
+        if (inline?.key === "in") param.location = inline.value;
+        continue;
+      }
+      if (param && kv) {
+        if (kv.key === "name") param.name = kv.value;
+        if (kv.key === "in") param.location = kv.value;
+        if (kv.key === "required") param.required = kv.value === "true";
+        continue;
+      }
+      // En nyckel på operationens egen nivå avslutar listan.
+      if (kv && indent <= operationIndent + 2) {
+        inParams = false;
+        param = null;
+      } else {
+        continue;
+      }
+    }
+
     if (kv && indent > operationIndent) {
       if (kv.key === "summary" && kv.value) operation.summary = kv.value;
       // Beskrivningen får duga när sammanfattning saknas.
       if (kv.key === "description" && kv.value && !operation.summary) operation.summary = kv.value;
       if (kv.key === "tags") inTags = kv.value === "";
+      if (kv.key === "parameters") {
+        inParams = kv.value === "";
+        param = null;
+      }
     }
   }
 
@@ -171,9 +233,16 @@ export function describeSpecPaths(spec: ParsedSpec): string[] {
     .flatMap((p) =>
       p.operations.length === 0
         ? [p.path]
-        : p.operations.map(
-            (op) => `${p.path}  [${op.method}]${op.summary ? `  ${op.summary}` : ""}`,
-          ),
+        : p.operations.map((op) => {
+            const required = op.parameters.filter((x) => x.required).map((x) => x.name);
+            return (
+              `${p.path}  [${op.method}]` +
+              `${op.summary ? `  ${op.summary}` : ""}` +
+              // Obligatoriska parametrar hör till vägens identitet: utan
+              // dem är anropet inte samma anrop.
+              `${required.length ? `  · krävs: ${required.join(", ")}` : ""}`
+            );
+          }),
     )
     .sort();
 }

@@ -26,11 +26,23 @@ paths:
       parameters:
         - name: limit
           in: query
-  /v1/timeReports/shifts:
+  /v1/shifts/:
     get:
       tags:
         - timereports and shifts
-      summary: Get planned shifts for an employee
+      summary: Return a list of Shifts
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: to
+          in: query
+          required: true
+        - name: limit
+          in: query
+          required: false
     post:
       summary: Create a shift
   /v1/vehicles:
@@ -55,25 +67,25 @@ describe("parseOpenApiYaml", () => {
   it("hittar varje väg", () => {
     expect(spec.paths.map((p) => p.path)).toEqual([
       "/v1/employees",
-      "/v1/timeReports/shifts",
+      "/v1/shifts/",
       "/v1/vehicles",
     ]);
   });
 
   it("hittar flera metoder på samma väg", () => {
-    const shifts = spec.paths.find((p) => p.path === "/v1/timeReports/shifts")!;
+    const shifts = spec.paths.find((p) => p.path === "/v1/shifts/")!;
     expect(shifts.operations.map((o) => o.method)).toEqual(["GET", "POST"]);
   });
 
   /* Frågan som inte går att avgöra ur namnet: planerad eller rapporterad
      tid? Sammanfattningen svarar. */
   it("bär med sig sammanfattningen", () => {
-    const shifts = spec.paths.find((p) => p.path === "/v1/timeReports/shifts")!;
-    expect(shifts.operations[0].summary).toBe("Get planned shifts for an employee");
+    const shifts = spec.paths.find((p) => p.path === "/v1/shifts/")!;
+    expect(shifts.operations[0].summary).toBe("Return a list of Shifts");
   });
 
   it("bär med sig taggen", () => {
-    const shifts = spec.paths.find((p) => p.path === "/v1/timeReports/shifts")!;
+    const shifts = spec.paths.find((p) => p.path === "/v1/shifts/")!;
     expect(shifts.operations[0].tags).toEqual(["timereports and shifts"]);
   });
 
@@ -110,12 +122,39 @@ describe("parseOpenApiYaml", () => {
 describe("describeSpecPaths", () => {
   it("skriver en rad per väg och metod, med sammanfattningen", () => {
     const lines = describeSpecPaths(parseOpenApiYaml(SPEC));
-    expect(lines).toContain("/v1/timeReports/shifts  [GET]  Get planned shifts for an employee");
+    expect(lines).toContain(
+      "/v1/shifts/  [GET]  Return a list of Shifts  · krävs: from, to",
+    );
     expect(lines).toContain("/v1/vehicles  [PUT]  Update a Vehicle");
   });
 
   it("visar en väg utan operationer som bara vägen", () => {
     const lines = describeSpecPaths({ servers: [], paths: [{ path: "/v1/x", operations: [] }] });
     expect(lines).toEqual(["/v1/x"]);
+  });
+
+  /**
+   * Det som förklarar en 404 på en väg som står i specen: anropet
+   * saknar en parameter API:t kräver. Fyra tidigare slutsatser föll på
+   * att jag inte läste vad som faktiskt krävdes.
+   */
+  it("läser obligatoriska parametrar", () => {
+    const shifts = parseOpenApiYaml(SPEC).paths.find((p) => p.path === "/v1/shifts/")!;
+    const get = shifts.operations[0];
+
+    expect(get.parameters.map((x) => x.name)).toEqual(["from", "to", "limit"]);
+    expect(get.parameters.filter((x) => x.required).map((x) => x.name)).toEqual(["from", "to"]);
+    expect(get.parameters[0].location).toBe("query");
+  });
+
+  it("förväxlar inte parametrarnas schema med fler parametrar", () => {
+    const shifts = parseOpenApiYaml(SPEC).paths.find((p) => p.path === "/v1/shifts/")!;
+    expect(shifts.operations[0].parameters).toHaveLength(3);
+  });
+
+  it("låter parameterlistan ta slut vid nästa operation", () => {
+    const shifts = parseOpenApiYaml(SPEC).paths.find((p) => p.path === "/v1/shifts/")!;
+    expect(shifts.operations[1].method).toBe("POST");
+    expect(shifts.operations[1].parameters).toEqual([]);
   });
 });
