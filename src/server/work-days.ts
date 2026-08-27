@@ -8,7 +8,6 @@ import {
   type WorkDayProvider,
   type WorkDayResult,
 } from "@/lib/work-days";
-import { TranspaShiftProvider } from "./shift-provider";
 
 /** Mönster som redan hämtats, så providern slipper fråga igen. */
 export interface PrefetchedPatterns {
@@ -79,18 +78,15 @@ export class LocalPatternProvider implements WorkDayProvider {
 /**
  * Källan appen läser arbetsdagar ur.
  *
- * TransPA:s pass först, mönstren som reserv. Composite faller tillbaka
- * per person, så en person vars pass inte förts in i TransPA fortsätter
- * få sina dagar ur mönstret medan alla andra hämtas — övergången sker
- * en person i taget i stället för som ett omkast.
+ * Bara lokala källor. Tavelvyn ligger bakom en databastidsgräns, och
+ * ett nätanrop i renderingsvägen gjorde att ett trögt TransPA fällde
+ * hela sidan med "Databasanropet svarade inte inom 6 sekunder" — ett
+ * fel som pekar på fel sak.
  *
- * Passhämtningen kopplas bort när TransPA-uppgifter saknas: i dev och i
- * seed finns inga, och ett anrop som ändå görs blir bara väntan på ett
- * fel. `db`-varianten används av skript utanför webbappen och läser
- * därför bara mönstren.
+ * Passen från TransPA hämtas i stället i synken, till en egen tabell,
+ * och läses därifrån som vilken lokal källa som helst. Samma väg som
+ * personal och stationsorter redan går.
  */
 export function getWorkDayProvider(db?: Db, prefetched?: PrefetchedPatterns): WorkDayProvider {
-  const local = new LocalPatternProvider(db, prefetched);
-  if (db || !process.env.TRANSPA_CLIENT_ID) return new CompositeWorkDayProvider([local]);
-  return new CompositeWorkDayProvider([new TranspaShiftProvider(), local]);
+  return new CompositeWorkDayProvider([new LocalPatternProvider(db, prefetched)]);
 }
