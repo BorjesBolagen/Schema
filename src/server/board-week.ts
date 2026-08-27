@@ -12,9 +12,10 @@ import {
 } from "@/lib/conflicts";
 import { fullDisplayName } from "@/lib/name";
 import type { Shift, WorkDay } from "@/lib/work-days";
-import type { Direction } from "@/lib/transpa/direction";
+import { parseDirection, type Direction } from "@/lib/transpa/direction";
 import type { VehicleKind } from "@/lib/vehicle-kind";
-import { weekDates } from "@/lib/week";
+import { addDays, weekDates } from "@/lib/week";
+import { workDayFromStored } from "@/lib/transpa/shifts";
 import { getWorkDayProvider } from "./work-days";
 
 export interface CellAssignment {
@@ -171,9 +172,9 @@ interface BoardWeekBundle {
   }>;
   shifts: Array<{
     employeeId: string;
-    date: string;
-    shift: Shift;
-    direction: Direction | null;
+    startsAt: string;
+    endsAt: string | null;
+    workMinutes: number | null;
     name: string | null;
   }>;
   absences: Array<{
@@ -297,11 +298,16 @@ async function runGetBoardWeek(
        from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences,
 
       /* Riktningen på linjepassen. Den bor på det hämtade passet, inte
-         på tavlans pass, så den slås upp på person, datum och skift. */
+         på tavlans pass, så den slås upp på person, datum och skift.
+
+         Dag och skift räknas om ur starttid och sluttid här nedan, av
+         samma skäl som i SyncedShiftProvider: de sparade kolumnerna är
+         en gammal tolkning. Därför en dags marginal på filtret. */
       (select coalesce(json_agg(json_build_object(
-        'employeeId', s.employee_id, 'date', s.date, 'shift', s.shift,
-        'direction', s.direction, 'name', s.name)), '[]'::json)
-       from transpa_shift s where s.date >= ${first} and s.date <= ${last}) as shifts
+        'employeeId', s.employee_id, 'startsAt', s.starts_at, 'endsAt', s.ends_at,
+        'workMinutes', s.work_minutes, 'name', s.name)), '[]'::json)
+       from transpa_shift s
+       where s.date >= ${addDays(first, -1)} and s.date <= ${addDays(last, 1)}) as shifts
     `),
   );
 
@@ -383,10 +389,14 @@ async function runGetBoardWeek(
   const index = indexConflicts(conflicts);
 
   /* Riktningen slås upp på person, datum och skift — den hör till det
-     hämtade passet, inte till tavlans pass. */
-  const directionOf = new Map(
-    bundle.shifts.map((s) => [`${s.employeeId}|${s.date}|${s.shift}`, s.direction]),
-  );
+     hämtade passet, inte till tavlans pass. Både dagen och riktningen
+     härleds här och inte ur sparade kolumner, så en rättad regel slår
+     igenom utan att någon behöver hämta om veckan. */
+  const directionOf = new Map<string, Direction | null>();
+  for (const s of bundle.shifts) {
+    const day = workDayFromStored(s);
+    directionOf.set(`${day.employeeId}|${day.date}|${day.shift}`, parseDirection(s.name));
+  }
 
   const weekRows: WeekRow[] = rows.map((r) => {
     const cells: Record<string, CellAssignment[]> = {};

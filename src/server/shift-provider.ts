@@ -5,9 +5,11 @@ import { credentialsForTenant } from "@/lib/transpa/auth";
 import {
   SHIFTS_PATH,
   shiftWindow,
+  workDayFromStored,
   workDaysFromShifts,
   type TranspaShift,
 } from "@/lib/transpa/shifts";
+import { addDays } from "@/lib/week";
 import type { WorkDay, WorkDayProvider, WorkDayResult } from "@/lib/work-days";
 
 /* Medvetet utan "server-only": modulen läses av getWorkDayProvider,
@@ -71,6 +73,12 @@ function windowCache(): Map<string, CachedWindow> {
  * sitt lokala mönster. Att tolka tystnad som ledighet skulle tömma
  * tavlan för alla vars pass ännu inte förts in i TransPA.
  */
+/* Ett dygns marginal åt vardera hållet när det grovsållas på den
+   sparade date-kolumnen: den bär en gammal tolkning och kan peka på
+   dagen före eller efter den passet verkligen hör till. */
+const dagFore = (iso: string) => addDays(iso, -1);
+const dagEfter = (iso: string) => addDays(iso, 1);
+
 export class SyncedShiftProvider implements WorkDayProvider {
   readonly name = "TransPA-pass";
 
@@ -79,22 +87,33 @@ export class SyncedShiftProvider implements WorkDayProvider {
   async getWorkDays(employeeIds: string[], from: string, to: string): Promise<WorkDayResult> {
     if (employeeIds.length === 0) return { workDays: [], covered: [] };
 
+    /* Den sparade date-kolumnen används bara för att grovsålla, med ett
+       dygns marginal: den är en gammal tolkning och kan peka på fel dag.
+       Vilken dag passet verkligen hör till avgörs nedan. */
     const rows = await (this.db ?? getDb())
       .select({
         employeeId: schema.transpaShift.employeeId,
-        date: schema.transpaShift.date,
-        shift: schema.transpaShift.shift,
+        startsAt: schema.transpaShift.startsAt,
+        endsAt: schema.transpaShift.endsAt,
+        workMinutes: schema.transpaShift.workMinutes,
       })
       .from(schema.transpaShift)
       .where(
         and(
           inArray(schema.transpaShift.employeeId, employeeIds),
-          gte(schema.transpaShift.date, from),
-          lte(schema.transpaShift.date, to),
+          gte(schema.transpaShift.date, dagFore(from)),
+          lte(schema.transpaShift.date, dagEfter(to)),
         ),
       );
 
-    /* Två pass samma dag och skift — delat pass eller extrapass — är
+    /* Tolkningen görs om här, inte vid hämtningen. Datum och skift är
+       härledda värden; ändras regeln som härleder dem blir varje sparad
+       rad tyst fel, och den som tittar på tavlan ser en gammal tolkning
+       utan att veta om det. Det hände: nattpass fortsatte visas som
+       dagpass efter att regeln rättats, ända tills någon råkade hämta om
+       veckan.
+
+       Två pass samma dag och skift — delat pass eller extrapass — är
        fortfarande en arbetsdag. */
     const seen = new Set<string>();
     const workDays: WorkDay[] = [];
@@ -102,10 +121,12 @@ export class SyncedShiftProvider implements WorkDayProvider {
 
     for (const row of rows) {
       covered.add(row.employeeId);
-      const key = `${row.employeeId}|${row.date}|${row.shift}`;
+      const day = workDayFromStored(row);
+      if (day.date < from || day.date > to) continue;
+      const key = `${day.employeeId}|${day.date}|${day.shift}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      workDays.push({ employeeId: row.employeeId, date: row.date, shift: row.shift });
+      workDays.push(day);
     }
 
     return { workDays, covered: [...covered] };

@@ -3,7 +3,7 @@ import { and, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
-import { attributeShifts, shiftWindow, type TranspaShift } from "@/lib/transpa/shifts";
+import { attributeShifts, shiftEnd, shiftWindow, type TranspaShift } from "@/lib/transpa/shifts";
 import { parseDirection } from "@/lib/transpa/direction";
 import { withBudget } from "./shift-provider";
 
@@ -115,6 +115,13 @@ export async function fetchWeekShifts(
           date: day.date,
           shift: day.shift,
           startsAt: new Date(raw.startDateTime!),
+          /* Bara den sluttid TransPA faktiskt uppgav sparas. En
+             uppskattad sluttid vore en tolkning, och tolkningar hör
+             inte hemma bland de sparade fakta. */
+          endsAt: (() => {
+            const slut = shiftEnd(raw);
+            return slut?.exact ? new Date(slut.iso) : null;
+          })(),
           workMinutes: raw.adjustedWorkTimeInMinutes ?? null,
           isExtraShift: raw.isExtraShift ?? false,
           name: raw.name ?? null,
@@ -161,6 +168,7 @@ export async function fetchWeekShifts(
           date: sql`excluded.date`,
           shift: sql`excluded.shift`,
           startsAt: sql`excluded.starts_at`,
+          endsAt: sql`excluded.ends_at`,
           workMinutes: sql`excluded.work_minutes`,
           isExtraShift: sql`excluded.is_extra_shift`,
           name: sql`excluded.name`,

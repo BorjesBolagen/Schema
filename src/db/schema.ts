@@ -261,11 +261,30 @@ export const transpaShift = pgTable(
     employeeId: uuid("employee_id")
       .notNull()
       .references(() => employee.id, { onDelete: "cascade" }),
-    /** Datum och skift i svensk lokaltid, färdigräknat vid synken. */
+    /**
+     * Datum och skift i svensk lokaltid.
+     *
+     * Räknas vid hämtningen men är **inte** sanningen — det är en cache
+     * och ett grovt index att filtrera veckan på. Sanningen är starts_at
+     * och ends_at, och tolkningen görs om vid läsning.
+     *
+     * Skälet: de här två är härledda värden. Ändras regeln som härleder
+     * dem blir varje redan sparad rad tyst fel, och den som tittar på
+     * tavlan har ingen aning om att hen ser en gammal tolkning. Det
+     * hände: nattpass fortsatte visas som dagpass efter att regeln
+     * rättats, ända tills någon råkade hämta om veckan.
+     */
     date: date("date").notNull(),
     shift: shift("shift").notNull().default("day"),
     /** Starttiden som TransPA angav den, i UTC. */
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    /**
+     * Sluttiden ur passets sista partsOfDay, när den finns.
+     *
+     * Null betyder att TransPA inte uppgav någon, och då får längden
+     * uppskatta den — sämre, eftersom arbetstiden räknas utan raster.
+     */
+    endsAt: timestamp("ends_at", { withTimezone: true }),
     workMinutes: integer("work_minutes"),
     isExtraShift: boolean("is_extra_shift").notNull().default(false),
     name: text("name"),

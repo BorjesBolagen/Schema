@@ -79,3 +79,105 @@ describe("SyncedShiftProvider", () => {
     });
   });
 });
+
+/**
+ * Det som gick fel i drift.
+ *
+ * date och shift räknades vid hämtningen och sparades. När regeln som
+ * räknar dem rättades blev varje redan sparad rad tyst fel: nattpassen
+ * fortsatte visas som dagpass, och ingenting sade ifrån. Först den som
+ * råkade trycka "Hämta schema" igen fick rätt svar.
+ *
+ * Tolkningen görs därför om vid läsning. De sparade kolumnerna är kvar
+ * som grovt index — och testerna nedan sätter dem medvetet fel för att
+ * visa att de inte längre bestämmer något.
+ */
+describe("sparade pass tolkas om vid läsning", () => {
+  /* Egen person per test: uppsättningen är gemensam för hela filen, så
+     rader som ligger kvar mellan testerna skulle annars störa varandra. */
+  async function personMedPass(
+    pass: Array<Partial<typeof schema.transpaShift.$inferInsert>>,
+  ): Promise<string> {
+    const [p] = await db
+      .insert(schema.employee)
+      .values({ firstName: "Test", lastName: crypto.randomUUID().slice(0, 8) })
+      .returning();
+    await db.insert(schema.transpaShift).values(
+      pass.map((rad, i) => ({
+        transpaId: `${p.id}-${i}`,
+        employeeId: p.id,
+        date: "2026-08-17",
+        shift: "day" as const,
+        startsAt: new Date("2026-08-17T05:00:00Z"),
+        ...rad,
+      })),
+    );
+    return p.id;
+  }
+
+  const veckan = (id: string) =>
+    new SyncedShiftProvider(db).getWorkDays([id], "2026-08-17", "2026-08-21");
+
+  it("rättar ett nattpass som sparats som dag", async () => {
+    // 16:00–02:00 svensk tid är en natt, men raden säger "day".
+    const id = await personMedPass([
+      {
+        date: "2026-08-17",
+        shift: "day",
+        startsAt: new Date("2026-08-17T14:00:00Z"),
+        endsAt: new Date("2026-08-18T01:00:00Z"),
+        workMinutes: 600,
+      },
+    ]);
+
+    expect((await veckan(id)).workDays).toEqual([
+      { employeeId: id, date: "2026-08-17", shift: "night" },
+    ]);
+  });
+
+  /* Den sparade dagen kan peka på grannen till den rätta, så filtret
+     måste sålla med marginal — annars faller passet utanför veckan. */
+  it("hittar ett pass vars sparade dag pekar på fel dag", async () => {
+    const id = await personMedPass([
+      {
+        date: "2026-08-18", // sparad som tisdag …
+        shift: "day",
+        startsAt: new Date("2026-08-17T20:00:00Z"), // … men börjar måndag kväll
+        endsAt: new Date("2026-08-18T03:00:00Z"),
+        workMinutes: 420,
+      },
+    ]);
+
+    expect((await veckan(id)).workDays).toEqual([
+      { employeeId: id, date: "2026-08-17", shift: "night" },
+    ]);
+  });
+
+  it("faller tillbaka på arbetstiden när sluttiden saknas", async () => {
+    const id = await personMedPass([
+      {
+        date: "2026-08-17",
+        shift: "day",
+        startsAt: new Date("2026-08-17T14:00:00Z"),
+        endsAt: null,
+        workMinutes: 600,
+      },
+    ]);
+
+    expect((await veckan(id)).workDays[0].shift).toBe("night");
+  });
+
+  /* Marginalen får inte läcka: ett pass utanför veckan ska inte med. */
+  it("tar inte med pass som hör till en annan vecka", async () => {
+    const id = await personMedPass([
+      {
+        date: "2026-08-16",
+        shift: "day",
+        startsAt: new Date("2026-08-16T04:00:00Z"),
+        workMinutes: 480,
+      },
+    ]);
+
+    expect((await veckan(id)).workDays).toEqual([]);
+  });
+});

@@ -50,6 +50,13 @@
       "when": 1787657713770,
       "tag": "0006_direction_and_vehicle_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787657714770,
+      "tag": "0007_shift_ends_at",
+      "breakpoints": true
     }
   ]
 }

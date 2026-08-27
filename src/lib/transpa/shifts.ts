@@ -260,6 +260,42 @@ export function shiftToWorkDay(shift: TranspaShift, employeeId: string): WorkDay
   return { employeeId, date: efterMidnatt ? dagenFore(date) : date, shift: kind };
 }
 
+/**
+ * Datum och skift ur en sparad rad, tolkat på nytt.
+ *
+ * Motsvarar shiftToWorkDay men utgår från det som ligger i databasen —
+ * starttid, sluttid och arbetstid — i stället för från API-svaret.
+ * Poängen är att tolkningen ska göras om vid läsning: ändras regeln ska
+ * redan sparade pass rätta sig utan att någon hämtar om veckan.
+ */
+export function workDayFromStored(
+  row: {
+    employeeId: string;
+    startsAt: Date | string;
+    endsAt: Date | string | null;
+    workMinutes: number | null;
+  },
+): WorkDay {
+  const startIso = row.startsAt instanceof Date ? row.startsAt.toISOString() : row.startsAt;
+  const { date, hour } = localParts(startIso);
+
+  const slutIso = row.endsAt
+    ? row.endsAt instanceof Date
+      ? row.endsAt.toISOString()
+      : row.endsAt
+    : row.workMinutes != null
+      ? new Date(new Date(startIso).getTime() + row.workMinutes * 60_000).toISOString()
+      : null;
+
+  const kind = classifyByPeriod({ date, hour }, slutIso ? localParts(slutIso) : null);
+  const efterMidnatt = kind === "night" && hour < DAY_STARTS_AT;
+  return {
+    employeeId: row.employeeId,
+    date: efterMidnatt ? dagenFore(date) : date,
+    shift: kind,
+  };
+}
+
 /** Dagen före, räknat i kalenderdagar. */
 function dagenFore(date: string): string {
   return new Date(new Date(`${date}T00:00:00Z`).getTime() - DAY_MS).toISOString().slice(0, 10);
