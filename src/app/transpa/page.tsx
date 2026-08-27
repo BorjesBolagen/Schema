@@ -120,11 +120,11 @@ export default async function TranspaPage() {
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Jakten på passen pågår.</strong> Swagger-UI:t har en tagg{" "}
-        <em>timereports and shifts</em> med operationen <code>get-shift</code>, så resursen finns —
-        men inte på någon av vägarna nedan. Sidan hämtar därför OpenAPI-specen ur Swagger-UI:t i
-        stället för att gissa adresser, och listar då varje väg API:t faktiskt har. Hittas den är
-        arbetsmönstren i verktyget en parentes i stället för grunden.
+        adress aldrig syns här. <strong>Passen är hittade.</strong>{" "}
+        <code>/v1/timeReports/shifts</code> svarar inte 404 utan nekar med namnet på det scope som
+        saknas — vägen finns alltså, och det som återstår är att få behörigheten beviljad. Sidan
+        hämtar också OpenAPI-specen ur Swagger-UI:t, men godtar den bara om den kan visa att den
+        är TransPA:s: Swagger UI levereras med ett demo-API som annars tas för facit.
       </p>
 
       {missing ? (
@@ -146,6 +146,44 @@ export default async function TranspaPage() {
           )}
         </div>
       )}
+
+      {/* En nekad väg är sidans mest informativa rad: den bevisar att
+          resursen finns och namnger scopet som saknas. Den ska inte
+          ligga bland de döda vägarna längst ned. */}
+      {(() => {
+        const denied = report.endpoints.filter((e) => e.outcome === "forbidden");
+        if (denied.length === 0) return null;
+        const scopes = [...new Set(denied.map((e) => e.requiredScope).filter(Boolean))];
+        return (
+          <div className="mt-6 rounded border-2 border-(--color-accent) bg-amber-50 p-4">
+            <p className="font-medium">
+              Passen finns — vi saknar bara behörighet
+            </p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {denied.map((e) => (
+                <li key={e.path}>
+                  <code>{e.path}</code>{" "}
+                  <span className="text-(--color-muted)">svarar {e.status}, inte 404</span>
+                </li>
+              ))}
+            </ul>
+            {scopes.length > 0 && (
+              <p className="mt-3 max-w-[68ch] text-sm">
+                Begär{" "}
+                {scopes.map((sc, i) => (
+                  <span key={sc}>
+                    {i > 0 && ", "}
+                    <code className="font-semibold">{sc}</code>
+                  </span>
+                ))}{" "}
+                i Visma Developer Portal, under samma applikation som de övriga scopen. När det är
+                beviljat hämtas arbetsdagarna därifrån, och arbetsmönstren blir en reserv för dem
+                TransPA saknar besked om — inte grunden.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {report.trips && (
         <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
@@ -286,7 +324,7 @@ export default async function TranspaPage() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-semibold">Vägar som inte finns</h2>
+        <h2 className="text-sm font-semibold">Vägar som provats</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
           Samtliga svarar 404, även de som provats mot ett riktigt person-id. Ett beviljat scope
           betyder alltså bara att Vismas katalog känner till namnet, inte att Public API exponerar

@@ -49,6 +49,14 @@ export interface EndpointProbe {
    * antagandet som gjorde varje lista tyst tom.
    */
   rowKey?: string;
+  /**
+   * Scopet vägen kräver, när svaret var 403 och namngav det.
+   *
+   * En nekad väg är en träff, inte ett misslyckande: den bevisar att
+   * resursen finns och säger exakt vad som ska begäras i Visma
+   * Developer Portal.
+   */
+  requiredScope?: string;
 }
 
 /**
@@ -225,7 +233,13 @@ const SHIFT_CANDIDATES = [
      get-shift, så resursen finns — frågan är bara var. */
   "/v1/shifts",
   "/v1/timereports",
+  /* Den här svarade 403 med scope=transpaapi:timereports:read i stället
+     för 404 — vägen finns alltså. Grannarna provas för att kartlägga
+     grenen medan scopet begärs. */
   "/v1/timeReports/shifts",
+  "/v1/timeReports/shift",
+  "/v1/timeReports/schedules",
+  "/v1/timeReports/timeRows",
   "/v1/employees/{id}/timeReports",
   "/v1/workShifts",
   "/v1/employeeShifts",
@@ -292,6 +306,9 @@ export function specUrlsFrom(html: string, base: string): string[] {
 
   return [...found]
     .filter((u) => !/\.(js|css|png|svg|ico|map)$/i.test(u))
+    // Swagger UI:s inbyggda demo. Den stod kvar i sidan och togs för
+    // TransPA:s spec, med fjorton husdjursvägar som följd.
+    .filter((u) => !/petstore|swagger\.io/i.test(u))
     .map((u) => {
       try {
         return new URL(u, base).toString();
@@ -318,11 +335,32 @@ function allPaths(employeeId: string | null): Array<[string, string]> {
   return [...KNOWN, ...shifts, ...GUESSES];
 }
 
-function describe(error: unknown): { outcome: ProbeOutcome; status?: number; detail: string } {
+/**
+ * Scopet ur ett nekat svar.
+ *
+ * TransPA svarar "Claim value mismatch: scope=transpaapi:timereports:read"
+ * — alltså med namnet på precis det som saknas. Det är för värdefullt
+ * för att bara visas som en felrad.
+ */
+export function scopeFromDenial(detail: string): string | undefined {
+  return /scope=([a-z0-9:_-]+)/i.exec(detail)?.[1];
+}
+
+function describe(error: unknown): {
+  outcome: ProbeOutcome;
+  status?: number;
+  detail: string;
+  requiredScope?: string;
+} {
   if (error instanceof TranspaApiError) {
     const outcome: ProbeOutcome =
       error.status === 404 ? "missing" : error.status === 403 || error.status === 401 ? "forbidden" : "error";
-    return { outcome, status: error.status, detail: error.message };
+    return {
+      outcome,
+      status: error.status,
+      detail: error.message,
+      requiredScope: outcome === "forbidden" ? scopeFromDenial(error.message) : undefined,
+    };
   }
   if (error instanceof TranspaAuthError) {
     return { outcome: "error", status: error.status, detail: error.message };
@@ -473,6 +511,39 @@ async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<G
   }
 }
 
+/**
+ * Är det här TransPA:s spec, eller Swagger UI:s demo?
+ *
+ * Swagger UI levereras med petstore.swagger.io som standardadress, och
+ * den stod kvar i sidan. Upptäckaren tog den, sidan listade fjorton
+ * husdjursvägar och drog slutsatsen att TransPA inte har några pass —
+ * ur ett helt annat API. En spec som inte kan visa att den är TransPA:s
+ * duger inte som facit.
+ */
+export function looksLikeTranspa(
+  url: string,
+  spec: { servers?: Array<{ url?: string }>; host?: string; info?: { title?: string } },
+  paths: string[],
+): boolean {
+  const haystack = [
+    url,
+    spec.host ?? "",
+    spec.info?.title ?? "",
+    ...(spec.servers ?? []).map((s) => s.url ?? ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (/petstore|swagger\.io|example\.com/.test(haystack)) return false;
+  if (/transpa|mytranspa/.test(haystack)) return true;
+
+  /* Ingen självidentifiering: godta ändå om vägarna ser ut som TransPA:s
+     egna — /v1/employees och /v1/stationPlaces är bekräftade. */
+  const known = ["/v1/employees", "/v1/stationplaces", "/v1/vehicles", "/v1/trips"];
+  const lower = paths.map((p) => p.toLowerCase());
+  return known.filter((k) => lower.some((p) => p.startsWith(k))).length >= 2;
+}
+
 /** Ett hämtat spec-dokument, eller varför det inte gick. */
 async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe | null> {
   try {
@@ -481,9 +552,12 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
 
     const spec = (await response.json()) as {
       paths?: Record<string, Record<string, unknown>>;
-      info?: { version?: string };
+      info?: { version?: string; title?: string };
+      servers?: Array<{ url?: string }>;
+      host?: string;
     };
     if (!spec.paths || Object.keys(spec.paths).length === 0) return null;
+    if (!looksLikeTranspa(url, spec, Object.keys(spec.paths))) return null;
 
     /* Vägarna med metod, så det syns om en resurs bara går att läsa en
        i taget — get-shift kan vara /v1/shifts/{id} utan listväg. */

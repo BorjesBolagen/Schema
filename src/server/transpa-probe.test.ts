@@ -335,3 +335,47 @@ describe("gruppfälten mot stationsorterna", () => {
   });
 });
 
+/**
+ * En 403 som namnger scopet är en träff, inte ett misslyckande: den
+ * bevisar att resursen finns. Rapporten måste bära den vidare så sidan
+ * kan säga vad som ska begäras.
+ */
+describe("nekade vägar", () => {
+  it("bär med sig scopet vägen kräver", async () => {
+    const fetchImpl = fakeFetch((url) => {
+      if (url.includes("/v1/timeReports/shifts")) {
+        return new Response(
+          JSON.stringify({
+            title: "Forbidden",
+            detail: "Claim value mismatch: scope=transpaapi:timereports:read.",
+            status: 403,
+          }),
+          { status: 403 },
+        );
+      }
+      return new Response(JSON.stringify({ items: [], cursor: {} }));
+    });
+
+    const report = await probeTenant(fetchImpl);
+    const denied = report.endpoints.find((e) => e.path === "/v1/timeReports/shifts")!;
+
+    expect(denied.outcome).toBe("forbidden");
+    expect(denied.status).toBe(403);
+    expect(denied.requiredScope).toBe("transpaapi:timereports:read");
+  });
+
+  it("skiljer en nekad väg från en som inte finns", async () => {
+    const fetchImpl = fakeFetch((url) =>
+      url.includes("/v1/shifts")
+        ? new Response("nix", { status: 404 })
+        : new Response(JSON.stringify({ items: [], cursor: {} })),
+    );
+
+    const report = await probeTenant(fetchImpl);
+    const gone = report.endpoints.find((e) => e.path === "/v1/shifts")!;
+
+    expect(gone.outcome).toBe("missing");
+    expect(gone.requiredScope).toBeUndefined();
+  });
+});
+

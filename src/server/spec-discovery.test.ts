@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { specUrlsFrom } from "./transpa-probe";
+import { looksLikeTranspa, scopeFromDenial, specUrlsFrom } from "./transpa-probe";
 
 /**
  * Att gissa spec-adressen gav tio 404 och slutsatsen "specen finns
@@ -66,3 +66,66 @@ describe("specUrlsFrom", () => {
     expect(specUrlsFrom(html, BASE)).toEqual([]);
   });
 });
+
+/**
+ * Swagger UI levereras med petstore.swagger.io som standardadress, och
+ * den stod kvar i TransPA:s sida. Upptäckaren tog den, sidan listade
+ * fjorton husdjursvägar och drog slutsatsen att TransPA inte har några
+ * pass — ur ett helt annat API.
+ */
+describe("petstore-fällan", () => {
+  it("plockar inte ens upp demo-adressen", () => {
+    const html = `SwaggerUIBundle({ url: "https://petstore.swagger.io/v2/swagger.json" })`;
+    expect(specUrlsFrom(html, BASE)).toEqual([]);
+  });
+
+  it("avvisar en spec som inte kan visa att den är TransPA:s", () => {
+    expect(
+      looksLikeTranspa(
+        "https://petstore.swagger.io/v2/swagger.json",
+        { host: "petstore.swagger.io", info: { title: "Swagger Petstore" } },
+        ["/pet", "/pet/{petId}", "/store/order", "/user"],
+      ),
+    ).toBe(false);
+  });
+
+  it("godtar en spec som namnger TransPA", () => {
+    expect(
+      looksLikeTranspa(
+        "https://api.mytranspa.com/doc/openapi.json",
+        { servers: [{ url: "https://api.mytranspa.com/publicApi" }] },
+        ["/v1/alive"],
+      ),
+    ).toBe(true);
+  });
+
+  /* En spec utan självidentifiering är inte automatiskt fel — men den
+     måste då bära vägar vi själva bekräftat mot tenanten. */
+  it("godtar en anonym spec vars vägar är de vi mätt", () => {
+    expect(
+      looksLikeTranspa("https://internal/spec.json", {}, ["/v1/employees", "/v1/stationPlaces"]),
+    ).toBe(true);
+  });
+
+  it("avvisar en anonym spec med bara en bekant väg", () => {
+    expect(looksLikeTranspa("https://internal/spec.json", {}, ["/v1/employees"])).toBe(false);
+  });
+});
+
+/**
+ * "Claim value mismatch: scope=transpaapi:timereports:read" är sidans
+ * mest värdefulla svar: vägen finns, och API:t säger exakt vad som
+ * saknas. Det får inte gå förlorat bland felraderna.
+ */
+describe("scopeFromDenial", () => {
+  it("plockar ut scopet ur ett nekat svar", () => {
+    expect(scopeFromDenial("Claim value mismatch: scope=transpaapi:timereports:read.")).toBe(
+      "transpaapi:timereports:read",
+    );
+  });
+
+  it("ger inget när svaret inte namnger ett scope", () => {
+    expect(scopeFromDenial("403 från /v1/shifts")).toBeUndefined();
+  });
+});
+
