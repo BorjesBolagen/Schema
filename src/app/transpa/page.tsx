@@ -192,6 +192,42 @@ export default async function TranspaPage() {
         );
       })()}
 
+      {report.shiftVariants && report.shiftVariants.length > 0 && (
+        <div className="mt-6 rounded border-2 border-(--color-warn) bg-amber-50 p-4 text-sm">
+          <p className="font-medium">Passvägen står i specen men svarar inte</p>
+          <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
+            <code>/v1/shifts/</code> finns i specen och <code>transpaapi:shifts:read</code> är
+            beviljat — ändå kommer 404. Varianterna nedan provas var för sig i stället för att
+            gissa vad som skiljer: snedstrecket, frågeparametrarna eller bas-URL:en.
+          </p>
+          <table className="mt-3 w-full border-collapse">
+            <tbody>
+              {report.shiftVariants.map((v) => (
+                <tr key={v.url} className="border-t border-(--color-line) align-top">
+                  <td className="py-1.5 pr-3 text-xs">{v.what}</td>
+                  <td className="py-1.5 pr-3">
+                    <Badge outcome={v.outcome} />
+                  </td>
+                  <td className="py-1.5 text-xs text-(--color-muted)">
+                    {v.detail ?? (v.status ? `HTTP ${v.status}` : "")}
+                    {v.rows !== undefined && ` · ${v.rows} rader`}
+                    {v.sampleKeys && v.sampleKeys.length > 0 && (
+                      <div className="mt-1 font-mono break-words text-(--color-ink)">
+                        {v.sampleKeys.join(", ")}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 max-w-[68ch] text-xs text-(--color-muted)">
+            Svarar ingen av dem är resursen inte påslagen för er tenant, och då är det Visma som
+            behöver aktivera den — specen beskriver hela produkten, inte just er installation.
+          </p>
+        </div>
+      )}
+
       {report.trips && (
         <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
           <p className="font-medium">Turer: planerade eller körda?</p>
@@ -361,6 +397,12 @@ export default async function TranspaPage() {
               Hittad på <code>{report.spec.url}</code>
               {report.spec.version && ` · version ${report.spec.version}`} ·{" "}
               {report.spec.paths?.length} sökvägar
+              {report.spec.servers && report.spec.servers.length > 0 && (
+                <>
+                  {" "}
+                  · bas enligt specen: <code>{report.spec.servers.join(", ")}</code>
+                </>
+              )}
             </p>
 
             {/* Passen är det vi letar efter. Ligger de i listan ska de

@@ -8,6 +8,7 @@ import {
   API_BASE,
   MAX_LIMIT,
   rowsOf,
+  type Problem,
 } from "@/lib/transpa/client";
 import {
   BASE_SCOPE,
@@ -134,12 +135,42 @@ export interface GroupingProbe {
   fields: GroupFieldProbe[];
 }
 
+/**
+ * En väg som specen listar men som ändå svarar 404.
+ *
+ * /v1/shifts/ står i specen, scopet transpaapi:shifts:read är beviljat,
+ * och ändå kommer 404 — medan /v1/timeReports/shifts, som specen inte
+ * har, svarade 403. Det senare matchade sannolikt mönstret
+ * /v1/timeReports/{id} med "shifts" som id.
+ *
+ * I stället för att gissa vidare provas varianterna var för sig: med
+ * och utan avslutande snedstreck, med och utan frågeparametrar, och mot
+ * den bas specen själv anger. Först då går det att säga vad som
+ * saknas — rutten, parametrarna eller basen.
+ */
+export interface PathVariant {
+  url: string;
+  what: string;
+  outcome: ProbeOutcome;
+  status?: number;
+  detail?: string;
+  rows?: number;
+  sampleKeys?: string[];
+}
+
 export interface SpecProbe {
   url: string;
   outcome: ProbeOutcome;
   status?: number;
   paths?: string[];
   version?: string;
+  /**
+   * Bas-URL:en specen själv anger.
+   *
+   * Avgörande när en väg som står i specen ändå svarar 404: står
+   * servern någon annanstans än den vi anropar är det förklaringen.
+   */
+  servers?: string[];
 }
 
 export interface TenantReport {
@@ -151,6 +182,8 @@ export interface TenantReport {
   spec?: SpecProbe;
   trips?: TripsWindow;
   grouping?: GroupingProbe;
+  /** Varianter av passvägen, när den listas i specen men svarar 404. */
+  shiftVariants?: PathVariant[];
   endpoints: EndpointProbe[];
   ranAt: string;
 }
@@ -159,10 +192,10 @@ export interface TenantReport {
  * Endpoints Visma dokumenterat eller som scope-katalogen i Visma
  * Developer Portal bekräftar existerar (2026-08-24).
  *
- * /v1/shifts hör hemma här av det starkaste skälet som finns: scopet
- * `transpaapi:shifts:read` står bland de beviljade för Börjes app.
- * TransPA har alltså en riktig schema-resurs, inte bara turer — det var
- * den öppna frågan hela den här sidan fanns för att besvara.
+ * Listan kommer numera ur den hämtade specen (0.1.138) i stället för ur
+ * gissningar. Att en väg står i specen är dock inte samma sak som att
+ * den svarar för den här tenanten — flera gör det inte, och den
+ * skillnaden är det sidan finns för att mäta.
  */
 const KNOWN: Array<[string, string]> = [
   ["/v1/alive", "Livskontroll"],
@@ -175,10 +208,11 @@ const KNOWN: Array<[string, string]> = [
   ["/v1/vehicleGroups", "Fordonsgrupper"],
   ["/v1/trips", "Turer"],
 
-  /* Ur specen (0.1.138), inte ur gissningar. Det avslutande snedstrecket
-     är inte kosmetik: /v1/shifts svarar 404, /v1/shifts/ är rutten. Det
-     var hela anledningen till att passen inte gick att hitta.
-     transpaapi:shifts:read är dessutom redan beviljat. */
+  /* Ur specen (0.1.138), inte ur gissningar. Att de står där betyder
+     inte att de svarar: /v1/shifts/ ger 404 trots att specen listar den
+     och transpaapi:shifts:read är beviljat. Därför provas varianterna
+     separat längre ned — det är den motsägelsen som ska förklaras, inte
+     bortförklaras. */
   ["/v1/shifts/", "Pass"],
   ["/v1/timeReports", "Tidrapporter"],
   ["/v1/timereportConfiguration/", "Tidrapportinställningar"],
@@ -579,7 +613,14 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       ) {
         return null;
       }
-      return { url, outcome: "ok", status: response.status, version: parsed.version, paths };
+      return {
+        url,
+        outcome: "ok",
+        status: response.status,
+        version: parsed.version,
+        paths,
+        servers: parsed.servers,
+      };
     }
 
     const spec = JSON.parse(text) as {
@@ -603,7 +644,14 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       })
       .sort();
 
-    return { url, outcome: "ok", status: response.status, version: spec.info?.version, paths };
+    return {
+      url,
+      outcome: "ok",
+      status: response.status,
+      version: spec.info?.version,
+      paths,
+      servers: (spec.servers ?? []).map((x) => x.url ?? "").filter(Boolean),
+    };
   } catch {
     return null;
   }
@@ -617,6 +665,81 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
  * står. Gissningarna finns kvar men sist: de gav tio 404 och en
  * felaktig slutsats förra gången.
  */
+/**
+ * Provar passvägen på flera sätt och redovisar varje utfall.
+ *
+ * Anropen görs med rå fetch i stället för genom klienten, eftersom det
+ * är just klientens antaganden — frågeparametrarna och bas-URL:en — som
+ * ska kunna uteslutas.
+ */
+async function probeShiftVariants(
+  token: string,
+  specServers: string[],
+  employeeId: string | null,
+  fetchImpl: typeof fetch,
+): Promise<PathVariant[]> {
+  const bases = [...new Set([API_BASE, ...specServers.filter(Boolean)])];
+
+  const attempts: Array<{ url: string; what: string }> = [];
+  for (const base of bases) {
+    const where = base === API_BASE ? "" : ` · bas ur specen: ${base}`;
+    attempts.push(
+      { url: `${base}/v1/shifts/`, what: `med snedstreck, utan parametrar${where}` },
+      { url: `${base}/v1/shifts`, what: `utan snedstreck, utan parametrar${where}` },
+      { url: `${base}/v1/shifts/?limit=1`, what: `med snedstreck och limit${where}` },
+    );
+    if (employeeId) {
+      attempts.push({
+        url: `${base}/v1/employees/${employeeId}/shifts/`,
+        what: `under en person${where}`,
+      });
+    }
+  }
+
+  const out: PathVariant[] = [];
+  for (const attempt of attempts) {
+    try {
+      const response = await fetchImpl(attempt.url, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      });
+      const text = await response.text();
+
+      if (!response.ok) {
+        let detail = `${response.status}`;
+        try {
+          const problem = JSON.parse(text) as Problem;
+          detail = problem.detail ?? problem.title ?? detail;
+        } catch {
+          /* inte problem+json */
+        }
+        out.push({
+          ...attempt,
+          outcome: response.status === 404 ? "missing" : response.status === 403 ? "forbidden" : "error",
+          status: response.status,
+          detail,
+        });
+        continue;
+      }
+
+      /* Ett pass bär tider och en person. Fältnamnen är det vi behöver
+         för att skriva hämtningen — aldrig värdena. */
+      const body: unknown = text ? JSON.parse(text) : null;
+      const rows = rowsOf<Record<string, unknown>>(body, attempt.url).rows;
+      const first = rows[0];
+      out.push({
+        ...attempt,
+        outcome: rows.length === 0 ? "empty" : "ok",
+        status: response.status,
+        rows: rows.length,
+        sampleKeys: first && typeof first === "object" ? Object.keys(first).sort() : [],
+      });
+    } catch (error) {
+      out.push({ ...attempt, ...describe(error) });
+    }
+  }
+  return out;
+}
+
 async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
   const tried: string[] = [];
 
@@ -812,9 +935,26 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     ? await probeGrouping(client, scopes)
     : undefined;
 
+  /* Specen listar /v1/shifts/ och scopet är beviljat, men vägen svarar
+     404. Då provas varianterna var för sig i stället för att jag gissar
+     en gång till på vad som skiljer. */
+  const shiftsMissing = endpoints.some(
+    (e) => e.path === "/v1/shifts/" && e.outcome === "missing",
+  );
+  const shiftVariants =
+    shiftsMissing && spec.outcome === "ok"
+      ? await probeShiftVariants(
+          await getAccessToken(credentials, scopes, fetchImpl),
+          spec.servers ?? [],
+          sampleEmployeeId,
+          fetchImpl,
+        ).catch(() => undefined)
+      : undefined;
+
   return {
     hasCredentials: true,
     trips,
+    shiftVariants,
     grouping,
     tenantId: credentials.tenantId,
     employeeSample: { keys: sampleEmployeeKeys, id: sampleEmployeeId },

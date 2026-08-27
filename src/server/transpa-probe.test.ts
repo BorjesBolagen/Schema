@@ -15,7 +15,12 @@ function fakeFetch(handler: (url: string) => Response) {
     if (url.includes("connect/token")) {
       return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600, token_type: "Bearer" }));
     }
-    if (url.includes("doc/openapi")) return new Response("", { status: 404 });
+    /* Specen lämnas åt handtaget när det vill svara på den; annars
+       låtsas den saknas, som i de flesta testerna. */
+    if (url.includes("doc/openapi")) {
+      const own = handler(url);
+      return own.status === 404 && !own.headers.get("x-handled") ? new Response("", { status: 404 }) : own;
+    }
     return handler(url);
   }) as unknown as typeof fetch;
 }
@@ -377,6 +382,77 @@ describe("nekade vägar", () => {
 
     expect(gone.outcome).toBe("missing");
     expect(gone.requiredScope).toBeUndefined();
+  });
+});
+
+/**
+ * /v1/shifts/ står i specen och scopet är beviljat, men vägen svarar
+ * 404. Fyra gånger har jag byggt en slutsats på ett enda svar och haft
+ * fel; den här gången provas varianterna var för sig i stället.
+ */
+describe("varianter av passvägen", () => {
+  const withSpec = (shiftsHandler: (url: string) => Response) =>
+    fakeFetch((url) => {
+      if (url.includes("openapi")) {
+        return new Response(`openapi: 3.0.1
+info:
+  title: TransPA Public API
+  version: 0.1.138
+servers:
+  - url: https://api.mytranspa.com/publicApi
+paths:
+  /v1/shifts/:
+    get:
+      summary: Return a list of Shifts
+  /v1/employees:
+    get:
+      summary: Return a list of Employees
+`);
+      }
+      if (url.includes("/shifts")) return shiftsHandler(url);
+      if (url.includes("/v1/employees")) {
+        return new Response(JSON.stringify({ items: [{ id: "emp-1" }], cursor: {} }));
+      }
+      return new Response(JSON.stringify({ items: [], cursor: {} }));
+    });
+
+  it("provar varianterna när vägen svarar 404 trots specen", async () => {
+    const report = await probeTenant(withSpec(() => new Response("nix", { status: 404 })));
+
+    expect(report.shiftVariants).toBeDefined();
+    expect(report.shiftVariants!.length).toBeGreaterThanOrEqual(3);
+    expect(report.shiftVariants!.every((v) => v.outcome === "missing")).toBe(true);
+    // Varianterna ska skilja sig åt, annars mäter de inget.
+    expect(new Set(report.shiftVariants!.map((v) => v.url)).size).toBe(
+      report.shiftVariants!.length,
+    );
+  });
+
+  it("visar fältnamnen när en variant svarar", async () => {
+    const report = await probeTenant(
+      withSpec((url) =>
+        url.endsWith("/v1/shifts/")
+          ? new Response(
+              JSON.stringify({
+                items: [{ id: "s1", employeeId: "e1", startDateTime: "x", endDateTime: "y" }],
+                cursor: {},
+              }),
+            )
+          : new Response("nix", { status: 404 }),
+      ),
+    );
+
+    const hit = report.shiftVariants!.find((v) => v.outcome === "ok")!;
+    expect(hit.sampleKeys).toEqual(["employeeId", "endDateTime", "id", "startDateTime"]);
+    // Värdena stannar på servern.
+    expect(JSON.stringify(report.shiftVariants)).not.toContain("e1");
+  });
+
+  it("provar inte varianterna när vägen redan svarar", async () => {
+    const report = await probeTenant(
+      withSpec(() => new Response(JSON.stringify({ items: [], cursor: {} }))),
+    );
+    expect(report.shiftVariants).toBeUndefined();
   });
 });
 
