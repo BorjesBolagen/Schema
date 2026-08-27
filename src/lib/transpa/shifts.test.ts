@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SHIFTS_PATH, shiftToWorkDay, shiftWindow, workDaysFromShifts } from "./shifts";
+import {
+  MAX_WINDOW_DAYS,
+  SHIFTS_PATH,
+  shiftToWorkDay,
+  shiftWindow,
+  splitIntoWindows,
+  workDaysFromShifts,
+} from "./shifts";
 
 /**
  * Formen är bekräftad mot Börjes tenant, inte gissad: fälten kom ur ett
@@ -110,5 +117,61 @@ describe("workDaysFromShifts", () => {
 
   it("tål en tom lista", () => {
     expect(workDaysFromShifts([], local)).toEqual({ workDays: [], covered: [] });
+  });
+});
+
+/**
+ * TransPA tar högst 31 dagar per anrop: "startDateTimeAfter and
+ * startDateTimeBefore needs to be within 31 days". Synken bad om sexton
+ * veckor och fick just det svaret.
+ */
+describe("splitIntoWindows", () => {
+  const span = (w: { from: string; to: string }) =>
+    (new Date(`${w.to}T00:00:00Z`).getTime() - new Date(`${w.from}T00:00:00Z`).getTime()) / 86_400_000;
+
+  it("lämnar ett kort intervall i en bit", () => {
+    expect(splitIntoWindows("2026-08-17", "2026-08-28")).toEqual([
+      { from: "2026-08-17", to: "2026-08-28" },
+    ]);
+  });
+
+  it("delar sexton veckor i bitar API:t accepterar", () => {
+    const windows = splitIntoWindows("2026-08-01", "2026-11-21");
+
+    expect(windows.length).toBeGreaterThan(1);
+    for (const w of windows) expect(span(w)).toBeLessThan(31);
+  });
+
+  /* Ett glapp skulle tappa pass, ett överlapp skulle hämta dem två
+     gånger. Bitarna ska gränsa exakt. */
+  it("lämnar varken glapp eller överlapp", () => {
+    const windows = splitIntoWindows("2026-08-01", "2026-11-21");
+
+    for (let i = 1; i < windows.length; i++) {
+      const föregåendeSlut = new Date(`${windows[i - 1].to}T00:00:00Z`).getTime();
+      const dettaStart = new Date(`${windows[i].from}T00:00:00Z`).getTime();
+      expect(dettaStart - föregåendeSlut).toBe(86_400_000);
+    }
+  });
+
+  it("täcker hela intervallet, från första till sista dagen", () => {
+    const windows = splitIntoWindows("2026-08-01", "2026-11-21");
+    expect(windows[0].from).toBe("2026-08-01");
+    expect(windows[windows.length - 1].to).toBe("2026-11-21");
+  });
+
+  it("klarar en enda dag", () => {
+    expect(splitIntoWindows("2026-08-17", "2026-08-17")).toEqual([
+      { from: "2026-08-17", to: "2026-08-17" },
+    ]);
+  });
+
+  it("ger inget för ett bakvänt eller obegripligt intervall", () => {
+    expect(splitIntoWindows("2026-08-28", "2026-08-17")).toEqual([]);
+    expect(splitIntoWindows("inte ett datum", "2026-08-17")).toEqual([]);
+  });
+
+  it("håller sig under API:ts gräns med marginal", () => {
+    expect(MAX_WINDOW_DAYS).toBeLessThan(31);
   });
 });

@@ -3,7 +3,12 @@ import { eq, or } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant, credentialsFromEnv } from "@/lib/transpa/auth";
-import { shiftWindow, shiftToWorkDay, type TranspaShift } from "@/lib/transpa/shifts";
+import {
+  shiftToWorkDay,
+  shiftWindow,
+  splitIntoWindows,
+  type TranspaShift,
+} from "@/lib/transpa/shifts";
 import { withBudget } from "./shift-provider";
 
 /**
@@ -125,16 +130,28 @@ export async function lookupShifts(input: {
     return { ok: false, error: "Inga TransPA-uppgifter inlagda för personens bolag." };
   }
 
-  const query = shiftWindow(input.from, input.to);
   const path = `/v1/employees/${transpaId}/shifts/`;
-  const url = `${path}?${new URLSearchParams(query)}`;
+  /* TransPA tar högst 31 dagar per anrop. Ett längre intervall delas
+     upp; adressen som visas är den första biten, så den går att prova
+     för hand. */
+  const windows = splitIntoWindows(input.from, input.to);
+  /* Tom lista betyder att datumen inte gick att tolka. Strängjämförelsen
+     ovan fångar bakvänd ordning men inte skräp. */
+  if (windows.length === 0) return { ok: false, error: "Datumen gick inte att tolka." };
+  const url = `${path}?${new URLSearchParams(shiftWindow(windows[0].from, windows[0].to))}`;
 
   try {
     const client = new TranspaClient({ credentials });
-    const rows = await withBudget(
-      (signal) => client.list<TranspaShift>(path, { query, signal }),
-      20_000,
-    );
+    const rows: TranspaShift[] = [];
+    for (const window of windows) {
+      rows.push(
+        ...(await withBudget(
+          (signal) =>
+            client.list<TranspaShift>(path, { query: shiftWindow(window.from, window.to), signal }),
+          20_000,
+        )),
+      );
+    }
 
     const shifts: LookupShift[] = rows.map((raw) => {
       const day = raw.startDateTime ? shiftToWorkDay(raw, "—") : null;

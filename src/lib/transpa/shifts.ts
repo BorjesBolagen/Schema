@@ -52,6 +52,45 @@ export function shiftWindow(from: string, to: string): Record<string, string> {
 }
 
 /**
+ * Största spann TransPA tar i ett anrop.
+ *
+ * "startDateTimeAfter and startDateTimeBefore needs to be within 31
+ * days" — svaret på synkens första skarpa körning, som bad om sexton
+ * veckor. Trettio används i stället för trettioett: fönstret sträcker
+ * sig till 23:59:59 på slutdagen, så ett spann på trettioen
+ * kalenderdagar ligger nästan precis på gränsen.
+ */
+export const MAX_WINDOW_DAYS = 30;
+
+const DAY_MS = 86_400_000;
+const asDate = (iso: string) => new Date(`${iso}T00:00:00Z`).getTime();
+const asIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * Delar ett datumintervall i bitar API:t accepterar.
+ *
+ * Bitarna gränsar till varandra utan överlapp och utan glapp: nästa
+ * börjar dagen efter att föregående slutar. Ett pass kan alltså varken
+ * missas eller hämtas två gånger.
+ */
+export function splitIntoWindows(
+  from: string,
+  to: string,
+  maxDays = MAX_WINDOW_DAYS,
+): Array<{ from: string; to: string }> {
+  const start = asDate(from);
+  const end = asDate(to);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return [];
+
+  const out: Array<{ from: string; to: string }> = [];
+  for (let at = start; at <= end; at += maxDays * DAY_MS) {
+    const last = Math.min(at + (maxDays - 1) * DAY_MS, end);
+    out.push({ from: asIso(at), to: asIso(last) });
+  }
+  return out;
+}
+
+/**
  * Ett pass som en arbetsdag.
  *
  * Dagen och skiftet avgörs av svensk lokaltid, inte av UTC: ett pass

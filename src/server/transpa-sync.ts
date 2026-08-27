@@ -6,6 +6,7 @@ import {
   SHIFTS_PATH,
   shiftToWorkDay,
   shiftWindow,
+  splitIntoWindows,
   type TranspaShift,
 } from "@/lib/transpa/shifts";
 import { withBudget } from "./shift-provider";
@@ -285,14 +286,22 @@ async function syncTenant(
       );
       if (localFor.size === 0) return { fetched: 0, written: 0 };
 
-      const rows = await withBudget(
-        (signal) =>
-          client.list<TranspaShift>(SHIFTS_PATH, {
-            query: shiftWindow(shiftWindowStart(), shiftWindowEnd()),
-            signal,
-          }),
-        SYNC_TIMEOUT_MS,
-      );
+      /* TransPA tar högst 31 dagar per anrop, så fönstret delas upp.
+         Bitarna gränsar exakt: varken glapp som tappar pass eller
+         överlapp som hämtar dem två gånger. */
+      const rows: TranspaShift[] = [];
+      for (const window of splitIntoWindows(shiftWindowStart(), shiftWindowEnd())) {
+        rows.push(
+          ...(await withBudget(
+            (signal) =>
+              client.list<TranspaShift>(SHIFTS_PATH, {
+                query: shiftWindow(window.from, window.to),
+                signal,
+              }),
+            SYNC_TIMEOUT_MS,
+          )),
+        );
+      }
 
       const values = rows
         .flatMap((raw) => {
