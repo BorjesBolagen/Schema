@@ -82,6 +82,15 @@ export function rowsOf<T>(response: unknown, path: string): { rows: T[]; key: Ro
 export interface RequestOptions {
   /** Filtersträng byggd med lib/transpa/filter.ts. */
   filter?: string;
+  /**
+   * Frågeparametrar utöver filter, limit och cursor.
+   *
+   * Flera resurser kräver egna parametrar: /v1/shifts/ svarar 404 utan
+   * startDateTimeAfter och startDateTimeBefore. Utan den här vägen
+   * skulle varje sådan resurs behöva bygga sin egen URL och tappa
+   * pagineringen på köpet.
+   */
+  query?: Record<string, string>;
   limit?: number;
   cursor?: string;
   scopes?: string[];
@@ -115,6 +124,9 @@ export class TranspaClient {
     const token = await getAccessToken(this.options.credentials, options.scopes, this.fetchImpl);
     const url = new URL(this.baseUrl + path);
     if (options.filter) url.searchParams.set("filter", options.filter);
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      url.searchParams.set(key, value);
+    }
     /* Över taket svarar TransPA "Invalid limit" och anropet faller helt.
        Klämmas här och inte hos anroparen: gränsen är API:ts, och ett
        anropsställe som ber om fler ska få så många som går snarare än

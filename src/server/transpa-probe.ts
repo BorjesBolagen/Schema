@@ -726,13 +726,23 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
 function guessParamValue(name: string, employeeId: string | null): string {
   const n = name.toLowerCase();
   const now = Date.now();
-  if (/(from|start|begin|after)/.test(n)) return new Date(now - 7 * 86_400_000).toISOString();
-  if (/(to|end|until|before)/.test(n)) return new Date(now + 7 * 86_400_000).toISOString();
-  if (/date/.test(n)) return new Date(now).toISOString();
+  const day = 86_400_000;
+
+  /* Ändelsen avgör, inte inledningen. startDateTimeBefore innehåller
+     både "start" och "before" — läses "start" först får båda gränserna
+     samma datum, och API:t svarar "startDateTimeBefore has to be after
+     startDateTimeAfter". Det är precis vad som hände. */
+  if (/(after|from|since)$|^(from|after)/.test(n)) return new Date(now - 7 * day).toISOString();
+  if (/(before|until|to)$|^(to|before|until)/.test(n)) return new Date(now + 7 * day).toISOString();
+
+  if (/(start|begin)/.test(n)) return new Date(now - 7 * day).toISOString();
+  if (/(end|stop)/.test(n)) return new Date(now + 7 * day).toISOString();
+  if (/date|time/.test(n)) return new Date(now).toISOString();
   if (/employee/.test(n) && employeeId) return employeeId;
-  if (/(limit|take|size|count)/.test(n)) return "1";
   return "1";
 }
+
+export { guessParamValue as __guessParamValue };
 
 async function probeShiftVariants(
   token: string,

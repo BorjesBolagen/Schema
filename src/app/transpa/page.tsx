@@ -146,11 +146,12 @@ export default async function TranspaPage() {
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Specen avgjorde saken:</strong> passen ligger på{" "}
-        <code>/v1/shifts/</code>, med avslutande snedstreck. <code>/v1/shifts</code> svarar 404,
-        och det var hela skälet till att de inte gick att hitta. Scopet{" "}
-        <code>transpaapi:shifts:read</code> är redan beviljat, så de bör gå att läsa nu.
-        Tidrapporterna är en egen resurs och en annan sak: rapporterad tid, inte plan.
+        adress aldrig syns här. <strong>Passen är hittade och hämtningen byggd.</strong>{" "}
+        <code>/v1/shifts/</code> kräver <code>startDateTimeAfter</code> och{" "}
+        <code>startDateTimeBefore</code>, och svarar 404 utan dem — det var därför vägen såg ut
+        att inte finnas. Arbetsdagarna hämtas nu därifrån, med arbetsmönstren som reserv för dem
+        TransPA saknar besked om. Tidrapporterna är en egen resurs och en annan sak: rapporterad
+        tid, inte plan.
       </p>
 
       {missing ? (

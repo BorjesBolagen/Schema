@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeTranspa, scopeFromDenial, specUrlsFrom } from "./transpa-probe";
+import {
+  __guessParamValue as guessParamValue,
+  looksLikeTranspa,
+  scopeFromDenial,
+  specUrlsFrom,
+} from "./transpa-probe";
 
 /**
  * Att gissa spec-adressen gav tio 404 och slutsatsen "specen finns
@@ -153,3 +158,30 @@ describe("yaml-specen", () => {
   });
 });
 
+/**
+ * startDateTimeBefore innehåller både "start" och "before". Läses
+ * "start" först får båda gränserna samma datum, och TransPA svarar
+ * "startDateTimeBefore has to be after startDateTimeAfter" — vilket är
+ * precis vad som hände i skarp körning.
+ */
+describe("gissade parametervärden", () => {
+  const at = (name: string) => new Date(guessParamValue(name, null)).getTime();
+
+  it("lägger After före Before, inte tvärtom", () => {
+    expect(at("startDateTimeAfter")).toBeLessThan(at("startDateTimeBefore"));
+  });
+
+  it("låter ändelsen avgöra, inte inledningen", () => {
+    expect(at("startDateTimeBefore")).toBeGreaterThan(Date.now());
+    expect(at("startDateTimeAfter")).toBeLessThan(Date.now());
+  });
+
+  it("klarar enkla från- och till-namn", () => {
+    expect(at("from")).toBeLessThan(at("to"));
+    expect(at("fromDate")).toBeLessThan(at("toDate"));
+  });
+
+  it("ger person-id till en parameter som ber om det", () => {
+    expect(guessParamValue("employeeId", "abc")).toBe("abc");
+  });
+});
