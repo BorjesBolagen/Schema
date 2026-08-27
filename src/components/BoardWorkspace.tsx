@@ -16,11 +16,13 @@ import type { Shift } from "@/lib/work-days";
 import {
   assignEmployee,
   assignEmployeeWeek,
+  fetchShiftsForWeek,
   fillWeek,
   moveAssignment,
   removeAssignment,
   type FillResult,
   type WeekPlacement,
+  type ShiftFetchResult,
 } from "@/app/actions";
 import { WeekGrid } from "./WeekGrid";
 import { CrewPanel } from "./CrewPanel";
@@ -62,6 +64,23 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
   const [weekPlacement, setWeekPlacement] = useState<(WeekPlacement & { name: string }) | null>(
     null,
   );
+  const [shiftFetch, setShiftFetch] = useState<ShiftFetchResult | null>(null);
+
+  /**
+   * Hämtar veckans pass ur TransPA för bemanningen.
+   *
+   * En vecka, en person i taget, på knapptryck. Passen skrivs till
+   * databasen och tavlan läser dem därifrån — renderingen rör aldrig
+   * nätet, eftersom ett trögt TransPA annars fäller hela sidan.
+   */
+  function loadShifts() {
+    setShiftFetch(null);
+    startTransition(async () => {
+      setShiftFetch(
+        await fetchShiftsForWeek({ boardSlug: data.board.slug, year: data.year, week: data.week }),
+      );
+    });
+  }
 
   /** Namnet på en person, oavsett om hen redan är med i bemanningen. */
   const nameOf = (employeeId: string) =>
@@ -256,6 +275,30 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
                 {weekPlacement.addedToCrew && ", tillagd i bemanningen"}
               </>
             )}
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={loadShifts}
+          disabled={pending}
+          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+          title="Hämtar veckans pass ur TransPA för de personer tavlan hanterar"
+        >
+          {pending ? "Hämtar …" : "Hämta schema"}
+        </button>
+
+        {shiftFetch && (
+          <span
+            className={`text-xs ${
+              shiftFetch.ok ? "text-(--color-muted)" : "text-(--color-danger)"
+            }`}
+          >
+            {shiftFetch.error && !shiftFetch.ok
+              ? `Kunde inte hämta: ${shiftFetch.error}`
+              : `${shiftFetch.shifts} pass för ${shiftFetch.withShifts} av ${shiftFetch.asked} personer`}
+            {shiftFetch.unlinked > 0 && `, ${shiftFetch.unlinked} utan TransPA-koppling`}
+            {shiftFetch.failed > 0 && shiftFetch.ok && `, ${shiftFetch.failed} misslyckades`}
           </span>
         )}
 

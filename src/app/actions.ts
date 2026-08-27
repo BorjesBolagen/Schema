@@ -10,6 +10,8 @@ import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 import { writePattern, type PatternDayInput } from "@/server/patterns";
+import { fetchWeekShifts, type ShiftFetchResult } from "@/server/shift-fetch";
+export type { ShiftFetchResult };
 import {
   suggestPatternsFromTrips,
   type SuggestionReport,
@@ -651,6 +653,42 @@ export async function saveWorkPattern(input: {
  * mellan en tom databas och en veckotavla som fylls. Vilka som träffas
  * avgörs av anroparen — normalt de som saknar mönster.
  */
+/**
+ * Hämtar veckans pass från TransPA för tavlans bemanning.
+ *
+ * En vecka i taget, en person i taget, och bara när någon ber om det.
+ * Ett svep över hela bolaget lät effektivt men hämtade tusentals pass
+ * ingen bett om och sprängde TransPA:s gräns på 31 dagar per anrop —
+ * utan att göra den vecka man tittar på färskare.
+ *
+ * Passen skrivs till databasen, och tavelvyn läser dem därifrån. Ett
+ * nätanrop i renderingsvägen fällde tidigare hela sidan när TransPA gick
+ * trögt.
+ */
+export async function fetchShiftsForWeek(input: {
+  boardSlug: string;
+  year: number;
+  week: number;
+}): Promise<ShiftFetchResult> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+
+  const crew = await getDb()
+    .select({ employeeId: schema.boardCrew.employeeId })
+    .from(schema.boardCrew)
+    .where(eq(schema.boardCrew.boardId, board.id));
+
+  const dates = weekDates(input.year, input.week, board.weekStartsOn, board.visibleWeekdays);
+  const result = await fetchWeekShifts(
+    crew.map((c) => c.employeeId),
+    dates[0],
+    dates[dates.length - 1],
+  );
+
+  refresh(input.boardSlug);
+  return result;
+}
+
 /**
  * Föreslår mönster ur turhistoriken i TransPA.
  *

@@ -2,14 +2,6 @@ import "server-only";
 import { eq, sql } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
-import {
-  SHIFTS_PATH,
-  shiftToWorkDay,
-  shiftWindow,
-  splitIntoWindows,
-  type TranspaShift,
-} from "@/lib/transpa/shifts";
-import { withBudget } from "./shift-provider";
 import { READ_SCOPES, credentialsForTenant, credentialsFromEnv } from "@/lib/transpa/auth";
 
 /**
@@ -20,26 +12,6 @@ import { READ_SCOPES, credentialsForTenant, credentialsFromEnv } from "@/lib/tra
  * employee.stationPlaceId sätts i appen så länge TransPA:s Employee inte
  * bär någon stationsort.
  */
-
-/**
- * Fönstret passen hämtas för.
- *
- * Fyra veckor bakåt och tolv framåt: bakåt så en vecka som redan
- * passerat går att öppna, framåt så planeringen når ett kvartal. Hela
- * fönstret i en fråga per bolag — 301 personer skulle annars bli 301
- * anrop.
- */
-const SHIFT_WEEKS_BACK = 4;
-const SHIFT_WEEKS_AHEAD = 12;
-
-/** Synken får ta längre tid än en sidrendering; den väntar ingen på. */
-const SYNC_TIMEOUT_MS = 30_000;
-
-const isoDay = (offsetDays: number) =>
-  new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
-
-const shiftWindowStart = () => isoDay(-SHIFT_WEEKS_BACK * 7);
-const shiftWindowEnd = () => isoDay(SHIFT_WEEKS_AHEAD * 7);
 
 interface TranspaStationPlace {
   id?: string;
@@ -77,7 +49,6 @@ export interface ResourceResult {
 const SCOPE_FOR: Record<string, string> = {
   stationPlaces: "transpaapi:stationplaces:read",
   employees: "transpaapi:employees:read",
-  shifts: "transpaapi:shifts:read",
 };
 
 const granted = (resource: string) => READ_SCOPES.includes(SCOPE_FOR[resource] ?? "");
@@ -266,81 +237,6 @@ async function syncTenant(
               professionGroup: sql`excluded.profession_group`,
               isActive: sql`excluded.is_active`,
               updatedAt: new Date(),
-            },
-          });
-      }
-      return { fetched: rows.length, written: values.length };
-    }),
-  );
-
-  results.push(
-    await track(db, "shifts", `pass · ${tenant.name}`, async () => {
-      /* Personerna måste finnas först — ett pass utan känd person går
-         inte att lagra, och synken ovan körde precis. */
-      const people = await db
-        .select({ id: schema.employee.id, transpaId: schema.employee.transpaId })
-        .from(schema.employee)
-        .where(eq(schema.employee.transpaTenantId, tenant.id));
-      const localFor = new Map(
-        people.filter((x) => x.transpaId).map((x) => [x.transpaId!, x.id]),
-      );
-      if (localFor.size === 0) return { fetched: 0, written: 0 };
-
-      /* TransPA tar högst 31 dagar per anrop, så fönstret delas upp.
-         Bitarna gränsar exakt: varken glapp som tappar pass eller
-         överlapp som hämtar dem två gånger. */
-      const rows: TranspaShift[] = [];
-      for (const window of splitIntoWindows(shiftWindowStart(), shiftWindowEnd())) {
-        rows.push(
-          ...(await withBudget(
-            (signal) =>
-              client.list<TranspaShift>(SHIFTS_PATH, {
-                query: shiftWindow(window.from, window.to),
-                signal,
-              }),
-            SYNC_TIMEOUT_MS,
-          )),
-        );
-      }
-
-      const values = rows
-        .flatMap((raw) => {
-          const localId = raw.employeeId ? localFor.get(raw.employeeId) : undefined;
-          if (!localId || !raw.id) return [];
-          const day = shiftToWorkDay(raw, localId);
-          if (!day) return [];
-          return [
-            {
-              transpaId: String(raw.id),
-              employeeId: localId,
-              date: day.date,
-              shift: day.shift,
-              startsAt: new Date(raw.startDateTime!),
-              workMinutes: raw.adjustedWorkTimeInMinutes ?? null,
-              isExtraShift: raw.isExtraShift ?? false,
-              name: str(raw.name),
-              syncedAt: new Date(),
-            },
-          ];
-        })
-        // Samma pass två gånger i ett svar skulle fälla insert:en.
-        .filter((v, i, all) => all.findIndex((x) => x.transpaId === v.transpaId) === i);
-
-      if (values.length) {
-        await db
-          .insert(schema.transpaShift)
-          .values(values)
-          .onConflictDoUpdate({
-            target: schema.transpaShift.transpaId,
-            set: {
-              employeeId: sql`excluded.employee_id`,
-              date: sql`excluded.date`,
-              shift: sql`excluded.shift`,
-              startsAt: sql`excluded.starts_at`,
-              workMinutes: sql`excluded.work_minutes`,
-              isExtraShift: sql`excluded.is_extra_shift`,
-              name: sql`excluded.name`,
-              syncedAt: new Date(),
             },
           });
       }
