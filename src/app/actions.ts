@@ -4,12 +4,18 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
-import { addDays, mondayOfWeek, weekDates } from "@/lib/week";
+import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
 import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 import { fetchWeekShifts, type ShiftFetchResult } from "@/server/shift-fetch";
+import {
+  clearWeekAssignments,
+  weekClearFacts,
+  type WeekClearFacts,
+} from "@/server/boards";
+export type { WeekClearFacts };
 export type { ShiftFetchResult };
 
 const refresh = (slug: string) => revalidatePath(`/tavla/${slug}`);
@@ -395,6 +401,51 @@ export async function fillWeek(input: {
 
   refresh(input.boardSlug);
   return { created: plan.create.length, removed: plan.deleteIds.length, unplaced: plan.unplaced };
+}
+
+/* ------------------------------------------------------------------ *
+ * Rensa veckan
+ * ------------------------------------------------------------------ */
+
+/**
+ * Vad en rensning av veckan skulle ta med sig.
+ *
+ * Tavlan slås upp på slug och spannet räknas fram här, inte av
+ * klienten. Ett id som kommer utifrån är inte bundet till den tavla
+ * behörigheten gäller.
+ */
+export async function weekClearPreview(input: {
+  boardSlug: string;
+  year: number;
+  week: number;
+}): Promise<WeekClearFacts> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  const { from, to } = weekSpan(input.year, input.week, board.weekStartsOn);
+  return weekClearFacts(board.id, from, to);
+}
+
+/**
+ * Tömmer veckan på pass.
+ *
+ * Hela spannet, inte bara de synliga dagarna: ett pass på en dold dag
+ * är osynligt men verkligt, och att lämna kvar det efter en rensning
+ * vore en lögn.
+ *
+ * Bemanningen, bas-schemat och de hämtade passen står kvar, så veckan
+ * går att fylla igen med ett tryck.
+ */
+export async function clearWeek(input: {
+  boardSlug: string;
+  year: number;
+  week: number;
+}): Promise<{ removed: number }> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  const { from, to } = weekSpan(input.year, input.week, board.weekStartsOn);
+  const removed = await clearWeekAssignments(board.id, from, to);
+  refresh(input.boardSlug);
+  return { removed };
 }
 
 /** Sätter vilka personer tavlan hanterar. */

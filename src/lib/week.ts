@@ -77,6 +77,24 @@ export function weekDates(
   );
 }
 
+/**
+ * Hela veckans spann, oavsett vilka dagar tavlan visar.
+ *
+ * weekDates ger de *synliga* dagarna, och det duger för att rita och
+ * för att lägga ut. Men den som ska rensa en vecka måste träffa allt
+ * som ligger i den: ett pass på en dold lördag är osynligt men verkligt,
+ * och att lämna kvar det efter en rensning vore en lögn.
+ */
+export function weekSpan(
+  year: number,
+  week: number,
+  weekStartsOn: number,
+): { from: string; to: string } {
+  const monday = mondayOfWeek(year, week);
+  const start = weekStartsOn === 0 ? addDays(monday, -1) : addDays(monday, weekStartsOn - 1);
+  return { from: start, to: addDays(start, 6) };
+}
+
 const WEEKDAY_NAMES = ["Söndag", "Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag"];
 const MONTHS = ["jan", "feb", "mars", "april", "maj", "juni", "juli", "aug", "sep", "okt", "nov", "dec"];
 

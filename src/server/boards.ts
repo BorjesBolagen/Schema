@@ -1,6 +1,6 @@
 import "server-only";
-import { eq, inArray } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { getDb, schema, type Db } from "@/db";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import type { CurrentUser } from "./auth";
 
@@ -167,4 +167,93 @@ export async function boardRemovalFacts(boardId: string): Promise<BoardRemovalFa
  */
 export async function deleteBoard(boardId: string): Promise<void> {
   await getDb().delete(schema.board).where(eq(schema.board.id, boardId));
+}
+
+export interface WeekClearFacts {
+  /** Pass som skulle försvinna, totalt. */
+  assignments: number;
+  /** Av dem: sådana någon lagt eller flyttat för hand. */
+  manual: number;
+  /** Spannet som rensas, för att bekräftelsen ska kunna säga vilket. */
+  from: string;
+  to: string;
+}
+
+/**
+ * Räknar vad en veckorensning skulle ta med sig.
+ *
+ * Handpålagda pass räknas för sig. Ett automatgenererat pass kommer
+ * tillbaka med nästa "Fyll veckan"; en handpåläggning gör det inte, och
+ * det är den skillnaden som avgör om man ska tveka.
+ */
+export async function weekClearFacts(
+  boardId: string,
+  from: string,
+  to: string,
+  /** Egen koppling när funktionen körs utanför webbappen, t.ex. i test. */
+  dbOverride?: Db,
+): Promise<WeekClearFacts> {
+  const db = dbOverride ?? getDb();
+  const rows = await db
+    .select({ id: schema.boardRow.id })
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, boardId));
+
+  const rowIds = rows.map((r) => r.id);
+  const assignments = rowIds.length
+    ? await db
+        .select({ source: schema.assignment.source })
+        .from(schema.assignment)
+        .where(
+          and(
+            inArray(schema.assignment.boardRowId, rowIds),
+            gte(schema.assignment.date, from),
+            lte(schema.assignment.date, to),
+          ),
+        )
+    : [];
+
+  return {
+    assignments: assignments.length,
+    manual: assignments.filter((a) => a.source === "manual").length,
+    from,
+    to,
+  };
+}
+
+/**
+ * Tömmer en tavlas vecka på pass.
+ *
+ * Avgränsat till tavlans egna rader och till spannet — inget annat rörs.
+ * Bemanningen, bas-schemat och de hämtade passen står kvar, så veckan
+ * går att fylla igen direkt.
+ */
+export async function clearWeekAssignments(
+  boardId: string,
+  from: string,
+  to: string,
+  dbOverride?: Db,
+): Promise<number> {
+  const db = dbOverride ?? getDb();
+  const rows = await db
+    .select({ id: schema.boardRow.id })
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, boardId));
+  if (rows.length === 0) return 0;
+
+  const removed = await db
+    .delete(schema.assignment)
+    .where(
+      and(
+        inArray(
+          schema.assignment.boardRowId,
+          rows.map((r) => r.id),
+        ),
+        gte(schema.assignment.date, from),
+        lte(schema.assignment.date, to),
+      ),
+    )
+    .returning({ id: schema.assignment.id });
+
+  return removed.length;
 }
