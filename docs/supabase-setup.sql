@@ -1,6 +1,6 @@
 -- Genererad av scripts/build-setup-sql.ts — redigera inte för hand.
 -- Klistra in i Supabase → SQL Editor och kör.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql
 
 BEGIN;
 
@@ -367,6 +367,41 @@ END $$;
 
 ALTER TABLE "employee" ADD COLUMN IF NOT EXISTS "profession_group" text;
 
+-- 0004_transpa_shifts.sql
+-- Pass hämtade från TransPA.
+--
+-- Egen tabell av samma skäl som personal och stationsorter har det:
+-- tavelvyn ligger bakom en databastidsgräns, och ett nätanrop i
+-- renderingsvägen fällde hela sidan när TransPA gick trögt. Passen
+-- hämtas i synken och läses härifrån.
+--
+-- date och shift räknas fram vid synken, i svensk lokaltid: ett pass som
+-- startar 22:30Z en måndag i augusti är tisdag 00:30 här, alltså fel dag
+-- och fel skift om tidpunkten läses rakt av vid varje läsning.
+
+CREATE TABLE IF NOT EXISTS "transpa_shift" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "transpa_id" text NOT NULL,
+  "employee_id" uuid NOT NULL,
+  "date" date NOT NULL,
+  "shift" "shift" DEFAULT 'day' NOT NULL,
+  "starts_at" timestamp with time zone NOT NULL,
+  "work_minutes" integer,
+  "is_extra_shift" boolean DEFAULT false NOT NULL,
+  "name" text,
+  "synced_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "transpa_shift_transpa_id_unique" UNIQUE("transpa_id")
+);
+
+ALTER TABLE "transpa_shift" ADD CONSTRAINT "transpa_shift_employee_id_employee_id_fk"
+  FOREIGN KEY ("employee_id") REFERENCES "public"."employee"("id") ON DELETE cascade;
+
+CREATE INDEX IF NOT EXISTS "transpa_shift_lookup_idx" ON "transpa_shift" ("employee_id","date");
+
+CREATE INDEX IF NOT EXISTS "transpa_shift_date_idx" ON "transpa_shift" ("date");
+
+ALTER TABLE "transpa_shift" ENABLE ROW LEVEL SECURITY;
+
 COMMIT;
 
 -- Markera migrationerna som körda, så npm run db:migrate inte
@@ -383,3 +418,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '630566f1c7
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '630566f1c775d7cab27a27d2f34809d526f59edc848077f6b812b4f881b20934');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'f4da4f11a725385615862e445dc258a6ea655516dbbe074d071ee95b74ce6e07', 1787657709770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'f4da4f11a725385615862e445dc258a6ea655516dbbe074d071ee95b74ce6e07');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'e9763d9ebc8edf8b80d54a3d2f65281e4bbed7a6df90043d08c74e7d06c15097', 1787657710770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'e9763d9ebc8edf8b80d54a3d2f65281e4bbed7a6df90043d08c74e7d06c15097');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '561712ebc5d19e753753246dfcc89deef1ec5103edaff0b8055ba62fa9b9828f', 1787657711770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '561712ebc5d19e753753246dfcc89deef1ec5103edaff0b8055ba62fa9b9828f');

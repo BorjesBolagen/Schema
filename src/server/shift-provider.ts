@@ -1,5 +1,5 @@
-import { inArray } from "drizzle-orm";
-import { getDb, schema } from "@/db";
+import { and, gte, inArray, lte } from "drizzle-orm";
+import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
 import {
@@ -8,7 +8,7 @@ import {
   workDaysFromShifts,
   type TranspaShift,
 } from "@/lib/transpa/shifts";
-import type { WorkDayProvider, WorkDayResult } from "@/lib/work-days";
+import type { WorkDay, WorkDayProvider, WorkDayResult } from "@/lib/work-days";
 
 /* Medvetet utan "server-only": modulen läses av getWorkDayProvider,
    som i sin tur importeras av seed-skriptet. Den rör inga cookies och
@@ -58,6 +58,58 @@ function windowCache(): Map<string, CachedWindow> {
   const g = globalThis as GlobalWithCache;
   g[CACHE_KEY] ??= new Map();
   return g[CACHE_KEY];
+}
+
+/**
+ * Arbetsdagar ur de synkade passen.
+ *
+ * Läser bara databasen, så den kan ligga i tavelvyns renderingsväg utan
+ * att ett trögt TransPA kan fälla sidan. Hämtningen från API:t sköts av
+ * synken, precis som för personal och stationsorter.
+ *
+ * Den som saknar pass i fönstret lämnas otäckt och faller tillbaka på
+ * sitt lokala mönster. Att tolka tystnad som ledighet skulle tömma
+ * tavlan för alla vars pass ännu inte förts in i TransPA.
+ */
+export class SyncedShiftProvider implements WorkDayProvider {
+  readonly name = "TransPA-pass";
+
+  constructor(private readonly db?: Db) {}
+
+  async getWorkDays(employeeIds: string[], from: string, to: string): Promise<WorkDayResult> {
+    if (employeeIds.length === 0) return { workDays: [], covered: [] };
+
+    const rows = await (this.db ?? getDb())
+      .select({
+        employeeId: schema.transpaShift.employeeId,
+        date: schema.transpaShift.date,
+        shift: schema.transpaShift.shift,
+      })
+      .from(schema.transpaShift)
+      .where(
+        and(
+          inArray(schema.transpaShift.employeeId, employeeIds),
+          gte(schema.transpaShift.date, from),
+          lte(schema.transpaShift.date, to),
+        ),
+      );
+
+    /* Två pass samma dag och skift — delat pass eller extrapass — är
+       fortfarande en arbetsdag. */
+    const seen = new Set<string>();
+    const workDays: WorkDay[] = [];
+    const covered = new Set<string>();
+
+    for (const row of rows) {
+      covered.add(row.employeeId);
+      const key = `${row.employeeId}|${row.date}|${row.shift}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      workDays.push({ employeeId: row.employeeId, date: row.date, shift: row.shift });
+    }
+
+    return { workDays, covered: [...covered] };
+  }
 }
 
 /**

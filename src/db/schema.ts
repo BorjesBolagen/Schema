@@ -245,6 +245,43 @@ export const workPattern = pgTable(
   (t) => [index("work_pattern_employee_idx").on(t.employeeId)],
 );
 
+/**
+ * Pass hämtade från TransPA.
+ *
+ * Egen tabell av samma skäl som personal och stationsorter har det:
+ * tavelvyn ligger bakom en databastidsgräns, och ett nätanrop i
+ * renderingsvägen fällde hela sidan när TransPA gick trögt. Passen
+ * hämtas i synken och läses härifrån som vilken lokal källa som helst.
+ *
+ * Ett pass bär inget slutdatum i TransPA — längden ligger i
+ * adjustedWorkTimeInMinutes. Vi sparar det som det är i stället för att
+ * räkna om det till en sluttid som API:t inte påstår.
+ */
+export const transpaShift = pgTable(
+  "transpa_shift",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Passets id i TransPA. Unikt, så en omsynk uppdaterar i stället för att dubblera. */
+    transpaId: text("transpa_id").notNull().unique(),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employee.id, { onDelete: "cascade" }),
+    /** Datum och skift i svensk lokaltid, färdigräknat vid synken. */
+    date: date("date").notNull(),
+    shift: shift("shift").notNull().default("day"),
+    /** Starttiden som TransPA angav den, i UTC. */
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    workMinutes: integer("work_minutes"),
+    isExtraShift: boolean("is_extra_shift").notNull().default(false),
+    name: text("name"),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("transpa_shift_lookup_idx").on(t.employeeId, t.date),
+    index("transpa_shift_date_idx").on(t.date),
+  ],
+);
+
 export const workPatternDay = pgTable(
   "work_pattern_day",
   {

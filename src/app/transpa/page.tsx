@@ -146,12 +146,12 @@ export default async function TranspaPage() {
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Passen är hittade och hämtningen byggd.</strong>{" "}
+        adress aldrig syns här. <strong>Passen är hittade och synken hämtar dem.</strong>{" "}
         <code>/v1/shifts/</code> kräver <code>startDateTimeAfter</code> och{" "}
         <code>startDateTimeBefore</code>, och svarar 404 utan dem — det var därför vägen såg ut
-        att inte finnas. Arbetsdagarna hämtas nu därifrån, med arbetsmönstren som reserv för dem
-        TransPA saknar besked om. Tidrapporterna är en egen resurs och en annan sak: rapporterad
-        tid, inte plan.
+        att inte finnas. Arbetsdagarna kommer nu från de synkade passen, med arbetsmönstren som
+        reserv för dem TransPA saknar besked om. Tidrapporterna är en egen resurs och en annan
+        sak: rapporterad tid, inte plan.
       </p>
 
       {missing ? (
@@ -500,9 +500,11 @@ export default async function TranspaPage() {
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Synk av grunddata</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Hämtar personal och stationsorter, ett bolag i taget, och märker varje person med sitt
-          bolag. Fordon hämtas inte — de skrivs in för hand under Grunddata. Personalens
-          stationsort ägs lokalt och skrivs aldrig över.
+          Hämtar personal, stationsorter och pass, ett bolag i taget, och märker varje person med
+          sitt bolag. Passen hämtas fyra veckor bakåt och tolv framåt och läses sedan ur databasen
+          — tavelvyn rör aldrig nätet, eftersom ett trögt TransPA annars fäller hela sidan. Fordon
+          hämtas inte; de skrivs in för hand under Grunddata. Personalens stationsort ägs lokalt
+          och skrivs aldrig över.
         </p>
         <div className="mt-3">
           <SyncButton disabled={missing} />

@@ -8,6 +8,7 @@ import {
   type WorkDayProvider,
   type WorkDayResult,
 } from "@/lib/work-days";
+import { SyncedShiftProvider } from "./shift-provider";
 
 /** Mönster som redan hämtats, så providern slipper fråga igen. */
 export interface PrefetchedPatterns {
@@ -88,5 +89,8 @@ export class LocalPatternProvider implements WorkDayProvider {
  * personal och stationsorter redan går.
  */
 export function getWorkDayProvider(db?: Db, prefetched?: PrefetchedPatterns): WorkDayProvider {
-  return new CompositeWorkDayProvider([new LocalPatternProvider(db, prefetched)]);
+  return new CompositeWorkDayProvider([
+    new SyncedShiftProvider(db),
+    new LocalPatternProvider(db, prefetched),
+  ]);
 }
