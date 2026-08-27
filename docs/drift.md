@@ -14,9 +14,15 @@ personuppgifter om anställda, och de ska inte lämna EU utan att någon
 fattat det beslutet medvetet.
 
 Öppna **SQL Editor** och klistra in hela innehållet i
-[`supabase-setup.sql`](supabase-setup.sql). Kör. Den skapar alla 18
-tabeller och markerar migrationerna som körda, så en senare
+[`supabase-setup.sql`](supabase-setup.sql). Kör. Den skapar tabellerna
+och markerar migrationerna som körda, så en senare
 `npm run db:migrate` inte försöker göra om det.
+
+Samma fil används för att lägga på senare ändringar. Den går att köra om:
+det som redan finns hoppas över, det som fattas läggs på. Klistra alltså
+in hela filen även mot en databas som redan är uppsatt — du behöver inte
+veta hur långt den kommit. Filen genereras från migrationerna med
+`npm run db:setup-sql`.
 
 Hämta sedan anslutningssträngen under **Connection Pooling** — inte den
 direkta på port 5432:
@@ -120,6 +126,9 @@ står i **Vercel → Deployments → din deploy → Runtime Logs**. De vanligast
 - **`relation "..." does not exist`** — `supabase-setup.sql` har inte
   körts i det projektet, eller `DATABASE_URL` pekar på fel Supabase-
   projekt.
+- **`type "..." already exists`** — en äldre `supabase-setup.sql` kunde
+  bara köras mot en tom databas. Hämta den nuvarande och kör om; den
+  hoppar över det som redan finns.
 
 ### Row Level Security
 
