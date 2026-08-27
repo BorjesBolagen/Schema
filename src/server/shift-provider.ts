@@ -28,12 +28,96 @@ import type { WorkDayProvider, WorkDayResult } from "@/lib/work-days";
  * i stället tolka tystnad som ledighet skulle tömma tavlan för alla
  * vars pass ännu inte förts in i TransPA.
  */
+/**
+ * Hur länge passhämtningen får ta innan mönstren tar över.
+ *
+ * Tavelvyn ligger bakom en databastidsgräns på sex sekunder, och den
+ * här hämtningen körs inuti den. Ett långsamt eller nedliggande TransPA
+ * fick därför hela sidan att falla med "Databasanropet svarade inte
+ * inom 6 sekunder" — ett fel som pekar på fel sak och som pensionerar
+ * en databasanslutning som var oskyldig. Taket här ska ligga med god
+ * marginal under sidans.
+ */
+const SHIFT_TIMEOUT_MS = 3_000;
+
+/** Så länge ett hämtat fönster återanvänds. */
+const CACHE_MS = 60_000;
+
+interface CachedWindow {
+  at: number;
+  shifts: TranspaShift[];
+}
+
+/* På globalThis av samma skäl som databaskopplingen: Next bygger sidor
+   och server-actions i skilda modulgrafer, och en modullokal cache
+   skulle betyda en hämtning per graf. */
+const CACHE_KEY = Symbol.for("schema.transpa.shiftWindows");
+type GlobalWithCache = typeof globalThis & { [CACHE_KEY]?: Map<string, CachedWindow> };
+
+function windowCache(): Map<string, CachedWindow> {
+  const g = globalThis as GlobalWithCache;
+  g[CACHE_KEY] ??= new Map();
+  return g[CACHE_KEY];
+}
+
+/**
+ * Kör något med ett hårt tak, och avbryt det som pågår.
+ *
+ * Både avbrott och kapplöpning behövs: signalen stänger uttaget så
+ * anropet inte lever vidare, och kapplöpningen håller taket även för
+ * token-hämtningen, som inte tar någon signal.
+ */
+export async function withBudget<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+): Promise<T> {
+  const abort = new AbortController();
+  let bell: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      run(abort.signal),
+      new Promise<never>((_, reject) => {
+        bell = setTimeout(() => {
+          abort.abort();
+          reject(new Error(`Svarade inte inom ${ms} ms`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (bell) clearTimeout(bell);
+  }
+}
+
 export class TranspaShiftProvider implements WorkDayProvider {
   readonly name = "TransPA-pass";
 
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  constructor(
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly timeoutMs = SHIFT_TIMEOUT_MS,
+  ) {}
 
+  /**
+   * Aldrig kastar, alltid inom sin tidsgräns.
+   *
+   * Källan är en av två i kedjan, och den andra klarar sig utan den.
+   * Att låta ett fel härifrån bubbla upp vore att låta en reserv fälla
+   * det den är reserv för — vilket är precis vad som hände när ett
+   * långsamt TransPA gav "Databasanropet svarade inte inom 6 sekunder"
+   * på hela tavelvyn.
+   */
   async getWorkDays(employeeIds: string[], from: string, to: string): Promise<WorkDayResult> {
+    try {
+      return await this.fetch(employeeIds, from, to);
+    } catch {
+      return { workDays: [], covered: [] };
+    }
+  }
+
+  private async fetch(
+    employeeIds: string[],
+    from: string,
+    to: string,
+  ): Promise<WorkDayResult> {
     const empty: WorkDayResult = { workDays: [], covered: [] };
     if (employeeIds.length === 0) return empty;
 
@@ -62,14 +146,28 @@ export class TranspaShiftProvider implements WorkDayProvider {
       const credentials = credentialsForTenant(tenant.tenantId);
       if (!credentials) continue;
 
+      /* Ett fönster som redan hämtats återanvänds en kort stund. Utan
+         det gör varje sidladdning och varje serverrendering om samma
+         anrop, och tavelvyn renderas ofta flera gånger per besök. */
+      const key = `${tenant.tenantId}|${from}|${to}`;
+      const hit = windowCache().get(key);
+      if (hit && Date.now() - hit.at < CACHE_MS) {
+        collected.push(...hit.shifts);
+        continue;
+      }
+
       const client = new TranspaClient({ credentials, fetchImpl: this.fetchImpl });
-      /* Ett misslyckat anrop lämnar bolaget otäckt i stället för att
-         fälla hela veckan — resten av tavlan ska fungera även när
-         TransPA är nere. */
+
+      /* Ett misslyckat eller långsamt anrop lämnar bolaget otäckt i
+         stället för att fälla hela veckan — resten av tavlan ska
+         fungera även när TransPA är nere, och mönstren tar över. */
       try {
-        collected.push(
-          ...(await client.list<TranspaShift>(SHIFTS_PATH, { query: shiftWindow(from, to) })),
+        const shifts = await withBudget(
+          (signal) => client.list<TranspaShift>(SHIFTS_PATH, { query: shiftWindow(from, to), signal }),
+          this.timeoutMs,
         );
+        windowCache().set(key, { at: Date.now(), shifts });
+        collected.push(...shifts);
       } catch {
         continue;
       }
