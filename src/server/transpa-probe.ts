@@ -730,36 +730,51 @@ async function probeShiftVariants(
   employeeId: string | null,
   fetchImpl: typeof fetch,
 ): Promise<PathVariant[]> {
-  const bases = [...new Set([API_BASE, ...(spec.servers ?? []).filter(Boolean)])];
+  /* Specens serveradresser slutar på snedstreck. Utan trimning blev
+     anropen publicApi//v1/shifts/ — en dubbel snedstreck som gör alla
+     varianter mot den basen värdelösa. */
+  const trim = (u: string) => u.replace(/\/+$/, "");
+  const bases = [...new Set([API_BASE, ...(spec.servers ?? []).map(trim).filter(Boolean)])];
+
+  /** Frågesträngen för en vägs obligatoriska parametrar, eller tom. */
+  const requiredQuery = (path: string): string => {
+    const names = spec.requiredQuery?.[path] ?? [];
+    if (names.length === 0) return "";
+    return `?${new URLSearchParams(names.map((n) => [n, guessParamValue(n, employeeId)]))}`;
+  };
+
+  const LIST = "/v1/shifts/";
+  const PER_PERSON = "/v1/employees/{id}/shifts/";
 
   const attempts: Array<{ url: string; what: string }> = [];
   for (const base of bases) {
     const where = base === API_BASE ? "" : ` · bas ur specen: ${base}`;
-    attempts.push(
-      { url: `${base}/v1/shifts/`, what: `med snedstreck, utan parametrar${where}` },
-      { url: `${base}/v1/shifts`, what: `utan snedstreck, utan parametrar${where}` },
-      { url: `${base}/v1/shifts/?limit=1`, what: `med snedstreck och limit${where}` },
-    );
+    const listQuery = requiredQuery(LIST);
 
-    /* Det här är varianten som betyder något: specens egna
-       obligatoriska parametrar, ifyllda. Saknas de kan API:t svara 404
-       i stället för 400, och då ser vägen ut att inte finnas. */
-    const required = spec.requiredQuery?.["/v1/shifts/"] ?? spec.requiredQuery?.["/v1/shifts"];
-    if (required?.length) {
-      const query = new URLSearchParams(
-        required.map((name) => [name, guessParamValue(name, employeeId)]),
-      );
+    attempts.push(
+      { url: `${base}${LIST}`, what: `listan, utan parametrar${where}` },
+      { url: `${base}/v1/shifts`, what: `listan, utan snedstreck${where}` },
+    );
+    if (listQuery) {
       attempts.push({
-        url: `${base}/v1/shifts/?${query}`,
-        what: `med specens obligatoriska parametrar: ${required.join(", ")}${where}`,
+        url: `${base}${LIST}${listQuery}`,
+        what: `listan, med specens krav: ${spec.requiredQuery?.[LIST]?.join(", ")}${where}`,
       });
     }
 
+    /* Vägen via personen är den Visma pekar ut som den rätta, och den
+       kräver samma parameter som listan. Att jag skickade kravet bara
+       till listan var hela skälet till att den här svarade 404. */
     if (employeeId) {
-      attempts.push({
-        url: `${base}/v1/employees/${employeeId}/shifts/`,
-        what: `under en person${where}`,
-      });
+      const perPersonQuery = requiredQuery(PER_PERSON);
+      const path = `/v1/employees/${employeeId}/shifts/`;
+      attempts.push({ url: `${base}${path}`, what: `under personen, utan parametrar${where}` });
+      if (perPersonQuery) {
+        attempts.push({
+          url: `${base}${path}${perPersonQuery}`,
+          what: `under personen, med specens krav: ${spec.requiredQuery?.[PER_PERSON]?.join(", ")}${where}`,
+        });
+      }
     }
   }
 

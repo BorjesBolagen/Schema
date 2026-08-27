@@ -47,6 +47,23 @@ export interface ParsedSpec {
 
 const METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
 
+/** Parameterns egna nycklar. Allt annat hör till något som omger den. */
+const PARAM_KEYS = ["name", "in", "required", "$ref"];
+
+/** Nycklar som hör till operationen själv och alltså avslutar parameterlistan. */
+const OPERATION_KEYS = [
+  "responses",
+  "requestBody",
+  "security",
+  "summary",
+  "description",
+  "tags",
+  "operationId",
+  "deprecated",
+  "callbacks",
+  "servers",
+];
+
 /** Indraget i tecken, med tabbar räknade som två steg. */
 function indentOf(line: string): number {
   const m = /^[ \t]*/.exec(line)![0];
@@ -204,7 +221,10 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
         }
         continue;
       }
-      if (param && kv) {
+      /* Bara parameterns egna nycklar konsumeras här. Ett ovillkorligt
+         continue svalde annars varje rad så länge en parameter var
+         öppen — och då nådde responses: aldrig avslutsvillkoret nedan. */
+      if (param && kv && PARAM_KEYS.includes(kv.key)) {
         if (kv.key === "$ref") {
           param.name = kv.value.split("/").pop() ?? kv.value;
           param.location = "$ref";
@@ -214,8 +234,12 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
         if (kv.key === "required") param.required = kv.value === "true";
         continue;
       }
-      // En nyckel på operationens egen nivå avslutar listan.
-      if (kv && indent <= operationIndent + 2) {
+      /* Listan tar slut vid nästa nyckel på operationens egen nivå.
+         Utan det plockade tolken upp poster ur responses: — där ett
+         `'429': $ref: …429Throttling` såg ut som ännu en obligatorisk
+         parameter, på operationer som inte har några alls. */
+      const ends = kv && (indent <= operationIndent + 2 || OPERATION_KEYS.includes(kv.key));
+      if (ends) {
         inParams = false;
         param = null;
       } else {

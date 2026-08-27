@@ -174,4 +174,32 @@ describe("describeSpecPaths", () => {
     expect(get.parameters.map((x) => x.name)).toEqual(["FromDate", "ToDate"]);
     expect(get.parameters[0].location).toBe("$ref");
   });
+
+  /* Riktiga körningen visade 429Throttling som obligatorisk parameter
+     på POST- och PUT-operationer som inte har några parametrar alls.
+     Den kom ur responses:, inte ur parameters:. */
+  it("plockar inte upp responses som parametrar", () => {
+    const spec = `paths:
+  /v1/shifts/:
+    get:
+      summary: Return a list of Shifts
+      parameters:
+        - name: startDateTimeAfter
+          in: query
+          required: true
+      responses:
+        '200':
+          description: OK
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      summary: Create a shift
+      responses:
+        '429':
+          $ref: '#/components/responses/429Throttling'
+`;
+    const parsed = parseOpenApiYaml(spec).paths[0];
+    expect(parsed.operations[0].parameters.map((x) => x.name)).toEqual(["startDateTimeAfter"]);
+    expect(parsed.operations[1].parameters).toEqual([]);
+  });
 });

@@ -411,6 +411,13 @@ paths:
         - name: to
           in: query
           required: true
+  /v1/employees/{id}/shifts/:
+    get:
+      summary: Return a list of Shifts for an employee
+      parameters:
+        - name: startDateTimeAfter
+          in: query
+          required: true
   /v1/employees:
     get:
       summary: Return a list of Employees
@@ -474,9 +481,42 @@ paths:
       }),
     );
 
-    const medParametrar = report.shiftVariants!.find((v) => v.what.includes("obligatoriska"));
+    const medParametrar = report.shiftVariants!.find((v) => v.what.includes("specens krav"));
     expect(medParametrar).toBeDefined();
     expect(medParametrar!.what).toContain("from, to");
     expect(sedda.some((u) => u.includes("from=") && u.includes("to="))).toBe(true);
+  });
+
+  /* Vägen via personen är den Visma pekar ut, och den kräver samma
+     parameter som listan. Att kravet bara skickades till listan var
+     hela skälet till att den här svarade 404. */
+  it("skickar kravet även till vägen under personen", async () => {
+    const sedda: string[] = [];
+    const report = await probeTenant(
+      withSpec((url) => {
+        sedda.push(url);
+        return new Response("nix", { status: 404 });
+      }),
+    );
+
+    const underPersonen = report.shiftVariants!.filter((v) => v.what.startsWith("under personen"));
+    expect(underPersonen).toHaveLength(2);
+    expect(underPersonen.some((v) => v.what.includes("specens krav"))).toBe(true);
+    expect(
+      sedda.some((u) => u.includes("/shifts/?") && u.includes("startDateTimeAfter")),
+    ).toBe(true);
+  });
+
+  /* Specens serveradresser slutar på snedstreck. Utan trimning blev
+     anropen publicApi//v1/shifts/. */
+  it("bygger inga dubbla snedstreck mot specens bas", async () => {
+    const sedda: string[] = [];
+    await probeTenant(
+      withSpec((url) => {
+        sedda.push(url);
+        return new Response("nix", { status: 404 });
+      }),
+    );
+    expect(sedda.filter((u) => u.includes("//v1/"))).toEqual([]);
   });
 });
