@@ -57,6 +57,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
   const doubleBooked = data.conflicts.filter((c) => c.kind === "double-booked").length;
   const absentPlanned = data.conflicts.filter((c) => c.kind === "absent").length;
   const unmanned = data.conflicts.filter((c) => c.kind === "unmanned").length;
+  const wrongShift = data.conflicts.filter((c) => c.kind === "shift-mismatch").length;
   const unplacedPeople = new Set(
     data.crew.filter((c) => c.unplaced.length > 0).map((c) => c.employeeId),
   ).size;
@@ -113,10 +114,19 @@ export default async function BoardPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      {(doubleBooked > 0 || absentPlanned > 0 || unplacedPeople > 0) && (
+      {(doubleBooked > 0 || absentPlanned > 0 || unplacedPeople > 0 || wrongShift > 0) && (
         <p className="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-(--color-warn)">
           {doubleBooked > 0 && <>⚠ {doubleBooked} dubbelbokning{doubleBooked === 1 ? "" : "ar"}. </>}
           {absentPlanned > 0 && <>⚠ {absentPlanned} inplanerad under frånvaro. </>}
+          {/* Fel skift är ingen krock — passet finns, det står bara på
+              fel rad. Men det är den vanligaste feltypen när ett schema
+              förs över för hand. */}
+          {wrongShift > 0 && (
+            <>
+              ⚠ {wrongShift} står på fel skift mot TransPA{" "}
+              {wrongShift === 1 ? "(utlagd dag, planerad natt eller tvärtom). " : ". "}
+            </>
+          )}
           {unplacedPeople > 0 && (
             <>
               ⚠ {unplacedPeople} {unplacedPeople === 1 ? "person jobbar" : "personer jobbar"} men

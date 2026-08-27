@@ -1,4 +1,4 @@
-import { localParts, shiftOfHour } from "@/lib/trip-patterns";
+import { localParts } from "@/lib/trip-patterns";
 import type { Shift, WorkDay } from "@/lib/work-days";
 
 /**
@@ -91,6 +91,33 @@ export function splitIntoWindows(
 }
 
 /**
+ * Dag eller natt, enligt Börjes egna gränser.
+ *
+ * Ett dagpass börjar tidigast 04 och slutar senast 20. Ett nattpass
+ * börjar mellan 17 och midnatt och håller på högst tolv timmar. De
+ * överlappar mellan 17 och 20, och där avgör sluttiden: går passet ut
+ * före 20 är det dag, annars natt.
+ *
+ * Sluttiden räknas ur adjustedWorkTimeInMinutes, eftersom TransPA inte
+ * skickar något slutdatum. Saknas längden går bara starttiden att gå
+ * på, och då är 17 gränsen.
+ */
+export const DAY_STARTS_AT = 4;
+export const DAY_ENDS_BY = 20;
+export const NIGHT_STARTS_AT = 17;
+
+export function classifyShift(startHour: number, workMinutes: number | null | undefined): Shift {
+  // Före dagens början är det gårdagens natt som fortsätter.
+  if (startHour < DAY_STARTS_AT) return "night";
+
+  if (workMinutes == null) return startHour >= NIGHT_STARTS_AT ? "night" : "day";
+
+  const endsAt = startHour + workMinutes / 60;
+  if (endsAt <= DAY_ENDS_BY) return "day";
+  return startHour >= NIGHT_STARTS_AT ? "night" : "day";
+}
+
+/**
  * Ett pass som en arbetsdag.
  *
  * Dagen och skiftet avgörs av svensk lokaltid, inte av UTC: ett pass
@@ -106,7 +133,22 @@ export function shiftToWorkDay(shift: TranspaShift, employeeId: string): WorkDay
   if (Number.isNaN(when.getTime())) return null;
 
   const { date, hour } = localParts(shift.startDateTime);
-  return { employeeId, date, shift: shiftOfHour(hour) as Shift };
+  const kind = classifyShift(hour, shift.adjustedWorkTimeInMinutes);
+
+  /* Ett nattpass hör till kvällen det började, inte till morgonen det
+     slutar. Ett pass som startar efter midnatt men före dagens början
+     är alltså gårdagens natt.
+
+     Utan det dök nattfolk upp två dagar i rad: delen som låg efter
+     midnatt hamnade på nästa dag, bredvid samma natts kvällsdel, som om
+     personen kört två nätter. */
+  const efterMidnatt = kind === "night" && hour < DAY_STARTS_AT;
+  return { employeeId, date: efterMidnatt ? dagenFore(date) : date, shift: kind };
+}
+
+/** Dagen före, räknat i kalenderdagar. */
+function dagenFore(date: string): string {
+  return new Date(new Date(`${date}T00:00:00Z`).getTime() - DAY_MS).toISOString().slice(0, 10);
 }
 
 /**

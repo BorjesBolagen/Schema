@@ -222,6 +222,30 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
       <div className="mb-3 flex flex-wrap items-center gap-3 no-print">
         <button
           type="button"
+          onClick={loadShifts}
+          disabled={pending}
+          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+          title="Hämtar veckans pass ur TransPA för de personer tavlan hanterar"
+        >
+          {pending ? "Hämtar …" : "2 · Hämta schema"}
+        </button>
+
+        {shiftFetch && (
+          <span
+            className={`text-xs ${
+              shiftFetch.ok ? "text-(--color-muted)" : "text-(--color-danger)"
+            }`}
+          >
+            {shiftFetch.error && !shiftFetch.ok
+              ? `Kunde inte hämta: ${shiftFetch.error}`
+              : `${shiftFetch.shifts} pass för ${shiftFetch.withShifts} av ${shiftFetch.asked} personer`}
+            {shiftFetch.unlinked > 0 && `, ${shiftFetch.unlinked} utan TransPA-koppling`}
+            {shiftFetch.failed > 0 && shiftFetch.ok && `, ${shiftFetch.failed} misslyckades`}
+          </span>
+        )}
+
+        <button
+          type="button"
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
@@ -237,7 +261,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           }
           className="rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white disabled:opacity-50"
         >
-          Fyll veckan
+          3 · Fyll veckan
         </button>
         <span className="text-xs text-(--color-muted)">
           Arbetsdagar från: {data.workDaySource}
@@ -278,37 +302,13 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={loadShifts}
-          disabled={pending}
-          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm disabled:opacity-50"
-          title="Hämtar veckans pass ur TransPA för de personer tavlan hanterar"
-        >
-          {pending ? "Hämtar …" : "Hämta schema"}
-        </button>
-
-        {shiftFetch && (
-          <span
-            className={`text-xs ${
-              shiftFetch.ok ? "text-(--color-muted)" : "text-(--color-danger)"
-            }`}
-          >
-            {shiftFetch.error && !shiftFetch.ok
-              ? `Kunde inte hämta: ${shiftFetch.error}`
-              : `${shiftFetch.shifts} pass för ${shiftFetch.withShifts} av ${shiftFetch.asked} personer`}
-            {shiftFetch.unlinked > 0 && `, ${shiftFetch.unlinked} utan TransPA-koppling`}
-            {shiftFetch.failed > 0 && shiftFetch.ok && `, ${shiftFetch.failed} misslyckades`}
-          </span>
-        )}
-
         <span className="ml-auto flex gap-2">
           <button
             type="button"
             onClick={() => setPanel("base")}
             className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
           >
-            Bas-schema
+            1 · Bas-schema
           </button>
           <button
             type="button"

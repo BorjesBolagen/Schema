@@ -54,6 +54,23 @@ export type Conflict =
   | { kind: "vehicle-clash"; date: string; vehicleId: string; assignmentIds: string[]; places: string[] }
   /** Samma person på både dag- och nattpass samma dygn. Mildare. */
   | { kind: "day-and-night"; date: string; employeeId: string; assignmentIds: string[] }
+  /**
+   * Personen står på ett skift men är planerad på det andra i TransPA.
+   *
+   * Den vanligaste feltypen när ett schema förs över för hand: någon
+   * läggs på dagraden fast hen kör natt. TransPA vet vilket, och det är
+   * värt att säga ifrån innan veckan delas ut.
+   */
+  | {
+      kind: "shift-mismatch";
+      date: string;
+      employeeId: string;
+      assignmentId: string;
+      /** Skiftet personen står på hos oss. */
+      placed: Shift;
+      /** Skiftet TransPA har planerat. */
+      planned: Shift;
+    }
   | { kind: "unmanned"; date: string; boardRowId: string; shift: Shift };
 
 export function isRowActive(row: RowLike, date: string): boolean {
@@ -194,6 +211,47 @@ export function detectUnmanned(
   return conflicts;
 }
 
+/**
+ * Personer som står på fel skift.
+ *
+ * Jämför var någon är utlagd mot vad TransPA planerat samma dag. Bara
+ * dagar källan faktiskt har besked om räknas — saknas passet vet vi
+ * ingenting, och tystnad är inget fel.
+ */
+export function detectShiftMismatch(input: {
+  assignments: AssignmentLike[];
+  /** Arbetsdagarna som källan gav dem, med skift. */
+  workDays: Array<{ employeeId: string; date: string; shift: Shift }>;
+}): Conflict[] {
+  /* Personens skift den dagen enligt källan. Har hen både dag och natt
+     är ingendera fel, och dagen hoppas över. */
+  const planned = new Map<string, Set<Shift>>();
+  for (const day of input.workDays) {
+    const key = `${day.employeeId}|${day.date}`;
+    planned.set(key, (planned.get(key) ?? new Set()).add(day.shift));
+  }
+
+  const out: Conflict[] = [];
+  for (const a of input.assignments) {
+    if (!a.employeeId) continue;
+    const shifts = planned.get(`${a.employeeId}|${a.date}`);
+    if (!shifts || shifts.size !== 1) continue;
+
+    const [only] = shifts;
+    if (only !== a.shift) {
+      out.push({
+        kind: "shift-mismatch",
+        date: a.date,
+        employeeId: a.employeeId,
+        assignmentId: a.id,
+        placed: a.shift,
+        planned: only,
+      });
+    }
+  }
+  return out;
+}
+
 export interface ConflictIndex {
   /** Konflikter som hör till en enskild tilldelning. */
   byAssignment: Map<string, Conflict[]>;
@@ -217,6 +275,7 @@ export function indexConflicts(conflicts: Conflict[]): ConflictIndex {
         add(byCell, `${c.boardRowId}|${c.date}|${c.shift}`, c);
         break;
       case "absent":
+      case "shift-mismatch":
         add(byAssignment, c.assignmentId, c);
         break;
       case "double-booked":

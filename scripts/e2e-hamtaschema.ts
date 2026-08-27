@@ -13,11 +13,12 @@ const ok = (l: string, p: boolean) => console.log(`${p ? "✓" : "✗"} ${l}`);
 await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=35`, { waitUntil: "networkidle" });
 
-const knapp = page.getByRole("button", { name: /Hämta schema/ });
+// Knapparna är numrerade i den ordning arbetet görs.
+const knapp = page.getByRole("button", { name: /Hämta schema/ }).first();
 ok("knappen finns på tavlan", (await knapp.count()) > 0);
 
 await knapp.click();
-await page.waitForTimeout(5000);
+await page.waitForTimeout(9000);
 
 const svar = (await page.locator("main").innerText())
   .split("\n")

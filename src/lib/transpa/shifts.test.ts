@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyShift,
   MAX_WINDOW_DAYS,
   SHIFTS_PATH,
   shiftToWorkDay,
@@ -52,16 +53,23 @@ describe("shiftWindow", () => {
 
 describe("shiftToWorkDay", () => {
   it("läser dagen i svensk tid, inte i UTC", () => {
-    // 22:30Z en måndag i augusti är tisdag 00:30 svensk sommartid.
-    expect(shiftToWorkDay(shift("2026-08-17T22:30:00Z"), "e1")).toEqual({
+    /* 04:00Z är 06:00 svensk sommartid — samma dag, men bara för att
+       tidszonen räknats om. Läst som UTC hade det blivit fel timme och
+       därmed fel skift.
+
+       Nattpassen prövas separat längre ned: de hör till kvällen de
+       började, inte till morgonen de slutar. */
+    expect(shiftToWorkDay(shift("2026-08-18T04:00:00Z"), "e1")).toEqual({
       employeeId: "e1",
       date: "2026-08-18",
-      shift: "night",
+      shift: "day",
     });
   });
 
   it("skiljer dagpass från nattpass", () => {
+    // 05:00Z är 07:00 svensk sommartid, åtta timmar → slutar 15:00.
     expect(shiftToWorkDay(shift("2026-08-17T05:00:00Z"), "e1")!.shift).toBe("day");
+    // 17:00Z är 19:00 här, åtta timmar → slutar 03:00. Natt.
     expect(shiftToWorkDay(shift("2026-08-17T17:00:00Z"), "e1")!.shift).toBe("night");
   });
 
@@ -175,3 +183,103 @@ describe("splitIntoWindows", () => {
     expect(MAX_WINDOW_DAYS).toBeLessThan(31);
   });
 });
+
+/**
+ * Börjes egna gränser: ett dagpass börjar tidigast 04 och slutar senast
+ * 20. Ett nattpass börjar mellan 17 och midnatt. De överlappar mellan 17
+ * och 20, och där avgör sluttiden.
+ */
+describe("classifyShift", () => {
+  it("kallar ett vanligt dagpass för dag", () => {
+    // Anders Johanssons faktiska pass: 07:00, tio timmar.
+    expect(classifyShift(7, 600)).toBe("day");
+    expect(classifyShift(6, 570)).toBe("day");
+  });
+
+  it("kallar ett pass som drar ut över 20 för natt när det börjat efter 17", () => {
+    expect(classifyShift(18, 480)).toBe("night");
+    expect(classifyShift(22, 480)).toBe("night");
+  });
+
+  /* Överlappet: samma starttimme, olika skift, för att sluttiden
+     skiljer. Det är hela skälet till att längden behövs. */
+  it("låter sluttiden avgöra i överlappet mellan 17 och 20", () => {
+    expect(classifyShift(17, 180)).toBe("day"); // slutar 20:00
+    expect(classifyShift(17, 480)).toBe("night"); // slutar 01:00
+  });
+
+  it("räknar timmarna före dagens början till natten", () => {
+    expect(classifyShift(2, 480)).toBe("night");
+    expect(classifyShift(0, 480)).toBe("night");
+    expect(classifyShift(4, 480)).toBe("day");
+  });
+
+  /* Ett långt dagpass som drar över 20 är fortfarande ett dagpass — det
+     började ju på morgonen. */
+  it("kallar ett långt morgonpass för dag även när det drar över 20", () => {
+    expect(classifyShift(7, 900)).toBe("day"); // slutar 22:00
+  });
+
+  it("går på starttiden ensam när längden saknas", () => {
+    expect(classifyShift(7, null)).toBe("day");
+    expect(classifyShift(18, undefined)).toBe("night");
+  });
+});
+
+/**
+ * Nattfolk dök upp två dagar i rad. Ett pass som slutade 06:00 på
+ * tisdagen lades på tisdagen, bredvid måndagens natt — som om personen
+ * kört två nätter. En natt är ett pass, och det hör till kvällen det
+ * började.
+ */
+describe("natt över midnatt", () => {
+  const at = (iso: string, minutes = 480) => ({
+    id: "s1",
+    employeeId: "T-1",
+    startDateTime: iso,
+    adjustedWorkTimeInMinutes: minutes,
+  });
+
+  it("lägger ett pass som börjar efter midnatt på gårdagens natt", () => {
+    // 00:30 svensk sommartid tisdag är 22:30Z måndag.
+    expect(shiftToWorkDay(at("2026-08-17T22:30:00Z"), "e1")).toEqual({
+      employeeId: "e1",
+      date: "2026-08-17",
+      shift: "night",
+    });
+  });
+
+  it("lägger kvällspasset på samma dag det började", () => {
+    // 22:00 svensk tid måndag är 20:00Z.
+    expect(shiftToWorkDay(at("2026-08-17T20:00:00Z"), "e1")).toEqual({
+      employeeId: "e1",
+      date: "2026-08-17",
+      shift: "night",
+    });
+  });
+
+  /* Det avgörande: kvällsdelen och morgondelen av samma natt ska landa
+     på samma dag, så de slås ihop till en arbetsdag. */
+  it("slår ihop kvällspasset och morgonpasset till en natt", () => {
+    const { workDays } = workDaysFromShifts(
+      [
+        { ...at("2026-08-17T20:00:00Z", 240), id: "kvall" },
+        { ...at("2026-08-17T22:30:00Z", 300), id: "morgon" },
+      ],
+      () => "e1",
+    );
+
+    expect(workDays).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+
+  it("flyttar inte ett dagpass", () => {
+    // 06:00 svensk tid är 04:00Z.
+    expect(shiftToWorkDay(at("2026-08-18T04:00:00Z"), "e1")!.date).toBe("2026-08-18");
+  });
+
+  it("klarar månadsskifte", () => {
+    // 01:00 svensk tid 1 september är 23:00Z 31 augusti.
+    expect(shiftToWorkDay(at("2026-08-31T23:00:00Z"), "e1")!.date).toBe("2026-08-31");
+  });
+});
+

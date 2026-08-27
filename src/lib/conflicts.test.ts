@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  type AssignmentLike,
-  detectBookingConflicts,
-  detectUnmanned,
-  indexConflicts,
-} from "./conflicts";
+import { detectBookingConflicts, detectShiftMismatch, detectUnmanned, indexConflicts, type AssignmentLike } from "./conflicts";
 
 const DATES = ["2026-08-03", "2026-08-04"];
 
@@ -199,5 +194,86 @@ describe("indexConflicts", () => {
     expect(idx.byAssignment.get("1")?.[0].kind).toBe("double-booked");
     expect(idx.byAssignment.get("2")?.[0].kind).toBe("double-booked");
     expect(idx.byCell.get(`row-3|${DATES[0]}|day`)?.[0].kind).toBe("unmanned");
+  });
+});
+
+/**
+ * Den vanligaste feltypen när ett schema förs över för hand: någon
+ * läggs på dagraden fast TransPA har hen planerad på natt. Källan vet
+ * vilket, och det är värt att säga ifrån innan veckan delas ut.
+ */
+describe("detectShiftMismatch", () => {
+  const placed = (shift: "day" | "night", date = "2026-08-17") => ({
+    id: `a-${shift}-${date}`,
+    boardRowId: "r1",
+    date,
+    shift,
+    slot: 0,
+    employeeId: "e1",
+    vehicleId: null,
+    boardId: "b1",
+    boardName: "Fjärr",
+    rowLabel: "BT08/09",
+  });
+
+  it("flaggar den som står på dag men är planerad på natt", () => {
+    const found = detectShiftMismatch({
+      assignments: [placed("day")],
+      workDays: [{ employeeId: "e1", date: "2026-08-17", shift: "night" }],
+    });
+
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ kind: "shift-mismatch", placed: "day", planned: "night" });
+  });
+
+  it("flaggar också åt andra hållet", () => {
+    const found = detectShiftMismatch({
+      assignments: [placed("night")],
+      workDays: [{ employeeId: "e1", date: "2026-08-17", shift: "day" }],
+    });
+    expect(found[0]).toMatchObject({ placed: "night", planned: "day" });
+  });
+
+  it("säger inget när skiftet stämmer", () => {
+    expect(
+      detectShiftMismatch({
+        assignments: [placed("day")],
+        workDays: [{ employeeId: "e1", date: "2026-08-17", shift: "day" }],
+      }),
+    ).toEqual([]);
+  });
+
+  /* Saknas passet vet vi ingenting om dagen, och tystnad är inget fel.
+     Annars skulle varje person utan TransPA-koppling flaggas. */
+  it("säger inget om en dag källan saknar besked om", () => {
+    expect(
+      detectShiftMismatch({
+        assignments: [placed("day", "2026-08-19")],
+        workDays: [{ employeeId: "e1", date: "2026-08-17", shift: "night" }],
+      }),
+    ).toEqual([]);
+  });
+
+  /* Har någon både dag- och nattpass samma dygn är ingendera fel — det
+     fångas i stället av day-and-night. */
+  it("säger inget när personen har både dag och natt samma dygn", () => {
+    expect(
+      detectShiftMismatch({
+        assignments: [placed("day")],
+        workDays: [
+          { employeeId: "e1", date: "2026-08-17", shift: "day" },
+          { employeeId: "e1", date: "2026-08-17", shift: "night" },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it("bryr sig inte om tomma celler", () => {
+    expect(
+      detectShiftMismatch({
+        assignments: [{ ...placed("day"), employeeId: null }],
+        workDays: [{ employeeId: "e1", date: "2026-08-17", shift: "night" }],
+      }),
+    ).toEqual([]);
   });
 });

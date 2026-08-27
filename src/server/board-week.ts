@@ -5,6 +5,7 @@ import {
   type AssignmentLike,
   type Conflict,
   detectBookingConflicts,
+  detectShiftMismatch,
   detectUnmanned,
   indexConflicts,
   isRowActive,
@@ -368,7 +369,19 @@ async function runGetBoardWeek(
   const boardRowIds = new Set(rows.map((r) => r.id));
   const boardAssignments = globalAssignments.filter((a) => boardRowIds.has(a.boardRowId));
 
+  /* Arbetsdagar för tavlans bemanning. */
+  const crewIds = crewRows.map((c) => c.employeeId);
+  const provider = getWorkDayProvider(undefined, { patterns: patternRows, days: patternDays });
+  const workDayResult =
+    crewIds.length > 0
+      ? await provider.getWorkDays(crewIds, first, last)
+      : { workDays: [] as WorkDay[], covered: [] as string[] };
+
   const conflicts = [
+    /* Fel skift jämförs mot arbetsdagarna, så de måste hämtas först.
+       Den vanligaste feltypen när ett schema förs över för hand: någon
+       läggs på dagraden fast hen kör natt. */
+    ...detectShiftMismatch({ assignments: boardAssignments, workDays: workDayResult.workDays }),
     ...detectBookingConflicts({ assignments: globalAssignments, absences: absenceLikes, dates }),
     ...detectUnmanned([
       {
@@ -422,14 +435,6 @@ async function runGetBoardWeek(
       ),
     };
   });
-
-  /* Arbetsdagar för tavlans bemanning. */
-  const crewIds = crewRows.map((c) => c.employeeId);
-  const provider = getWorkDayProvider(undefined, { patterns: patternRows, days: patternDays });
-  const workDayResult =
-    crewIds.length > 0
-      ? await provider.getWorkDays(crewIds, first, last)
-      : { workDays: [] as WorkDay[], covered: [] as string[] };
 
   const placedOn = new Set(
     boardAssignments
