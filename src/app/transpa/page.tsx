@@ -121,7 +121,7 @@ export default async function TranspaPage() {
         `\nparametrar på /v1/shifts/: ${
           report.spec.shiftParameters?.length
             ? report.spec.shiftParameters
-                .map((x) => `${x.name} (${x.location ?? "?"}${x.required ? ", krävs" : ""})`)
+                .map((x) => `${x.name} (${x.location ?? "utan in"}${x.required ? ", krävs" : ""})`)
                 .join(", ")
             : "inga funna"
         }\n` +

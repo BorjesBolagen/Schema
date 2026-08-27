@@ -481,7 +481,7 @@ paths:
       }),
     );
 
-    const medParametrar = report.shiftVariants!.find((v) => v.what.includes("specens krav"));
+    const medParametrar = report.shiftVariants!.find((v) => v.what.includes("specens parametrar"));
     expect(medParametrar).toBeDefined();
     expect(medParametrar!.what).toContain("from, to");
     expect(sedda.some((u) => u.includes("from=") && u.includes("to="))).toBe(true);
@@ -501,7 +501,7 @@ paths:
 
     const underPersonen = report.shiftVariants!.filter((v) => v.what.startsWith("under personen"));
     expect(underPersonen).toHaveLength(2);
-    expect(underPersonen.some((v) => v.what.includes("specens krav"))).toBe(true);
+    expect(underPersonen.some((v) => v.what.includes("specens parametrar"))).toBe(true);
     expect(
       sedda.some((u) => u.includes("/shifts/?") && u.includes("startDateTimeAfter")),
     ).toBe(true);

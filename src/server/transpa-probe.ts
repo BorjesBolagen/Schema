@@ -179,6 +179,14 @@ export interface SpecProbe {
    */
   requiredQuery?: Record<string, string[]>;
   /**
+   * Alla namngivna frågeparametrar per väg, inte bara de krävda.
+   *
+   * Sonden ska inte hänga på att min YAML-tolk får `required` rätt —
+   * den missen kostade en hel körning där varianten med parametrar
+   * aldrig ens genererades. Finns en parameter namngiven provas den.
+   */
+  queryParams?: Record<string, string[]>;
+  /**
    * Hur många parametrar tolken hittade i hela specen.
    *
    * Noll krävda parametrar kan betyda två helt olika saker: att specen
@@ -631,12 +639,13 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         return null;
       }
       const requiredQuery: Record<string, string[]> = {};
+      const queryParams: Record<string, string[]> = {};
       for (const entry of parsed.paths) {
         const get = entry.operations.find((o) => o.method === "GET");
-        const names = (get?.parameters ?? [])
-          .filter((x) => x.required && (x.location ?? "query") === "query")
-          .map((x) => x.name);
-        if (names.length) requiredQuery[entry.path] = names;
+        const named = (get?.parameters ?? []).filter((x) => x.location === "query");
+        const required = named.filter((x) => x.required).map((x) => x.name);
+        if (required.length) requiredQuery[entry.path] = required;
+        if (named.length) queryParams[entry.path] = named.map((x) => x.name);
       }
 
       return {
@@ -647,6 +656,7 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         paths,
         servers: parsed.servers,
         requiredQuery,
+        queryParams,
         parameterCount: parsed.paths.reduce(
           (n, entry) => n + entry.operations.reduce((m, op) => m + op.parameters.length, 0),
           0,
@@ -736,11 +746,22 @@ async function probeShiftVariants(
   const trim = (u: string) => u.replace(/\/+$/, "");
   const bases = [...new Set([API_BASE, ...(spec.servers ?? []).map(trim).filter(Boolean)])];
 
-  /** Frågesträngen för en vägs obligatoriska parametrar, eller tom. */
-  const requiredQuery = (path: string): string => {
-    const names = spec.requiredQuery?.[path] ?? [];
-    if (names.length === 0) return "";
-    return `?${new URLSearchParams(names.map((n) => [n, guessParamValue(n, employeeId)]))}`;
+  /**
+   * Frågesträngen för en vägs parametrar.
+   *
+   * De krävda om tolken hittat några, annars alla namngivna — hellre
+   * ett anrop för mycket än en variant som aldrig genereras för att en
+   * flagga lästes fel.
+   */
+  const queryFor = (path: string): { query: string; names: string[] } => {
+    const names = spec.requiredQuery?.[path]?.length
+      ? spec.requiredQuery[path]
+      : (spec.queryParams?.[path] ?? []);
+    if (names.length === 0) return { query: "", names };
+    return {
+      query: `?${new URLSearchParams(names.map((n) => [n, guessParamValue(n, employeeId)]))}`,
+      names,
+    };
   };
 
   const LIST = "/v1/shifts/";
@@ -749,16 +770,16 @@ async function probeShiftVariants(
   const attempts: Array<{ url: string; what: string }> = [];
   for (const base of bases) {
     const where = base === API_BASE ? "" : ` · bas ur specen: ${base}`;
-    const listQuery = requiredQuery(LIST);
+    const list = queryFor(LIST);
 
     attempts.push(
       { url: `${base}${LIST}`, what: `listan, utan parametrar${where}` },
       { url: `${base}/v1/shifts`, what: `listan, utan snedstreck${where}` },
     );
-    if (listQuery) {
+    if (list.query) {
       attempts.push({
-        url: `${base}${LIST}${listQuery}`,
-        what: `listan, med specens krav: ${spec.requiredQuery?.[LIST]?.join(", ")}${where}`,
+        url: `${base}${LIST}${list.query}`,
+        what: `listan, med specens parametrar: ${list.names.join(", ")}${where}`,
       });
     }
 
@@ -766,13 +787,13 @@ async function probeShiftVariants(
        kräver samma parameter som listan. Att jag skickade kravet bara
        till listan var hela skälet till att den här svarade 404. */
     if (employeeId) {
-      const perPersonQuery = requiredQuery(PER_PERSON);
+      const perPerson = queryFor(PER_PERSON);
       const path = `/v1/employees/${employeeId}/shifts/`;
       attempts.push({ url: `${base}${path}`, what: `under personen, utan parametrar${where}` });
-      if (perPersonQuery) {
+      if (perPerson.query) {
         attempts.push({
-          url: `${base}${path}${perPersonQuery}`,
-          what: `under personen, med specens krav: ${spec.requiredQuery?.[PER_PERSON]?.join(", ")}${where}`,
+          url: `${base}${path}${perPerson.query}`,
+          what: `under personen, med specens parametrar: ${perPerson.names.join(", ")}${where}`,
         });
       }
     }

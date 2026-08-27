@@ -50,20 +50,6 @@ const METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
 /** Parameterns egna nycklar. Allt annat hör till något som omger den. */
 const PARAM_KEYS = ["name", "in", "required", "$ref"];
 
-/** Nycklar som hör till operationen själv och alltså avslutar parameterlistan. */
-const OPERATION_KEYS = [
-  "responses",
-  "requestBody",
-  "security",
-  "summary",
-  "description",
-  "tags",
-  "operationId",
-  "deprecated",
-  "callbacks",
-  "servers",
-];
-
 /** Indraget i tecken, med tabbar räknade som två steg. */
 function indentOf(line: string): number {
   const m = /^[ \t]*/.exec(line)![0];
@@ -234,11 +220,13 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
         if (kv.key === "required") param.required = kv.value === "true";
         continue;
       }
-      /* Listan tar slut vid nästa nyckel på operationens egen nivå.
-         Utan det plockade tolken upp poster ur responses: — där ett
-         `'429': $ref: …429Throttling` såg ut som ännu en obligatorisk
-         parameter, på operationer som inte har några alls. */
-      const ends = kv && (indent <= operationIndent + 2 || OPERATION_KEYS.includes(kv.key));
+      /* Listan tar slut vid nästa nyckel på operationens egen nivå — och
+         bara där. Att också avsluta på nyckelnamn var fel: en parameter
+         har själv en `description`, och listan bröts därför mitt i den
+         första parametern, så startDateTimeAfter aldrig hann bli
+         markerad som obligatorisk. Indraget är det som skiljer
+         operationens nycklar från parameterns. */
+      const ends = kv !== null && indent <= operationIndent + 2;
       if (ends) {
         inParams = false;
         param = null;

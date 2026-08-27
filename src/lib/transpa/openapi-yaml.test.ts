@@ -202,4 +202,54 @@ describe("describeSpecPaths", () => {
     expect(parsed.operations[0].parameters.map((x) => x.name)).toEqual(["startDateTimeAfter"]);
     expect(parsed.operations[1].parameters).toEqual([]);
   });
+
+  /**
+   * Formen TransPA:s spec faktiskt har: delade parametrar via $ref
+   * först, sedan en namngiven med description och schema efter
+   * required — och responses direkt efteråt.
+   *
+   * Att avsluta parameterlistan på nyckelnamn i stället för på indrag
+   * bröt den mitt i första parametern, så startDateTimeAfter aldrig
+   * blev markerad som obligatorisk. Varianten som skulle bevisa
+   * passvägen genererades då aldrig.
+   */
+  it("läser en parameter vars description och schema följer efter required", () => {
+    const real = `paths:
+  /v1/shifts/:
+    get:
+      tags:
+        - timereports and shifts
+      summary: Return a list of Shifts
+      operationId: get-shifts
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: startDateTimeAfter
+          description: Only shifts starting after this point in time
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: OK
+        '429':
+          $ref: '#/components/responses/429Throttling'
+`;
+    const get = parseOpenApiYaml(real).paths[0].operations[0];
+
+    expect(get.parameters.map((x) => x.name)).toEqual([
+      "cursorQueryParameter",
+      "limitParameter",
+      "startDateTimeAfter",
+    ]);
+
+    const required = get.parameters.find((x) => x.name === "startDateTimeAfter")!;
+    expect(required.location).toBe("query");
+    expect(required.required).toBe(true);
+
+    // Och inget ur responses smyger in.
+    expect(get.parameters.map((x) => x.name)).not.toContain("429Throttling");
+  });
 });
