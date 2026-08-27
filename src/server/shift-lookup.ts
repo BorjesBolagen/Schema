@@ -4,6 +4,8 @@ import { getDb, schema } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant, credentialsFromEnv } from "@/lib/transpa/auth";
 import {
+  localParts,
+  shiftEnd,
   shiftToWorkDay,
   shiftWindow,
   splitIntoWindows,
@@ -33,6 +35,11 @@ export interface LookupShift {
   startDateTime: string | null;
   /** Klockslag i svensk tid, för läsbarhet. */
   localTime: string | null;
+  /** Sluttiden i svensk tid, och om den kommer ur partsOfDay eller är gissad. */
+  localEnd: string | null;
+  endIsExact: boolean;
+  /** Sant när passet går över ett dygnsskifte — då är det alltid natt. */
+  crossesMidnight: boolean;
   workMinutes: number | null;
   isExtraShift: boolean;
   name: string | null;
@@ -155,12 +162,24 @@ export async function lookupShifts(input: {
 
     const shifts: LookupShift[] = rows.map((raw) => {
       const day = raw.startDateTime ? shiftToWorkDay(raw, "—") : null;
+      /* Sluttiden är det som avgör dag eller natt, så den ska synas.
+         Kommer den ur partsOfDay är den TransPA:s egen; annars är den
+         framräknad ur arbetstiden och ligger för tidigt, eftersom
+         rasterna inte ingår. */
+      const slut = shiftEnd(raw);
+      const crossesMidnight =
+        slut != null &&
+        raw.startDateTime != null &&
+        localParts(slut.iso).date > localParts(raw.startDateTime).date;
       return {
         id: raw.id ?? null,
         date: day?.date ?? null,
         shift: day?.shift ?? null,
         startDateTime: raw.startDateTime ?? null,
         localTime: raw.startDateTime ? localTime(raw.startDateTime) : null,
+        localEnd: slut ? localTime(slut.iso) : null,
+        endIsExact: slut?.exact ?? false,
+        crossesMidnight,
         workMinutes: raw.adjustedWorkTimeInMinutes ?? null,
         isExtraShift: raw.isExtraShift ?? false,
         name: raw.name ?? null,

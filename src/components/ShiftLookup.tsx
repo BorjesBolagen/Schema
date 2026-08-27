@@ -128,7 +128,8 @@ export function ShiftLookup({
                   <tr className="text-left text-xs tracking-wide text-(--color-muted) uppercase">
                     <th className="py-2 pr-4 font-medium">Datum</th>
                     <th className="py-2 pr-4 font-medium">Start</th>
-                    <th className="py-2 pr-4 font-medium">Längd</th>
+                    <th className="py-2 pr-4 font-medium">Slut</th>
+                    <th className="py-2 pr-4 font-medium">Arbetstid</th>
                     <th className="py-2 pr-4 font-medium">Tolkas som</th>
                     <th className="py-2 font-medium">Benämning</th>
                   </tr>
@@ -140,9 +141,28 @@ export function ShiftLookup({
                         {s.date ? `${weekday(s.date)} ${s.date}` : "—"}
                       </td>
                       <td className="py-1.5 pr-4 tabular-nums">{s.localTime ?? "—"}</td>
+                      <td className="py-1.5 pr-4 tabular-nums whitespace-nowrap">
+                        {s.localEnd ?? "—"}
+                        {s.crossesMidnight && (
+                          <span className="ml-1 text-xs text-(--color-muted)">+1</span>
+                        )}
+                        {/* En gissad sluttid ligger för tidigt: arbetstiden
+                            är utan raster. Det ska synas. */}
+                        {s.localEnd && !s.endIsExact && (
+                          <span
+                            className="ml-1 text-xs text-(--color-warn)"
+                            title="Uppskattad ur arbetstiden — passet saknar partsOfDay"
+                          >
+                            ≈
+                          </span>
+                        )}
+                      </td>
                       <td className="py-1.5 pr-4 whitespace-nowrap">{duration(s.workMinutes)}</td>
                       <td className="py-1.5 pr-4">
                         {s.shift === "night" ? "🌙 natt" : s.shift === "day" ? "☀️ dag" : "—"}
+                        {s.crossesMidnight && (
+                          <span className="ml-2 text-xs text-(--color-muted)">över midnatt</span>
+                        )}
                         {s.isExtraShift && (
                           <span className="ml-2 text-xs text-(--color-warn)">extrapass</span>
                         )}

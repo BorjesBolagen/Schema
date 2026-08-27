@@ -5,6 +5,14 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
+    /* Flera testfiler startar var sin PGlite, och den startar hela
+       Postgres i wasm. Var för sig tar det ett par sekunder; körs de
+       parallellt slåss de om samma kärnor och en enskild uppstart kan
+       passera tio sekunder. Då föll setup-sql-testet på hook-timeout
+       trots att det var grönt när det kördes ensamt — ett falskt rött
+       som kostar mer förtroende än de sparade sekunderna är värda. */
+    hookTimeout: 60_000,
+    testTimeout: 60_000,
   },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },

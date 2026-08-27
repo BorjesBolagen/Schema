@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   attributeShifts,
+  classifyByPeriod,
   classifyShift,
   MAX_WINDOW_DAYS,
   SAMMA_PASS_LUCKA_MS,
   SHIFTS_PATH,
+  shiftEnd,
   shiftToWorkDay,
   shiftWindow,
   splitIntoWindows,
@@ -420,5 +422,117 @@ describe("attributeShifts — delade nattpass", () => {
         "e1",
       ),
     ).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+});
+
+/**
+ * Sluttiden ur partsOfDay, inte gissad ur arbetstiden.
+ *
+ * Bill Erlandsson kör bara natt men stod på både dag- och nattraden.
+ * Orsaken satt i klassificeringen: den såg bara starttimmen och
+ * arbetstiden. Ett pass 16:30–04:00 gick förbi 20 men började före 17,
+ * och regeln föll då tillbaka på "före 17 är dag".
+ *
+ * Ett pass bär i själva verket en riktig sluttid: sista posten i
+ * partsOfDay. Med den behövs ingen gissning — går passet över midnatt
+ * är det natt.
+ *
+ * adjustedWorkTimeInMinutes duger inte som ersättning. Namnet lurar:
+ * det är *arbetad* tid, utan raster, så start + arbetstid landar för
+ * tidigt.
+ */
+describe("sluttid ur partsOfDay", () => {
+  const z = (d: string, h: number, m = 0) =>
+    `${d}T${String(h - 2).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`;
+
+  const natt = {
+    id: "bill",
+    employeeId: "T-B",
+    startDateTime: z("2026-08-17", 16, 30),
+    partsOfDay: [{ endDateTime: z("2026-08-18", 4) }],
+    adjustedWorkTimeInMinutes: 630,
+  };
+
+  it("läser slutet ur sista delen av partsOfDay", () => {
+    expect(shiftEnd(natt)).toEqual({ iso: z("2026-08-18", 4), exact: true });
+  });
+
+  it("tar den sista delen, inte den första", () => {
+    const delat = {
+      ...natt,
+      partsOfDay: [{ endDateTime: z("2026-08-17", 22) }, { endDateTime: z("2026-08-18", 5) }],
+    };
+    expect(shiftEnd(delat)!.iso).toBe(z("2026-08-18", 5));
+  });
+
+  it("faller tillbaka på arbetstiden och märker den som ungefärlig", () => {
+    const utan = { ...natt, partsOfDay: undefined };
+    expect(shiftEnd(utan)!.exact).toBe(false);
+  });
+
+  it("ger null när varken partsOfDay eller arbetstid finns", () => {
+    expect(shiftEnd({ id: "x", startDateTime: z("2026-08-17", 8) })).toBeNull();
+  });
+
+  /* Själva felet: nattchauffören som började 16:30. */
+  it("lägger ett pass 16:30–04:00 på natten, inte på dagen", () => {
+    expect(shiftToWorkDay(natt, "e1")).toEqual({
+      employeeId: "e1",
+      date: "2026-08-17",
+      shift: "night",
+    });
+  });
+
+  it("flyttar inte nattpasset till nästa dag", () => {
+    expect(shiftToWorkDay(natt, "e1")!.date).toBe("2026-08-17");
+  });
+
+  it("håller ett vanligt dagpass kvar på dagen", () => {
+    const dag = {
+      id: "d",
+      startDateTime: z("2026-08-17", 6),
+      partsOfDay: [{ endDateTime: z("2026-08-17", 15) }],
+      adjustedWorkTimeInMinutes: 480,
+    };
+    expect(shiftToWorkDay(dag, "e1")).toEqual({
+      employeeId: "e1",
+      date: "2026-08-17",
+      shift: "day",
+    });
+  });
+
+  /* Ett långt dagpass som slutar 22:00 är fortfarande en dag: det
+     passerar aldrig midnatt. */
+  it("kallar ett långt dagpass för dag", () => {
+    const langt = {
+      id: "l",
+      startDateTime: z("2026-08-17", 7),
+      partsOfDay: [{ endDateTime: z("2026-08-17", 22) }],
+      adjustedWorkTimeInMinutes: 840,
+    };
+    expect(shiftToWorkDay(langt, "e1")!.shift).toBe("day");
+  });
+});
+
+describe("classifyByPeriod", () => {
+  const p = (date: string, hour: number) => ({ date, hour });
+
+  it("kallar allt som passerar midnatt för natt", () => {
+    expect(classifyByPeriod(p("2026-08-17", 16), p("2026-08-18", 4))).toBe("night");
+    expect(classifyByPeriod(p("2026-08-17", 12), p("2026-08-18", 2))).toBe("night");
+  });
+
+  it("kallar ett pass som slutar senast 20 för dag", () => {
+    expect(classifyByPeriod(p("2026-08-17", 6), p("2026-08-17", 15))).toBe("day");
+    expect(classifyByPeriod(p("2026-08-17", 17), p("2026-08-17", 20))).toBe("day");
+  });
+
+  it("räknar ett pass som börjar före dagens gräns till gårdagens natt", () => {
+    expect(classifyByPeriod(p("2026-08-18", 2), p("2026-08-18", 10))).toBe("night");
+  });
+
+  it("går på starttimmen när sluttiden saknas", () => {
+    expect(classifyByPeriod(p("2026-08-17", 19), null)).toBe("night");
+    expect(classifyByPeriod(p("2026-08-17", 7), null)).toBe("day");
   });
 });

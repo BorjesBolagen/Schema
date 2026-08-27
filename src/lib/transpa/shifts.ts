@@ -41,18 +41,72 @@ export function localParts(iso: string, timeZone = STOCKHOLM): { date: string; h
   return { date: `${get("year")}-${get("month")}-${get("day")}`, hour };
 }
 
+export interface TranspaShiftPart {
+  /**
+   * Slutet på den här delen av passet.
+   *
+   * För den sista delen är det också passets slut, och enligt Vismas
+   * schema ska det ligga efter startDateTime och inom 24 timmar från
+   * det.
+   */
+  endDateTime?: string;
+  vehicleId?: string | null;
+  workTaskId?: string | null;
+  trailerVehicleId?: string | null;
+  costDistributionCode?: string | null;
+}
+
 export interface TranspaShift {
   id?: string;
   employeeId?: string | null;
   /** ISO-tidpunkt i UTC. Obligatorisk enligt schemat. */
   startDateTime?: string;
-  /** Passets längd i minuter, 1–1440. */
+  /** Passets delar, 1–50. Den sista bär passets sluttid. */
+  partsOfDay?: TranspaShiftPart[];
+  /** Raster, 0–4. */
+  breaks?: unknown[];
+  /**
+   * Arbetstid i minuter, 1–1440 — inte passets längd.
+   *
+   * Namnet lurar: värdet räknas fram av resursen
+   * calculateAdjustedWorkTime och är *arbetad* tid, alltså utan raster.
+   * Ett pass 19:00–04:00 med en timmes rast bär 480, inte 540. Att
+   * räkna sluttiden som start + det här ger därför en sluttid som
+   * ligger för tidigt, ibland med timmar. Använd shiftEnd().
+   */
   adjustedWorkTimeInMinutes?: number;
   /** Pass utanför ordinarie arbetstid. */
   isExtraShift?: boolean;
   name?: string | null;
   description?: string | null;
   externalId?: string | null;
+}
+
+/**
+ * Passets sluttid, helst den TransPA faktiskt uppger.
+ *
+ * Sista delen i partsOfDay bär slutet. Saknas partsOfDay faller vi
+ * tillbaka på arbetstiden, men det är en gissning som ligger för tidigt
+ * eftersom rasterna inte ingår — och den gissningen var orsaken till
+ * att nattchaufförer hamnade på dagraden.
+ */
+export function shiftEnd(shift: TranspaShift): { iso: string; exact: boolean } | null {
+  if (!shift.startDateTime) return null;
+  const start = new Date(shift.startDateTime).getTime();
+  if (Number.isNaN(start)) return null;
+
+  const slut = shift.partsOfDay
+    ?.map((p) => p.endDateTime)
+    .filter((x): x is string => typeof x === "string" && !Number.isNaN(new Date(x).getTime()))
+    .sort()
+    .at(-1);
+  if (slut) return { iso: slut, exact: true };
+
+  if (shift.adjustedWorkTimeInMinutes == null) return null;
+  return {
+    iso: new Date(start + shift.adjustedWorkTimeInMinutes * 60_000).toISOString(),
+    exact: false,
+  };
 }
 
 /** Sökvägen för hela bolagets pass i ett tidsfönster. */
@@ -151,6 +205,32 @@ export function classifyShift(startHour: number, workMinutes: number | null | un
 }
 
 /**
+ * Dag eller natt utifrån hela passet, inte bara starttimmen.
+ *
+ * Regeln som bara såg starttimmen satte ett pass 16:30–04:00 på
+ * *dagraden*: sluttiden gick förbi 20, men starten låg före 17, och då
+ * föll den tillbaka på "före 17 är dag". En nattchaufför som börjar
+ * halv fem hamnade alltså bland dagfolket.
+ *
+ * Med en riktig sluttid behövs ingen sådan gissning. Går passet över
+ * midnatt är det natt, oavsett när det började.
+ */
+export function classifyByPeriod(
+  start: { date: string; hour: number },
+  end: { date: string; hour: number } | null,
+): Shift {
+  // Ett pass som börjar före dagens gräns är gårdagens natt som fortsätter.
+  if (start.hour < DAY_STARTS_AT) return "night";
+  if (!end) return start.hour >= NIGHT_STARTS_AT ? "night" : "day";
+
+  // Passerar passet ett dygnsskifte är det en natt. Det är hela saken.
+  if (end.date > start.date) return "night";
+
+  if (end.hour <= DAY_ENDS_BY) return "day";
+  return start.hour >= NIGHT_STARTS_AT ? "night" : "day";
+}
+
+/**
  * Ett pass som en arbetsdag.
  *
  * Dagen och skiftet avgörs av svensk lokaltid, inte av UTC: ett pass
@@ -166,7 +246,8 @@ export function shiftToWorkDay(shift: TranspaShift, employeeId: string): WorkDay
   if (Number.isNaN(when.getTime())) return null;
 
   const { date, hour } = localParts(shift.startDateTime);
-  const kind = classifyShift(hour, shift.adjustedWorkTimeInMinutes);
+  const slut = shiftEnd(shift);
+  const kind = classifyByPeriod({ date, hour }, slut ? localParts(slut.iso) : null);
 
   /* Ett nattpass hör till kvällen det började, inte till morgonen det
      slutar. Ett pass som startar efter midnatt men före dagens början
