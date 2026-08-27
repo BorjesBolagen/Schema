@@ -377,6 +377,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
             groupId: r.groupId,
             color: r.color,
             defaultVehicleId: r.defaultVehicleId,
+            vehicleKind: r.vehicleKind,
             validTo: r.validTo,
           }))}
           groups={data.groups}

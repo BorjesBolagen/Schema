@@ -5,6 +5,9 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { BoardWeek, CellAssignment, WeekRow } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
 import { shortDayLabel } from "@/lib/week";
+import { DIRECTION_ARROW, DIRECTION_LABEL } from "@/lib/transpa/direction";
+import { showsDirection } from "@/lib/vehicle-kind";
+import type { VehicleKind } from "@/lib/vehicle-kind";
 import { ConflictMark } from "./ConflictBadge";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 import { dragId } from "./dnd";
@@ -13,11 +16,46 @@ export interface DropCheck {
   (target: { boardRowId: string; date: string; shift: Shift }): string | null;
 }
 
+/**
+ * Riktningen på ett linjepass.
+ *
+ * Visas bara på linjebilar, för det är bara där två personer kör samma
+ * rad samma natt åt var sitt håll. På en bytesbil vore pilen brus.
+ *
+ * Saknas riktningen står ett tomt streck i stället för ingenting: en
+ * benämning som inte sade något ska synas som en lucka att fylla, inte
+ * försvinna tyst.
+ */
+function DirectionMark({ cell }: { cell: CellAssignment }) {
+  if (!cell.employeeName) return null;
+  if (!cell.direction) {
+    return (
+      <span
+        className="text-xs text-(--color-muted)"
+        title="Riktningen står inte i passets benämning i TransPA"
+      >
+        –
+      </span>
+    );
+  }
+  return (
+    <span
+      className="text-xs font-semibold text-(--color-accent)"
+      title={`${DIRECTION_LABEL[cell.direction]} — ur passets benämning i TransPA`}
+      aria-label={DIRECTION_LABEL[cell.direction]}
+    >
+      {DIRECTION_ARROW[cell.direction]}
+    </span>
+  );
+}
+
 function Pass({
   cell,
+  vehicleKind,
   onOpen,
 }: {
   cell: CellAssignment;
+  vehicleKind: VehicleKind;
   onOpen: (cell: CellAssignment) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -35,6 +73,7 @@ function Pass({
       } ${cell.source === "generated" ? "" : "font-medium"}`}
       title={cell.source === "generated" ? "Från bas-schemat" : "Ändrad för hand"}
     >
+      {showsDirection(vehicleKind) && <DirectionMark cell={cell} />}
       <span className={cell.employeeName ? "" : "text-(--color-muted) italic"}>
         {cell.employeeName ?? cell.note ?? "—"}
       </span>
@@ -125,7 +164,9 @@ function ShiftCell({
         {cells.length === 0 ? (
           <span className="text-xs text-(--color-muted)">▢</span>
         ) : (
-          cells.map((c) => <Pass key={c.id} cell={c} onOpen={onOpen} />)
+          cells.map((c) => (
+            <Pass key={c.id} cell={c} vehicleKind={row.vehicleKind} onOpen={onOpen} />
+          ))
         )}
       </div>
       {showVehicle && vehicle && cells.length > 0 && (

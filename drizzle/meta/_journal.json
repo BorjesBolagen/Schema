@@ -43,6 +43,13 @@
       "when": 1787657712770,
       "tag": "0005_drop_work_patterns",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787657713770,
+      "tag": "0006_direction_and_vehicle_kind",
+      "breakpoints": true
     }
   ]
 }

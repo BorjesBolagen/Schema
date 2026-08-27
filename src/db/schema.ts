@@ -22,6 +22,23 @@ export const shift = pgEnum("shift", ["day", "night"]);
 /** Om en tavelrad står för en resurs (bil/linje) eller för en person. */
 export const rowKind = pgEnum("row_kind", ["resource", "person"]);
 
+/**
+ * Vilken sorts bil raden står för.
+ *
+ * En **linjebil** körs av två bilar som möts på vägen: den ena går upp
+ * medan den andra går ner, och nästa natt byter de. Båda står på samma
+ * rad samma natt, så riktningen måste synas för att cellen ska gå att
+ * läsa.
+ *
+ * En **bytesbil** vänder halvvägs varje kväll och kör hem igen. Där
+ * finns ingen upp och ner att hålla isär, och en riktningspil vore bara
+ * brus.
+ */
+export const vehicleKind = pgEnum("vehicle_kind", ["linjebil", "bytesbil", "annan"]);
+
+/** Riktningen på ett linjepass, läst ur TransPA:s benämning. */
+export const direction = pgEnum("direction", ["upp", "ner"]);
+
 /** Vilken vy en tavla öppnas i. Samma data, olika axlar. */
 export const viewMode = pgEnum("view_mode", ["resource", "person"]);
 
@@ -252,6 +269,13 @@ export const transpaShift = pgTable(
     workMinutes: integer("work_minutes"),
     isExtraShift: boolean("is_extra_shift").notNull().default(false),
     name: text("name"),
+    /**
+     * Upp eller ner, tolkat ur benämningen vid hämtningen.
+     *
+     * Null betyder att benämningen inte sade något — inte att passet
+     * saknar riktning. Skillnaden ska synas i vyn.
+     */
+    direction: direction("direction"),
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -330,6 +354,8 @@ export const boardRow = pgTable(
     color: text("color"),
 
     kind: rowKind("kind").notNull().default("resource"),
+    /** Linjebil, bytesbil eller annat. Avgör om riktningen visas i cellen. */
+    vehicleKind: vehicleKind("vehicle_kind").notNull().default("annan"),
     /** Bilen raden står för. Föreslås i cellen och kan bytas per dag. */
     defaultVehicleId: uuid("default_vehicle_id").references(() => vehicle.id),
     /** Sätts bara för person-rader. */

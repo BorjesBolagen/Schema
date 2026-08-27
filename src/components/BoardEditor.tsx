@@ -13,6 +13,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { Shift } from "@/lib/work-days";
 import {
+  VEHICLE_KIND_HINT,
+  VEHICLE_KIND_LABEL,
+  VEHICLE_KINDS,
+  type VehicleKind,
+} from "@/lib/vehicle-kind";
+import {
   addBoardGroup,
   addBoardRow,
   deleteBoardGroup,
@@ -34,6 +40,7 @@ export interface EditableRow {
   groupId: string | null;
   color: string | null;
   defaultVehicleId: string | null;
+  vehicleKind: VehicleKind;
   validTo: string | null;
 }
 
@@ -159,6 +166,25 @@ function RowItem({
         {vehicles.map((v) => (
           <option key={v.id} value={v.id}>
             {v.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Biltypen styr om riktningen upp/ner visas i cellen. Två
+          personer kör en linjebil samma natt åt var sitt håll; en
+          bytesbil vänder halvvägs och har ingen riktning att hålla
+          isär. */}
+      <select
+        value={row.vehicleKind}
+        onChange={(e) =>
+          save({ rowId: row.id, boardSlug: slug, vehicleKind: e.target.value as VehicleKind })
+        }
+        className="rounded border border-(--color-line) px-1.5 py-1 text-xs"
+        title={VEHICLE_KIND_HINT[row.vehicleKind]}
+      >
+        {VEHICLE_KINDS.map((k) => (
+          <option key={k} value={k}>
+            {VEHICLE_KIND_LABEL[k]}
           </option>
         ))}
       </select>

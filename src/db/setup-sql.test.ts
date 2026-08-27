@@ -72,12 +72,19 @@ describe("docs/supabase-setup.sql", () => {
   });
 
   it("markerar alla migrationer som körda, så db:migrate inte tar om dem", async () => {
+    /* Antalet läses ur journalen i stället för att skrivas hit. En
+       hårdkodad siffra betyder att varje ny migration gör testet rött
+       av fel skäl, och den sortens rött lär man sig att klicka förbi. */
+    const journal = JSON.parse(await readFile("drizzle/meta/_journal.json", "utf8")) as {
+      entries: unknown[];
+    };
+
     const db = new PGlite();
     await run(db, await setupSql());
     const { rows } = await db.query<{ n: number }>(
       'select count(*)::int as n from drizzle."__drizzle_migrations"',
     );
-    expect(rows[0].n).toBe(6);
+    expect(rows[0].n).toBe(journal.entries.length);
     await db.close();
   });
 });

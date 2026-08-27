@@ -12,6 +12,8 @@ import {
 } from "@/lib/conflicts";
 import { fullDisplayName } from "@/lib/name";
 import type { Shift, WorkDay } from "@/lib/work-days";
+import type { Direction } from "@/lib/transpa/direction";
+import type { VehicleKind } from "@/lib/vehicle-kind";
 import { weekDates } from "@/lib/week";
 import { getWorkDayProvider } from "./work-days";
 
@@ -25,6 +27,13 @@ export interface CellAssignment {
   note: string | null;
   source: "generated" | "manual";
   conflicts: Conflict[];
+  /**
+   * Riktningen på det hämtade passet, när TransPA:s benämning sade den.
+   *
+   * Null betyder att benämningen inte sade något, inte att passet
+   * saknar riktning — och på en linjebil ska den skillnaden synas.
+   */
+  direction: Direction | null;
 }
 
 export interface WeekRow {
@@ -37,6 +46,8 @@ export interface WeekRow {
   validTo: string | null;
   defaultVehicleId: string | null;
   defaultVehicleName: string | null;
+  /** Linjebil, bytesbil eller annat. Avgör om riktningen visas. */
+  vehicleKind: VehicleKind;
   /** Nyckel `datum|skift` → passen i cellen, sorterade på slot. */
   cells: Record<string, CellAssignment[]>;
   /** Datum där raden ligger utanför sitt giltighetsintervall. */
@@ -121,6 +132,7 @@ interface BoardWeekBundle {
     sortOrder: number;
     color: string | null;
     defaultVehicleId: string | null;
+    vehicleKind: VehicleKind;
     validFrom: string | null;
     validTo: string | null;
   }>;
@@ -156,6 +168,13 @@ interface BoardWeekBundle {
     vehicleId: string | null;
     note: string | null;
     source: "generated" | "manual";
+  }>;
+  shifts: Array<{
+    employeeId: string;
+    date: string;
+    shift: Shift;
+    direction: Direction | null;
+    name: string | null;
   }>;
   absences: Array<{
     employeeId: string;
@@ -230,7 +249,8 @@ async function runGetBoardWeek(
       (select coalesce(json_agg(json_build_object(
         'id', r.id, 'boardId', r.board_id, 'groupId', r.group_id, 'label', r.label,
         'sublabel', r.sublabel, 'sortOrder', r.sort_order, 'color', r.color,
-        'defaultVehicleId', r.default_vehicle_id, 'validFrom', r.valid_from,
+        'defaultVehicleId', r.default_vehicle_id, 'vehicleKind', r.vehicle_kind,
+        'validFrom', r.valid_from,
         'validTo', r.valid_to) order by r.sort_order), '[]'::json)
        from board_row r) as all_rows,
 
@@ -274,7 +294,14 @@ async function runGetBoardWeek(
       (select coalesce(json_agg(json_build_object(
         'employeeId', x.employee_id, 'fromDate', x.from_date, 'toDate', x.to_date,
         'type', x.type, 'note', x.note)), '[]'::json)
-       from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences
+       from absence x where x.from_date <= ${last} and x.to_date >= ${first}) as absences,
+
+      /* Riktningen på linjepassen. Den bor på det hämtade passet, inte
+         på tavlans pass, så den slås upp på person, datum och skift. */
+      (select coalesce(json_agg(json_build_object(
+        'employeeId', s.employee_id, 'date', s.date, 'shift', s.shift,
+        'direction', s.direction, 'name', s.name)), '[]'::json)
+       from transpa_shift s where s.date >= ${first} and s.date <= ${last}) as shifts
     `),
   );
 
@@ -355,6 +382,12 @@ async function runGetBoardWeek(
   ];
   const index = indexConflicts(conflicts);
 
+  /* Riktningen slås upp på person, datum och skift — den hör till det
+     hämtade passet, inte till tavlans pass. */
+  const directionOf = new Map(
+    bundle.shifts.map((s) => [`${s.employeeId}|${s.date}|${s.shift}`, s.direction]),
+  );
+
   const weekRows: WeekRow[] = rows.map((r) => {
     const cells: Record<string, CellAssignment[]> = {};
     for (const date of dates) for (const s of shifts) cells[`${date}|${s}`] = [];
@@ -375,6 +408,9 @@ async function runGetBoardWeek(
         note: a.note,
         source: a.source,
         conflicts: index.byAssignment.get(a.id) ?? [],
+        direction: a.employeeId
+          ? (directionOf.get(`${a.employeeId}|${a.date}|${a.shift}`) ?? null)
+          : null,
       });
     }
     for (const key of Object.keys(cells)) cells[key].sort((x, y) => x.slot - y.slot);
@@ -390,6 +426,7 @@ async function runGetBoardWeek(
       validTo: r.validTo,
       defaultVehicleId: r.defaultVehicleId,
       defaultVehicleName: def?.displayName ?? null,
+      vehicleKind: r.vehicleKind,
       cells,
       inactiveDates: dates.filter(
         (d) => !isRowActive({ id: r.id, validFrom: r.validFrom, validTo: r.validTo }, d),

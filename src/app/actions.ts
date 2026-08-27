@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
+import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
 import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
@@ -566,6 +567,7 @@ export async function updateBoardRow(input: {
   groupId?: string | null;
   color?: string | null;
   defaultVehicleId?: string | null;
+  vehicleKind?: VehicleKind;
   validFrom?: string | null;
   validTo?: string | null;
 }): Promise<void> {

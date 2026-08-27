@@ -4,6 +4,7 @@ import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
 import { attributeShifts, shiftWindow, type TranspaShift } from "@/lib/transpa/shifts";
+import { parseDirection } from "@/lib/transpa/direction";
 import { withBudget } from "./shift-provider";
 
 /**
@@ -117,6 +118,9 @@ export async function fetchWeekShifts(
           workMinutes: raw.adjustedWorkTimeInMinutes ?? null,
           isExtraShift: raw.isExtraShift ?? false,
           name: raw.name ?? null,
+          /* Riktningen står i benämningen — "Vmo-Sto ner". Den tolkas
+             här, en gång, i stället för vid varje rendering. */
+          direction: parseDirection(raw.name),
           syncedAt: new Date(),
         });
       }
@@ -160,6 +164,7 @@ export async function fetchWeekShifts(
           workMinutes: sql`excluded.work_minutes`,
           isExtraShift: sql`excluded.is_extra_shift`,
           name: sql`excluded.name`,
+          direction: sql`excluded.direction`,
           syncedAt: new Date(),
         },
       });

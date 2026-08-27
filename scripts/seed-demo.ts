@@ -13,6 +13,7 @@ import { closeDb, createDb, schema } from "../src/db/index";
 import { runMigrations } from "../src/db/migrate";
 import { addDays, isoWeek, mondayOfWeek, toIso, weekDates } from "../src/lib/week";
 import { hashPassword } from "../src/lib/password";
+import { parseDirection } from "../src/lib/transpa/direction";
 import { getWorkDayProvider } from "../src/server/work-days";
 import { planWeek } from "../src/server/fill-week";
 
@@ -123,7 +124,8 @@ const [gruppSthlm, gruppVsts] = await db
 const rows = await db
   .insert(schema.boardRow)
   .values([
-    { boardId: board.id, groupId: gruppSthlm.id, label: "BT08/09", sublabel: "Stockholm", sortOrder: 0, defaultVehicleId: veh.BT08 },
+    // Linjebil: två personer möts på vägen, en upp och en ner samma natt.
+    { boardId: board.id, groupId: gruppSthlm.id, label: "BT08/09", sublabel: "Stockholm", sortOrder: 0, defaultVehicleId: veh.BT08, vehicleKind: "linjebil" as const },
     { boardId: board.id, groupId: gruppVsts.id, label: "BT13/14", sublabel: "Västerås", sortOrder: 1, defaultVehicleId: veh.BT13 },
     { boardId: board.id, groupId: gruppVsts.id, label: "BT24/26", sublabel: "Västerås", sortOrder: 2, defaultVehicleId: veh.BT24 },
     { boardId: board.id, label: "HF03", sublabel: "Hudiksvall", sortOrder: 3, defaultVehicleId: veh.HF03 },
@@ -131,7 +133,7 @@ const rows = await db
   .returning();
 const row = Object.fromEntries(rows.map((r) => [r.label, r.id]));
 
-const crew = ["Elin", "Peter", "Björn", "Roger", "Johan", "Max", "Alma"];
+const crew = ["Elin", "Peter", "Henrik", "Björn", "Roger", "Johan", "Max", "Alma"];
 await db
   .insert(schema.boardCrew)
   .values(crew.map((name, i) => ({ boardId: board.id, employeeId: byName[name].id, sortOrder: i })));
@@ -141,7 +143,10 @@ const baseEntries = await db
   .insert(schema.baseSchedule)
   .values([
     { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Elin.id, shift: "day" },
+    /* Linjebilen körs av två som möts på vägen: Peter går upp de nätter
+       Henrik går ner, och tvärtom nästa natt. */
     { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Peter.id, shift: "night" },
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Henrik.id, shift: "night" },
     { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName["Björn"].id, shift: "day" },
     { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName.Roger.id, shift: "day" },
     { boardId: board.id, boardRowId: row["BT24/26"], employeeId: byName.Johan.id, shift: "day" },
@@ -186,7 +191,9 @@ let filled = 0;
 const demoShifts: Array<[string, number[], number, number]> = [
   // [namn, veckodagar, starttimme svensk tid, timmar]
   ["Elin", [1, 2, 3, 4, 5], 6, 9],
+  // Linjebilens två: samma nätter, åt var sitt håll.
   ["Peter", [1, 2, 3, 4], 22, 9],
+  ["Henrik", [1, 2, 3, 4], 22, 9],
   // Björn kör måndag, tisdag, torsdag, fredag — Roger fyller onsdagen.
   ["Björn", [1, 2, 4, 5], 6, 10],
   ["Roger", [3], 6, 10],
@@ -209,16 +216,28 @@ for (let i = -1; i <= 3; i++) {
   const rows = demoShifts.flatMap(([name, weekdays, startHour, hours]) =>
     dates
       .filter((d) => weekdays.includes(new Date(`${d}T00:00:00Z`).getUTCDay()))
-      .map((date) => ({
-        transpaId: `demo-${name}-${date}`,
-        employeeId: byName[name].id,
-        date,
-        shift: (startHour >= 17 || startHour < 4 ? "night" : "day") as "day" | "night",
-        startsAt: new Date(`${date}T${String(utcHour(startHour)).padStart(2, "0")}:00:00Z`),
-        workMinutes: hours * 60,
-        isExtraShift: false,
-        name: "Demo",
-      })),
+      .map((date) => {
+        /* Linjebilens folk växlar riktning varannan natt, precis som på
+           riktigt. Benämningen är den enda källan — riktningen tolkas ur
+           den med samma funktion som hämtningen använder, så demot inte
+           kan visa något hämtningen inte skulle ha gett. */
+        const udda = new Date(`${date}T00:00:00Z`).getUTCDay() % 2 === 1;
+        const riktning =
+          name === "Peter" ? (udda ? "upp" : "ner") : name === "Henrik" ? (udda ? "ner" : "upp") : null;
+        const benämning = riktning ? `Vmo-Sto ${riktning}` : "Demo";
+
+        return {
+          transpaId: `demo-${name}-${date}`,
+          employeeId: byName[name].id,
+          date,
+          shift: (startHour >= 17 || startHour < 4 ? "night" : "day") as "day" | "night",
+          startsAt: new Date(`${date}T${String(utcHour(startHour)).padStart(2, "0")}:00:00Z`),
+          workMinutes: hours * 60,
+          isExtraShift: false,
+          name: benämning,
+          direction: parseDirection(benämning),
+        };
+      }),
   );
   if (rows.length) await db.insert(schema.transpaShift).values(rows).onConflictDoNothing();
 }

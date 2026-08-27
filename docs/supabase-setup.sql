@@ -4,7 +4,7 @@
 -- Går att köra om. Det som redan finns hoppas över, det som fattas
 -- läggs på. Kör den alltså i sin helhet även mot en databas som
 -- redan är uppsatt — du behöver inte veta hur långt den kommit.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql
 
 BEGIN;
 
@@ -554,6 +554,32 @@ END $$;
 DROP TABLE IF EXISTS "work_pattern_day";
 DROP TABLE IF EXISTS "work_pattern";
 
+-- 0006_direction_and_vehicle_kind.sql
+-- Riktning på linjepass, och vad slags bil en rad står för.
+--
+-- En linje körs av två bilar som möts på vägen: den ena går upp medan
+-- den andra går ner, och nästa natt byter de. Båda står på samma rad
+-- samma natt, så utan riktning går cellen inte att läsa.
+--
+-- Riktningen tolkas ur TransPA:s benämning på passet ("Vmo-Sto ner"),
+-- inte ur något som underhålls här. Null betyder att benämningen inte
+-- sade något — inte att passet saknar riktning.
+--
+-- En bytesbil vänder halvvägs varje kväll och kör hem igen. Där finns
+-- ingen upp och ner att hålla isär, och raden ska därför inte visa
+-- någon pil. Default är "annan", så befintliga rader beter sig som förut.
+
+DO $$ BEGIN
+  CREATE TYPE "public"."direction" AS ENUM('upp', 'ner');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  CREATE TYPE "public"."vehicle_kind" AS ENUM('linjebil', 'bytesbil', 'annan');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+ALTER TABLE "transpa_shift" ADD COLUMN IF NOT EXISTS "direction" "direction";
+ALTER TABLE "board_row" ADD COLUMN IF NOT EXISTS "vehicle_kind" "vehicle_kind" DEFAULT 'annan' NOT NULL;
+
 -- Markera migrationerna som körda, så npm run db:migrate inte
 -- försöker köra dem igen mot samma databas.
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -574,5 +600,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '561712ebc5
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '561712ebc5d19e753753246dfcc89deef1ec5103edaff0b8055ba62fa9b9828f');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'd399d11c6a7ba6bdd27c948f3fe72ce1341146b12210b581920e3001ad429e40', 1787657712770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'd399d11c6a7ba6bdd27c948f3fe72ce1341146b12210b581920e3001ad429e40');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '347e303d73a62497984afc90077045204a7f86f4180f42394bea2ccadd3110e8', 1787657713770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '347e303d73a62497984afc90077045204a7f86f4180f42394bea2ccadd3110e8');
 
 COMMIT;

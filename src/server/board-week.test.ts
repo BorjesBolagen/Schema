@@ -17,6 +17,7 @@ import { getBoardWeek } from "./board-week";
  */
 
 let db: Db;
+let linjeRow: string;
 
 /** Symbolen getDb() slår upp i. Registrerad globalt, så den går att sätta här. */
 const DB_KEY = Symbol.for("schema.db");
@@ -90,6 +91,44 @@ beforeAll(async () => {
     startsAt: new Date("2026-08-17T04:00:00Z"),
     workMinutes: 540,
   });
+
+  /* Linjebilen: två personer, samma natt, åt var sitt håll. Det är
+     precis fallet som gjorde riktningen nödvändig. */
+  const [linje] = await db
+    .insert(schema.boardRow)
+    .values({
+      boardId: board.id,
+      label: "BT17/23",
+      sortOrder: 1,
+      vehicleKind: "linjebil",
+    })
+    .returning();
+  linjeRow = linje.id;
+
+  for (const [i, [who, dir]] of (
+    [
+      [elin.id, "upp"],
+      [peter.id, "ner"],
+    ] as const
+  ).entries()) {
+    await db.insert(schema.transpaShift).values({
+      transpaId: `natt-${i}`,
+      employeeId: who,
+      date: "2026-08-18",
+      shift: "night",
+      startsAt: new Date("2026-08-18T17:00:00Z"),
+      direction: dir,
+      name: `Vmo-Sto ${dir}`,
+    });
+    await db.insert(schema.assignment).values({
+      boardRowId: linje.id,
+      date: "2026-08-18",
+      shift: "night",
+      slot: i,
+      employeeId: who,
+      source: "generated",
+    });
+  }
 });
 
 afterAll(async () => {
@@ -110,7 +149,7 @@ describe("getBoardWeek", () => {
       "2026-08-21",
     ]);
     // Varje subselect ska ha kommit fram — det är det frågan mest kan gå sönder på.
-    expect(week!.rows.map((r) => r.label)).toEqual(["BT08/09"]);
+    expect(week!.rows.map((r) => r.label)).toEqual(["BT08/09", "BT17/23"]);
     expect(week!.rows[0].groupLabel).toBe("STOCKHOLM");
     expect(week!.crew.map((c) => c.name).sort()).toEqual(["Elin Karlsson", "Peter Mauritzson"]);
     expect(week!.vehicles.map((v) => v.name)).toEqual(["BT08"]);
@@ -122,5 +161,37 @@ describe("getBoardWeek", () => {
 
   it("ger null för en tavla som inte finns", async () => {
     expect(await getBoardWeek("finns-inte", 2026, 34)).toBeNull();
+  });
+});
+
+/**
+ * Riktningen på linjepassen.
+ *
+ * En linje körs av två bilar som möts på vägen: en upp och en ner
+ * samma natt, på samma rad. Utan riktning går cellen inte att läsa —
+ * och det blev synligt först när nattpassen började hamna rätt.
+ */
+describe("riktning i cellen", () => {
+  it("bär riktningen från det hämtade passet till cellen", async () => {
+    const week = await getBoardWeek("fjarr-nybro", 2026, 34);
+    const rad = week!.rows.find((r) => r.id === linjeRow)!;
+    const cellen = rad.cells["2026-08-18|night"];
+
+    expect(cellen).toHaveLength(2);
+    expect(cellen.map((c) => c.direction).sort()).toEqual(["ner", "upp"]);
+  });
+
+  it("visar radens biltyp, så vyn vet om riktningen ska ritas", async () => {
+    const week = await getBoardWeek("fjarr-nybro", 2026, 34);
+    expect(week!.rows.find((r) => r.id === linjeRow)!.vehicleKind).toBe("linjebil");
+    // Raden som inte fått något val ska bete sig som förut.
+    expect(week!.rows.find((r) => r.label === "BT08/09")!.vehicleKind).toBe("annan");
+  });
+
+  /* Ett pass utan riktning i benämningen ska ge null, inte en gissning. */
+  it("ger null när det hämtade passet saknar riktning", async () => {
+    const week = await getBoardWeek("fjarr-nybro", 2026, 34);
+    const dagcellen = week!.rows.find((r) => r.label === "BT08/09")!.cells["2026-08-17|day"];
+    expect(dagcellen[0].direction).toBeNull();
   });
 });
