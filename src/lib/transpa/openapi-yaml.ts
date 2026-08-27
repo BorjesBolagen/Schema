@@ -195,9 +195,20 @@ export function parseOpenApiYaml(text: string): ParsedSpec {
         const inline = keyValue(item[2]);
         if (inline?.key === "name") param.name = inline.value;
         if (inline?.key === "in") param.location = inline.value;
+        /* En delad parameter skrivs som $ref och har inget namn på
+           plats. Referensen bärs vidare som namn — annars ser en spec
+           full av $ref ut som en spec helt utan parametrar. */
+        if (inline?.key === "$ref") {
+          param.name = inline.value.split("/").pop() ?? inline.value;
+          param.location = "$ref";
+        }
         continue;
       }
       if (param && kv) {
+        if (kv.key === "$ref") {
+          param.name = kv.value.split("/").pop() ?? kv.value;
+          param.location = "$ref";
+        }
         if (kv.key === "name") param.name = kv.value;
         if (kv.key === "in") param.location = kv.value;
         if (kv.key === "required") param.required = kv.value === "true";

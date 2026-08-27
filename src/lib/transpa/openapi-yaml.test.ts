@@ -157,4 +157,21 @@ describe("describeSpecPaths", () => {
     expect(shifts.operations[1].method).toBe("POST");
     expect(shifts.operations[1].parameters).toEqual([]);
   });
+
+  /* En spec som delar parametrar via $ref har inga namn på plats. Utan
+     det här ser den ut som en spec helt utan parametrar — och då går
+     det inte att skilja "inga krav" från "tolken ser dem inte". */
+  it("bär vidare en $ref-parameter som sitt referensnamn", () => {
+    const withRefs = `paths:
+  /v1/shifts/:
+    get:
+      summary: Return a list of Shifts
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+`;
+    const get = parseOpenApiYaml(withRefs).paths[0].operations[0];
+    expect(get.parameters.map((x) => x.name)).toEqual(["FromDate", "ToDate"]);
+    expect(get.parameters[0].location).toBe("$ref");
+  });
 });

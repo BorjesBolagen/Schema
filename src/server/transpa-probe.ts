@@ -178,6 +178,16 @@ export interface SpecProbe {
    * kan helt enkelt kräva parametrar anropet inte skickar.
    */
   requiredQuery?: Record<string, string[]>;
+  /**
+   * Hur många parametrar tolken hittade i hela specen.
+   *
+   * Noll krävda parametrar kan betyda två helt olika saker: att specen
+   * inte har några, eller att tolken inte ser dem. Antalet skiljer dem
+   * åt.
+   */
+  parameterCount?: number;
+  /** Parametrarna på passvägen, krävda som valfria. */
+  shiftParameters?: Array<{ name: string; location?: string; required: boolean }>;
 }
 
 export interface TenantReport {
@@ -637,6 +647,13 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         paths,
         servers: parsed.servers,
         requiredQuery,
+        parameterCount: parsed.paths.reduce(
+          (n, entry) => n + entry.operations.reduce((m, op) => m + op.parameters.length, 0),
+          0,
+        ),
+        shiftParameters: parsed.paths
+          .find((entry) => entry.path === "/v1/shifts/" || entry.path === "/v1/shifts")
+          ?.operations.find((op) => op.method === "GET")?.parameters,
       };
     }
 
@@ -762,6 +779,11 @@ async function probeShiftVariants(
         } catch {
           /* inte problem+json */
         }
+        /* Den råa kroppen med: ett 404 utan problem+json kan ändå bära
+           ett routningsfel eller ett modulnamn, och det är precis vad
+           som behövs när vägen står i specen men inte svarar. */
+        const raw = text.trim().slice(0, 200);
+        if (raw && !detail.includes(raw.slice(0, 40))) detail += ` · svar: ${raw}`;
         out.push({
           ...attempt,
           outcome: response.status === 404 ? "missing" : response.status === 403 ? "forbidden" : "error",

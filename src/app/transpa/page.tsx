@@ -97,8 +97,34 @@ export default async function TranspaPage() {
         `${e.sampleKeys ? `\n    fält: ${e.sampleKeys.join(", ") || "(tomt svar)"}` : ""}`,
     ),
     "",
+    /* Variantmätningen är sidans färskaste uppgift och saknades helt i
+       kopieringstexten — det var just den som skulle klistras in. */
+    report.shiftVariants?.length
+      ? "passvägen, variant för variant:\n" +
+        report.shiftVariants
+          .map(
+            (v) =>
+              `    ${v.what}\n` +
+              `      ${v.url}\n` +
+              `      ${v.outcome}${v.status ? ` (${v.status})` : ""}` +
+              `${v.detail ? ` — ${v.detail}` : ""}` +
+              `${v.rows !== undefined ? ` — ${v.rows} rader` : ""}` +
+              `${v.sampleKeys?.length ? `\n      fält: ${v.sampleKeys.join(", ")}` : ""}`,
+          )
+          .join("\n")
+      : null,
+    "",
     report.spec?.outcome === "ok"
-      ? `spec: ${report.spec.url} (v${report.spec.version ?? "?"})\n` +
+      ? `spec: ${report.spec.url} (v${report.spec.version ?? "?"})` +
+        `${report.spec.servers?.length ? ` · bas: ${report.spec.servers.join(", ")}` : ""}` +
+        `\nparametrar tolken hittade i hela specen: ${report.spec.parameterCount ?? "—"}` +
+        `\nparametrar på /v1/shifts/: ${
+          report.spec.shiftParameters?.length
+            ? report.spec.shiftParameters
+                .map((x) => `${x.name} (${x.location ?? "?"}${x.required ? ", krävs" : ""})`)
+                .join(", ")
+            : "inga funna"
+        }\n` +
         (report.spec.paths ?? []).map((x) => `    ${x}`).join("\n")
       : `spec: kunde inte hämtas (${report.spec?.outcome ?? "ej körd"}${
           report.spec?.status ? ` ${report.spec.status}` : ""
