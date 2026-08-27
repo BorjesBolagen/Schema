@@ -3,7 +3,7 @@ import { and, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient } from "@/lib/transpa/client";
 import { credentialsForTenant } from "@/lib/transpa/auth";
-import { shiftToWorkDay, shiftWindow, type TranspaShift } from "@/lib/transpa/shifts";
+import { attributeShifts, shiftWindow, type TranspaShift } from "@/lib/transpa/shifts";
 import { withBudget } from "./shift-provider";
 
 /**
@@ -103,9 +103,10 @@ export async function fetchWeekShifts(
         PER_PERSON_TIMEOUT_MS,
       );
 
-      for (const raw of rows) {
-        const day = shiftToWorkDay(raw, person.id);
-        if (!day || !raw.id) continue;
+      /* Passen läses i ordning och inte var för sig: en natt som TransPA
+         delat i två poster ska landa på en arbetsdag, inte på två. */
+      for (const { shift: raw, day } of attributeShifts(rows, person.id)) {
+        if (!raw.id) continue;
         withShifts.add(person.id);
         values.push({
           transpaId: String(raw.id),

@@ -72,9 +72,12 @@ describe("fetchWeekShifts", () => {
     const result = await fetchWeekShifts([anders, bosse], week[0], week[1], impl, db);
 
     expect(calls).toHaveLength(2);
+    /* Ett dygns marginal i vardera riktningen: veckan frågas i svenska
+       kalenderdagar men jämförs mot UTC, och natten till måndagen börjar
+       före midnatt UTC. */
     for (const call of calls) {
-      expect(call).toContain("startDateTimeAfter=2026-08-17");
-      expect(call).toContain("startDateTimeBefore=2026-08-21");
+      expect(call).toContain("startDateTimeAfter=2026-08-16");
+      expect(call).toContain("startDateTimeBefore=2026-08-23");
     }
     expect(result.asked).toBe(2);
     expect(result.withShifts).toBe(1);

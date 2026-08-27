@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  attributeShifts,
   classifyShift,
   MAX_WINDOW_DAYS,
+  SAMMA_PASS_LUCKA_MS,
   SHIFTS_PATH,
   shiftToWorkDay,
   shiftWindow,
   splitIntoWindows,
+  workDaysForPerson,
   workDaysFromShifts,
 } from "./shifts";
 
@@ -283,3 +286,139 @@ describe("natt över midnatt", () => {
   });
 });
 
+
+/**
+ * Nattpass som TransPA delat i flera poster.
+ *
+ * Regeln som flyttar ett pass till gårdagen gick på starttimmen och
+ * bara under 04. Den räckte för en svans som börjar 00:30, men inte för
+ * en som börjar 04:30 — då blev svansen ett *dagpass på tisdagen*, och
+ * nattchauffören stod som dagpersonal en dag hen sov. Det var det Johan
+ * såg som "både dag och natt".
+ *
+ * Starttimmen ensam kan inte skilja fallen åt: ett äkta dagpass börjar
+ * också 04:30. Det som skiljer är vilan före.
+ */
+describe("attributeShifts — delade nattpass", () => {
+  /** Svensk sommartid är UTC+2, så lokal timme H är H-2 i Z. */
+  const kl = (date: string, lokalTimme: number, minut = 0) =>
+    `${date}T${String(lokalTimme - 2).padStart(2, "0")}:${String(minut).padStart(2, "0")}:00Z`;
+
+  const pass = (id: string, iso: string, minutes: number) => ({
+    id,
+    employeeId: "T-1",
+    startDateTime: iso,
+    adjustedWorkTimeInMinutes: minutes,
+  });
+
+  it("håller ihop en natt vars svans börjar efter dagens gräns", () => {
+    // 19:00–00:00 måndag, sedan 04:30–08:00 tisdag: ett pass, en natt.
+    const dagar = attributeShifts(
+      [
+        pass("kvall", kl("2026-08-17", 19), 300),
+        pass("morgon", kl("2026-08-18", 4, 30), 210),
+      ],
+      "e1",
+    );
+
+    expect(dagar.map((d) => d.day)).toEqual([
+      { employeeId: "e1", date: "2026-08-17", shift: "night" },
+      { employeeId: "e1", date: "2026-08-17", shift: "night" },
+    ]);
+    expect(workDaysForPerson(
+      [pass("kvall", kl("2026-08-17", 19), 300), pass("morgon", kl("2026-08-18", 4, 30), 210)],
+      "e1",
+    )).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+
+  it("håller ihop en natt vars svans börjar 05:00", () => {
+    expect(
+      workDaysForPerson(
+        [pass("kvall", kl("2026-08-17", 20), 300), pass("morgon", kl("2026-08-18", 5), 120)],
+        "e1",
+      ),
+    ).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+
+  it("håller ihop den gamla varianten med svans före midnattsgränsen", () => {
+    expect(
+      workDaysForPerson(
+        [pass("kvall", kl("2026-08-17", 19), 240), pass("morgon", kl("2026-08-18", 0, 30), 300)],
+        "e1",
+      ),
+    ).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+
+  /* Motprovet. Samma starttid som svansen ovan, men efter en hel natts
+     vila — då är det ett riktigt dagpass och ska ligga på sin egen dag. */
+  it("gör inte om ett äkta morgonpass till gårdagens natt", () => {
+    expect(
+      workDaysForPerson(
+        [pass("dag1", kl("2026-08-17", 6), 540), pass("dag2", kl("2026-08-18", 4, 30), 480)],
+        "e1",
+      ),
+    ).toEqual([
+      { employeeId: "e1", date: "2026-08-17", shift: "day" },
+      { employeeId: "e1", date: "2026-08-18", shift: "day" },
+    ]);
+  });
+
+  it("läser passen i ordning även när de kommer omkastade", () => {
+    expect(
+      workDaysForPerson(
+        [pass("morgon", kl("2026-08-18", 4, 30), 210), pass("kvall", kl("2026-08-17", 19), 300)],
+        "e1",
+      ),
+    ).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+
+  /* Kedjan får inte växa: tre korta pass i rad ska inte kunna svälja
+     nästa dygn genom att ärva det första passets slut. */
+  it("låter inte en kedja av korta pass svälja nästa dygn", () => {
+    const dagar = workDaysForPerson(
+      [
+        pass("a", kl("2026-08-17", 19), 120),
+        pass("b", kl("2026-08-17", 22), 120),
+        pass("c", kl("2026-08-18", 7), 480),
+      ],
+      "e1",
+    );
+
+    expect(dagar).toEqual([
+      { employeeId: "e1", date: "2026-08-17", shift: "night" },
+      { employeeId: "e1", date: "2026-08-18", shift: "day" },
+    ]);
+  });
+
+  /* Gränsen är ett val och ska inte kunna glida med en refaktorering.
+     Den kläms mellan de två fall som faktiskt förekommer: svansen 04:30
+     ska hänga ihop, morgonpasset 06:00 ska inte. */
+  it("drar gränsen så att båda de verkliga fallen hamnar rätt", () => {
+    // Kvällsdel 19:00–00:00. Sedan nästa pass efter olika långt uppehåll.
+    const efter = (isoStart: string) =>
+      workDaysForPerson(
+        [pass("kvall", kl("2026-08-17", 19), 300), pass("nasta", isoStart, 240)],
+        "e1",
+      ).length;
+
+    expect(efter(kl("2026-08-18", 4, 30))).toBe(1); // 4,5 h — samma natt
+    expect(efter(kl("2026-08-18", 6))).toBe(2); // 6 h — eget dygn
+    expect(SAMMA_PASS_LUCKA_MS).toBe(5 * 60 * 60 * 1000);
+  });
+
+  /* Delar TransPA inte nätterna ska ingenting ändras. */
+  it("rör inte ensamma pass", () => {
+    expect(workDaysForPerson([pass("natt", kl("2026-08-17", 19), 540)], "e1")).toEqual([
+      { employeeId: "e1", date: "2026-08-17", shift: "night" },
+    ]);
+  });
+
+  it("hoppar över pass utan starttid", () => {
+    expect(
+      workDaysForPerson(
+        [{ id: "x", employeeId: "T-1", startDateTime: null } as never, pass("natt", kl("2026-08-17", 19), 540)],
+        "e1",
+      ),
+    ).toEqual([{ employeeId: "e1", date: "2026-08-17", shift: "night" }]);
+  });
+});

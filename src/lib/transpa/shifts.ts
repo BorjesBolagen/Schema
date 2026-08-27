@@ -61,17 +61,26 @@ export const SHIFTS_PATH = "/v1/shifts/";
 /**
  * Tidsfönstret som frågeparametrar.
  *
- * `from` och `to` är datum (YYYY-MM-DD) som veckovyn räknar i. De
- * vidgas till hela dygn i svensk tid: ett pass som börjar 06:00 måndag
- * ligger 04:00Z på sommaren, och ett fönster som börjar vid midnatt UTC
- * skulle missa den sista timmen av söndagen i andra änden.
+ * `from` och `to` är datum (YYYY-MM-DD) som veckovyn räknar i, alltså
+ * svenska kalenderdagar. TransPA jämför mot UTC.
+ *
+ * Marginalen på ett dygn i vardera riktningen är inte slarv utan
+ * nödvändig. Kommentaren här påstod tidigare att den fanns medan koden
+ * satte gränserna rakt på `T00:00:00Z` — och den blev 02:00 svensk tid
+ * på sommaren. Ett pass som börjar 00:30 natten till veckans första dag
+ * låg då utanför fönstret och hämtades aldrig, vilket är just de
+ * nattpass vi bryr oss mest om.
+ *
+ * Det som hämtas för mycket kostar ingenting: skrivningen filtrerar på
+ * den framräknade arbetsdagen ändå.
  */
 export function shiftWindow(from: string, to: string): Record<string, string> {
+  const dygn = (date: string, skift: number) =>
+    new Date(new Date(`${date}T00:00:00Z`).getTime() + skift * DAY_MS).toISOString();
+
   return {
-    // En dags marginal i vardera riktningen kostar ingenting och gör
-    // att inget pass faller utanför på grund av tidszonen.
-    startDateTimeAfter: new Date(`${from}T00:00:00Z`).toISOString(),
-    startDateTimeBefore: new Date(`${to}T23:59:59Z`).toISOString(),
+    startDateTimeAfter: dygn(from, -1),
+    startDateTimeBefore: dygn(to, 2),
   };
 }
 
@@ -173,6 +182,96 @@ export function shiftToWorkDay(shift: TranspaShift, employeeId: string): WorkDay
 /** Dagen före, räknat i kalenderdagar. */
 function dagenFore(date: string): string {
   return new Date(new Date(`${date}T00:00:00Z`).getTime() - DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Längsta uppehåll som fortfarande räknas som samma pass.
+ *
+ * TransPA delar ibland en natt i flera poster. Startimmen ensam kan
+ * inte skilja svansen av en natt från början av en ny dag — ett pass
+ * som börjar 04:30 kan vara antingen. Det som skiljer är vilan före:
+ * svansen börjar minuter efter att kvällsdelen slutade, dagpasset efter
+ * en hel natts vila.
+ *
+ * Fem timmar är ett val, inte en mätning, och fönstret är smalare än
+ * det ser ut. Nedåt: en svans som börjar 04:30 efter en kvällsdel som
+ * slutade 00:00 ligger 4,5 timmar bort och ska hänga ihop — det är
+ * felet som rapporterades. Uppåt: samma kvällsdel följd av ett pass
+ * 06:00 är sex timmar bort och ska läsas som två dygn. Gränsen måste
+ * ligga mellan 4,5 och 6.
+ *
+ * Båda de talen är dock rimliga exempel, inte avlästa ur TransPA. Innan
+ * gränsen betraktas som satt ska den stämmas av mot verkliga pass för
+ * en nattchaufför — vi vet ännu inte hur TransPA delar sina nätter
+ * eller hur stora uppehållen är i praktiken.
+ */
+export const SAMMA_PASS_LUCKA_MS = 5 * 60 * 60 * 1000;
+
+/** Passets slut enligt TransPA:s längduppgift, eller null när den saknas. */
+function slutarVid(shift: TranspaShift): number | null {
+  if (!shift.startDateTime || shift.adjustedWorkTimeInMinutes == null) return null;
+  const start = new Date(shift.startDateTime).getTime();
+  if (Number.isNaN(start)) return null;
+  return start + shift.adjustedWorkTimeInMinutes * 60_000;
+}
+
+/**
+ * En persons pass som arbetsdagar, med nätterna hela.
+ *
+ * Skillnaden mot att mappa varje pass för sig är att pass här läses i
+ * ordning, så ett pass kan höra till föregående passets arbetsdag. Utan
+ * det syntes nattfolk på två dagar: kvällsdelen på måndagen som natt,
+ * och svansen som började efter 04:00 på tisdagen som *dag*. Det var
+ * inte två pass utan ett, och personen stod som dagpersonal på en dag
+ * hen sov.
+ *
+ * Delar TransPA inte nätterna gör regeln ingenting — då finns inget
+ * föregående pass tillräckligt nära, och varje pass klassas som förut.
+ */
+export function attributeShifts(
+  shifts: TranspaShift[],
+  employeeId: string,
+): Array<{ shift: TranspaShift; day: WorkDay }> {
+  const iOrdning = shifts
+    .filter((s) => s.startDateTime && !Number.isNaN(new Date(s.startDateTime).getTime()))
+    .sort((a, b) => a.startDateTime!.localeCompare(b.startDateTime!));
+
+  const ut: Array<{ shift: TranspaShift; day: WorkDay }> = [];
+  let foregaende: { dag: WorkDay; slut: number } | null = null;
+
+  for (const shift of iOrdning) {
+    const start = new Date(shift.startDateTime!).getTime();
+
+    /* Följer passet tätt på det förra hör det till samma arbetsdag —
+       samma datum och samma skift, oavsett vad starttimmen säger. */
+    const fortsatter: boolean =
+      foregaende !== null && start - foregaende.slut <= SAMMA_PASS_LUCKA_MS;
+
+    const dag: WorkDay | null =
+      fortsatter && foregaende !== null
+        ? { employeeId, date: foregaende.dag.date, shift: foregaende.dag.shift }
+        : shiftToWorkDay(shift, employeeId);
+    if (!dag) continue;
+
+    /* Slutet räknas alltid ur passet självt. Ärvde en kedja av korta
+       pass den första postens slut skulle den kunna växa i all
+       oändlighet och svälja nästa dygn. */
+    foregaende = { dag, slut: slutarVid(shift) ?? start };
+    ut.push({ shift, day: dag });
+  }
+
+  return ut;
+}
+
+/** Arbetsdagarna ur en persons pass, utan dubbletter. */
+export function workDaysForPerson(shifts: TranspaShift[], employeeId: string): WorkDay[] {
+  const sedda = new Set<string>();
+  return attributeShifts(shifts, employeeId).flatMap(({ day }) => {
+    const nyckel = `${day.date}|${day.shift}`;
+    if (sedda.has(nyckel)) return [];
+    sedda.add(nyckel);
+    return [day];
+  });
 }
 
 /**
