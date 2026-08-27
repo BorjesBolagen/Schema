@@ -4,6 +4,7 @@ import { probeTenant, type EndpointProbe, type ProbeOutcome } from "@/server/tra
 import { credentialsFromEnv } from "@/lib/transpa/auth";
 import { SyncButton } from "@/components/SyncButton";
 import { CopyReport } from "@/components/CopyReport";
+import { ShiftLookup } from "@/components/ShiftLookup";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +219,22 @@ export default async function TranspaPage() {
           </div>
         );
       })()}
+
+      {/* Uppslaget står först: det är verktyget som gör frågan konkret
+          när något inte stämmer, i stället för att läsa av en tabell
+          och gissa. */}
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold">Slå upp en persons pass</h2>
+        <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
+          Hämtar direkt från TransPA, inte ur den synkade tabellen — poängen är att se vad API:t
+          säger, inte vad vi råkar ha sparat. Ange TransPA-id eller anställningsnummer.
+        </p>
+        <ShiftLookup
+          defaultPerson="3bfec2f0-0989-404f-8545-30ebeb9b4b38"
+          defaultFrom="2026-08-17"
+          defaultTo="2026-08-28"
+        />
+      </section>
 
       {report.shiftVariants && report.shiftVariants.length > 0 && (
         <div className="mt-6 rounded border-2 border-(--color-warn) bg-amber-50 p-4 text-sm">
