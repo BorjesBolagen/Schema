@@ -171,7 +171,18 @@ const KNOWN: Array<[string, string]> = [
   ["/v1/stationPlaces", "Stationsorter"],
   ["/v1/workTasks", "Arbetsuppgifter"],
   ["/v1/workGroups", "Arbetsgrupper"],
+  ["/v1/trafficAreas", "Trafikområden"],
+  ["/v1/vehicleGroups", "Fordonsgrupper"],
   ["/v1/trips", "Turer"],
+
+  /* Ur specen (0.1.138), inte ur gissningar. Det avslutande snedstrecket
+     är inte kosmetik: /v1/shifts svarar 404, /v1/shifts/ är rutten. Det
+     var hela anledningen till att passen inte gick att hitta.
+     transpaapi:shifts:read är dessutom redan beviljat. */
+  ["/v1/shifts/", "Pass"],
+  ["/v1/timeReports", "Tidrapporter"],
+  ["/v1/timereportConfiguration/", "Tidrapportinställningar"],
+  ["/v1/tachographDataAbstractions", "Färdskrivardata"],
 ];
 
 /**
@@ -199,6 +210,10 @@ const SAMPLE_SHAPE_OF = new Set([
   "/v1/workGroups",
   "/v1/stationPlaces",
   "/v1/vehicles",
+  "/v1/shifts/",
+  "/v1/timeReports",
+  "/v1/employees/{id}/shifts/",
+  "/v1/employee/{id}/employeeContracts",
 ]);
 
 /**
@@ -227,36 +242,29 @@ const SAMPLE_SHAPE_OF = new Set([
  * Listan står kvar som bevakning: svarar någon av dem annat än 404 en
  * dag har Visma öppnat resursen, och då är det värt att veta.
  */
+/**
+ * Underresurser under en person, ur specen.
+ *
+ * Provas mot ett riktigt person-id, hämtat ur /v1/employees först —
+ * annars går de inte att skilja från en felstavad väg.
+ */
 const SHIFT_CANDIDATES = [
-  /* /v1/shifts stod först i listan, föll ur när jag skrev om vägarna,
-     och sidan fortsatte ändå påstå att den svarat 404. Den provas igen:
-     Swagger-UI:t har en tagg "timereports and shifts" med operationen
-     get-shift, så resursen finns — frågan är bara var. */
-  "/v1/shifts",
-  "/v1/timereports",
-  /* Den här svarade 403 med scope=transpaapi:timereports:read i stället
-     för 404 — vägen finns alltså. Grannarna provas för att kartlägga
-     grenen medan scopet begärs. */
-  "/v1/timeReports/shifts",
-  "/v1/timeReports/shift",
-  "/v1/timeReports/schedules",
-  "/v1/timeReports/timeRows",
-  "/v1/employees/{id}/timeReports",
-  "/v1/workShifts",
-  "/v1/employeeShifts",
-  "/v1/shiftSchedules",
-  "/v1/shift",
-  "/v1/employees/{id}/shifts",
-  "/v1/employees/{id}/workShifts",
-  "/v1/employees/{id}/schedule",
+  "/v1/employees/{id}/shifts/",
+  "/v1/employees/{id}/timereports/",
+  "/v1/employee/{id}/employeeContracts",
 ];
 
+/**
+ * Frånvaro och semester.
+ *
+ * Specen (0.1.138, 47 vägar) har ingen av dem — varken frånvaro,
+ * semester eller arbetsscheman. Listan står kvar som bevakning: svarar
+ * någon av dem en dag har Visma öppnat resursen, och då är det värt att
+ * veta. Fram till dess ägs frånvaro och semester här.
+ */
 const GUESSES: Array<[string, string]> = [
-  ["/v1/schedules", "Scheman"],
   ["/v1/absences", "Frånvaro"],
-  ["/v1/absence", "Frånvaro (singular)"],
   ["/v1/vacations", "Semester"],
-  ["/v1/timeReports", "Tidrapporter"],
   ["/v1/workSchedules", "Arbetsscheman"],
 ];
 

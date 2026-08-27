@@ -78,8 +78,9 @@ describe("jakten på passen", () => {
         );
       }
       // Bara underresursen finns — precis som i verkligheten, där
-      // /v1/shifts svarar 404 trots att scopet är beviljat.
-      if (path === "/publicApi/v1/employees/emp-42/shifts") {
+      /* Snedstrecket är rutten: /v1/shifts svarar 404, /v1/shifts/ finns.
+         Det var därför passen inte gick att hitta på flera dagar. */
+      if (path === "/publicApi/v1/employees/emp-42/shifts/") {
         return new Response(
           JSON.stringify({ items: [{ date: "2026-08-24", startTime: "06:00" }], cursor: {} }),
         );
@@ -88,11 +89,11 @@ describe("jakten på passen", () => {
     });
 
     const report = await probeTenant(fetchImpl);
-    const träff = report.endpoints.find((e) => e.path === "/v1/employees/emp-42/shifts");
+    const träff = report.endpoints.find((e) => e.path === "/v1/employees/emp-42/shifts/");
 
     expect(träff?.outcome).toBe("ok");
     // Id:t ska komma från personallistan, inte vara påhittat.
-    expect(sedda).toContain("/publicApi/v1/employees/emp-42/shifts");
+    expect(sedda).toContain("/publicApi/v1/employees/emp-42/shifts/");
   });
 
   it("anropar aldrig en väg med platshållaren kvar", async () => {
@@ -134,7 +135,7 @@ describe("person-id ur svaret", () => {
     const report = await probeTenant(fetchImpl);
     expect(report.employeeSample?.id).toBe("PASCAL-1");
     expect(report.employeeSample?.keys).toContain("Id");
-    expect(sedda).toContain("/publicApi/v1/employees/PASCAL-1/shifts");
+    expect(sedda).toContain("/publicApi/v1/employees/PASCAL-1/shifts/");
   });
 
   it("listar underresurserna även när inget id gick att plocka ut", async () => {
@@ -343,7 +344,7 @@ describe("gruppfälten mot stationsorterna", () => {
 describe("nekade vägar", () => {
   it("bär med sig scopet vägen kräver", async () => {
     const fetchImpl = fakeFetch((url) => {
-      if (url.includes("/v1/timeReports/shifts")) {
+      if (url.includes("/v1/timeReports")) {
         return new Response(
           JSON.stringify({
             title: "Forbidden",
@@ -357,7 +358,7 @@ describe("nekade vägar", () => {
     });
 
     const report = await probeTenant(fetchImpl);
-    const denied = report.endpoints.find((e) => e.path === "/v1/timeReports/shifts")!;
+    const denied = report.endpoints.find((e) => e.path === "/v1/timeReports")!;
 
     expect(denied.outcome).toBe("forbidden");
     expect(denied.status).toBe(403);
@@ -366,13 +367,13 @@ describe("nekade vägar", () => {
 
   it("skiljer en nekad väg från en som inte finns", async () => {
     const fetchImpl = fakeFetch((url) =>
-      url.includes("/v1/shifts")
+      url.includes("/v1/absences")
         ? new Response("nix", { status: 404 })
         : new Response(JSON.stringify({ items: [], cursor: {} })),
     );
 
     const report = await probeTenant(fetchImpl);
-    const gone = report.endpoints.find((e) => e.path === "/v1/shifts")!;
+    const gone = report.endpoints.find((e) => e.path === "/v1/absences")!;
 
     expect(gone.outcome).toBe("missing");
     expect(gone.requiredScope).toBeUndefined();
