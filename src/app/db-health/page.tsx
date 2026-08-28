@@ -28,6 +28,33 @@ export default async function DbHealthPage() {
         tavelvy som gör för mycket på en gång.
       </p>
 
+      {/* Ligger databasen efter koden är det den enda uppgift som
+          betyder något på sidan — den ska stå överst och inte som en
+          rad bland svarstider. */}
+      {report.pending.length > 0 && (
+        <div className="mt-6 rounded border border-(--color-danger) bg-white p-4">
+          <p className="text-sm font-semibold text-(--color-danger)">
+            Databasen ligger efter koden
+          </p>
+          <p className="mt-1 max-w-[60ch] text-sm">
+            Kör hela <code>docs/supabase-setup.sql</code> i Supabase → SQL Editor. Filen går att
+            köra om; det som redan finns hoppas över.
+          </p>
+          <ul className="mt-2 font-mono text-xs">
+            {report.pending.map((tag) => (
+              <li key={tag}>{tag}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {!report.pendingKnown && (
+        <p className="mt-6 rounded border border-(--color-warn) bg-white p-4 text-sm">
+          Gick inte att läsa vilka migrationer som körts. Antingen har ingen körts alls, eller
+          så saknas behörighet att läsa <code>drizzle.__drizzle_migrations</code>.
+        </p>
+      )}
+
       <div className="mt-6 flex flex-wrap gap-4 rounded border border-(--color-line) bg-white p-4 text-sm">
         <span>
           <span className="text-(--color-muted)">Databas:</span>{" "}

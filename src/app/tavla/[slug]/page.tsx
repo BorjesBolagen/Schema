@@ -10,6 +10,8 @@ import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
 import { BoardWorkspace } from "@/components/BoardWorkspace";
 import { PersonGrid } from "@/components/PersonGrid";
 import { PrintButton } from "@/components/PrintButton";
+import { SchemaOutOfDate } from "@/components/SchemaOutOfDate";
+import { schemaStatusFor } from "@/server/schema-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -35,14 +37,28 @@ function step(year: number, week: number, delta: number): { year: number; week: 
 export default async function BoardPage({ params, searchParams }: Props) {
   const user = await requireUser();
   const { slug } = await params;
-  await requireBoardBySlug(user, slug);
   const sp = await searchParams;
   const today = isoWeek(toIso(new Date()));
   const year = Number(sp.ar) || today.year;
   const week = Number(sp.vecka) || today.week;
   const view = sp.vy === "person" ? "person" : "resource";
 
-  const data = await getBoardWeek(slug, year, week);
+  /* Både behörighetskontrollen och hämtningen läser tabeller som kan
+     sakna en kolumn när koden är utrullad före migrationen — den första
+     föll redan på att slå upp tavlan. Ligger databasen efter ska sidan
+     säga det i stället för att krascha.
+
+     notFound() kastar också, men schemaStatusFor svarar null på allt
+     som inte är ett schemafel, och då kastas det vidare orört. */
+  let data: Awaited<ReturnType<typeof getBoardWeek>>;
+  try {
+    await requireBoardBySlug(user, slug);
+    data = await getBoardWeek(slug, year, week);
+  } catch (error) {
+    const status = await schemaStatusFor(error);
+    if (status) return <SchemaOutOfDate status={status} />;
+    throw error;
+  }
   if (!data) notFound();
 
   // Personalväljarens lista kommer med getBoardWeek — samlingsfrågan

@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { getDb, schema, isHostedDatabase, readWithTimeout } from "@/db";
+import { pendingMigrations } from "./schema-guard";
 
 export interface DbHealthCheck {
   label: string;
@@ -11,6 +12,10 @@ export interface DbHealthCheck {
 
 export interface DbHealthReport {
   hosted: boolean;
+  /** Migrationer koden har men databasen saknar. */
+  pending: string[];
+  /** Falskt när frågan inte gick att ställa — tom lista betyder då inget. */
+  pendingKnown: boolean;
   /** Regionen funktionen faktiskt kördes i — Vercel sätter den här. */
   region: string | null;
   ranAt: string;
@@ -60,8 +65,12 @@ export async function probeDb(): Promise<DbHealthReport> {
     await timed("Läs board", () => getDb().select().from(schema.board).limit(1)),
   ];
 
+  const migrations = await pendingMigrations();
+
   return {
     hosted: isHostedDatabase(),
+    pending: migrations.pending,
+    pendingKnown: migrations.ok,
     region: process.env.VERCEL_REGION ?? null,
     ranAt,
     checks,

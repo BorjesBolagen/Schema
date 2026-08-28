@@ -122,11 +122,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     entries: Array<{ tag: string; when: number }>;
   };
   const { createHash } = await import("node:crypto");
+  const hashes: Array<{ tag: string; hash: string; when: number }> = [];
   for (const entry of journal.entries) {
     const sql = await readFile(`${dir}/${entry.tag}.sql`, "utf8");
-    const hash = createHash("sha256")
-      .update(sql.split("--> statement-breakpoint").join(""))
-      .digest("hex");
+    /* Hela filen, brytpunktsmarkörerna inräknade.
+       Drizzles egen migrator hashar filen precis som den ligger, och
+       den här raden ska säga åt den att migrationen redan är körd.
+       Strippades markörerna först — vilket den här koden gjorde — blev
+       hashen en annan än den drizzle letar efter, och markeringen
+       missade sitt syfte utan att någon märkte det. */
+    const hash = createHash("sha256").update(sql).digest("hex");
+    hashes.push({ tag: entry.tag, hash, when: entry.when });
     parts.push(
       `INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '${hash}', ${entry.when}`,
       `WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '${hash}');`,
@@ -137,5 +143,33 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const out = "docs/supabase-setup.sql";
   await writeFile(out, parts.join("\n"));
-  console.log(`Skrev ${out} från ${files.length} migration(er).`);
+
+  /* Samma uppgifter som en modul appen kan läsa vid körning.
+     Vakten som varnar för en oskriven migration behöver veta vilka som
+     finns, och drizzle-katalogen följer inte med i en Vercel-byggnad.
+     Genererad här, av samma källa, så de inte kan säga emot varandra. */
+  const manifest = [
+    "/**",
+    " * Migrationerna, som en modul.",
+    " *",
+    " * GENERERAD av scripts/build-setup-sql.ts — redigera inte för hand.",
+    " *",
+    " * Finns för att appen ska kunna säga *vilken* migration som fattas",
+    " * när databasen ligger efter koden. Drizzle-katalogen finns inte i",
+    " * en byggd app, så uppgifterna måste bakas in.",
+    " */",
+    "",
+    "export interface MigrationRef {",
+    "  tag: string;",
+    "  hash: string;",
+    "}",
+    "",
+    "export const MIGRATIONS: MigrationRef[] = [",
+    ...hashes.map((h) => `  { tag: "${h.tag}", hash: "${h.hash}" },`),
+    "];",
+    "",
+  ].join("\n");
+  await writeFile("src/db/migrations-manifest.ts", manifest);
+
+  console.log(`Skrev ${out} och manifestet från ${files.length} migration(er).`);
 }

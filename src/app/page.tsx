@@ -5,12 +5,27 @@ import { TEMPLATE_LABELS } from "@/server/boards";
 import { isoWeek, toIso } from "@/lib/week";
 import { NewBoardForm } from "@/components/NewBoardForm";
 import { RemoveBoardButton } from "@/components/RemoveBoardButton";
+import { SchemaOutOfDate } from "@/components/SchemaOutOfDate";
+import { schemaStatusFor } from "@/server/schema-guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const user = await requireUser();
-  const boards = await visibleBoards(user);
+
+  /* Ligger databasen efter koden ska sidan säga det, inte krascha med
+     en stackspårning som inte nämner uppsättningsfilen. Kontrollen
+     kostar ingenting när allt fungerar — den frågar först när något
+     redan gått fel. */
+  let boards: Awaited<ReturnType<typeof visibleBoards>>;
+  try {
+    boards = await visibleBoards(user);
+  } catch (error) {
+    const status = await schemaStatusFor(error);
+    if (status) return <SchemaOutOfDate status={status} />;
+    throw error;
+  }
+
   const now = isoWeek(toIso(new Date()));
 
   return (
