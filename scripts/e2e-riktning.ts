@@ -18,7 +18,9 @@ page.on("pageerror", (e) => errors.push(String(e)));
 const checks: Array<[string, boolean]> = [];
 const check = (label: string, ok: boolean) => checks.push([label, ok]);
 
-const rad = (label: string) => page.locator(`tbody tr:has(th:text-is("${label}"))`);
+/* En bil spänner en tabellrad per skift, så den väljs på data-row
+   och inte på rubrikcellen. */
+const rad = (label: string) => page.locator(`tbody tr[data-row="${label}"]`);
 
 await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
@@ -28,7 +30,7 @@ await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "netw
 const riktningar = (label: string) => rad(label).locator("span[aria-label='Upp'], span[aria-label='Ner']");
 
 /* ---- Linjebilen visar riktning ---- */
-const linjen = await rad("BT08/09").innerText();
+const linjen = (await rad("BT08/09").allInnerTexts()).join(" ");
 console.log("  BT08/09:", linjen.replace(/\s+/g, " ").slice(0, 150));
 check("linjebilen visar riktning", (await riktningar("BT08/09").count()) > 0);
 check(
@@ -38,7 +40,7 @@ check(
 );
 
 /* ---- En rad som inte är linjebil visar ingen riktning ---- */
-const annan = await rad("BT13/14").innerText();
+const annan = (await rad("BT13/14").allInnerTexts()).join(" ");
 console.log("  BT13/14:", annan.replace(/\s+/g, " ").slice(0, 110));
 check("rad som inte är linjebil visar ingen riktning", (await riktningar("BT13/14").count()) === 0);
 

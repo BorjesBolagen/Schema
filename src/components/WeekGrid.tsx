@@ -126,7 +126,7 @@ function Pass({
  * bara när det är en person som dras: ett befintligt pass hör hemma i
  * en cell, och att låta det landa på raden vore tvetydigt.
  */
-function RowHeader({ row }: { row: BoardWeek["rows"][number] }) {
+function RowHeader({ row, rowSpan }: { row: BoardWeek["rows"][number]; rowSpan: number }) {
   const { setNodeRef, isOver, active } = useDroppable({ id: dragId.row(row.id) });
   const draggingPerson = String(active?.id ?? "").startsWith("crew:");
 
@@ -134,6 +134,7 @@ function RowHeader({ row }: { row: BoardWeek["rows"][number] }) {
     <th
       ref={setNodeRef}
       scope="row"
+      rowSpan={rowSpan}
       className={`sticky left-0 z-10 border-b border-(--color-line) px-3 py-2 text-left font-medium whitespace-nowrap ${
         draggingPerson && isOver
           ? "bg-(--color-accent) text-white"
@@ -157,16 +158,16 @@ function ShiftCell({
   row,
   date,
   shift,
-  showShiftIcon,
   showVehicle,
+  compact,
   onOpen,
   dropCheck,
 }: {
   row: WeekRow;
   date: string;
   shift: Shift;
-  showShiftIcon: boolean;
   showVehicle: boolean;
+  compact: boolean;
   onOpen: (cell: CellAssignment) => void;
   dropCheck: DropCheck;
 }) {
@@ -184,18 +185,16 @@ function ShiftCell({
       ref={setNodeRef}
       data-cell={`${row.id}|${date}|${shift}`}
       data-shift={shift}
-      className={`min-h-9 px-2 py-1 ${
+      className={`px-2 ${compact ? "min-h-6 py-0.5" : "min-h-9 py-1.5"} ${
         isOver ? (problem ? "bg-red-100 outline outline-(--color-danger)" : "bg-blue-100") : ""
       }`}
     >
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        {showShiftIcon && (
-          <span className="text-xs text-(--color-muted)" title={SHIFT_LABEL[shift]}>
-            {SHIFT_ICON[shift]}
-          </span>
-        )}
+      {/* En person per rad, aldrig två sida vid sida. Två namn på samma
+          rad blir en klump att läsa i stället för en lista, och de slutar
+          dessutom stå i linje med grannkolumnen. */}
+      <div className="flex flex-col items-start gap-1">
         {cells.length === 0 ? (
-          <span className="text-xs text-(--color-muted)">▢</span>
+          <span className={`text-(--color-muted) ${compact ? "text-[10px]" : "text-xs"}`}>▢</span>
         ) : (
           cells.map((c) => (
             <Pass key={c.id} cell={c} vehicleKind={row.vehicleKind} onOpen={onOpen} />
@@ -203,7 +202,7 @@ function ShiftCell({
         )}
       </div>
       {showVehicle && vehicle && cells.length > 0 && (
-        <div className="text-xs text-(--color-muted)">{vehicle}</div>
+        <div className="mt-0.5 text-xs text-(--color-muted)">{vehicle}</div>
       )}
       {isOver && problem && (
         <div className="mt-0.5 text-[11px] font-medium text-(--color-danger)">{problem}</div>
@@ -229,7 +228,6 @@ export function WeekGrid({
   dropCheck: DropCheck;
 }) {
   const showVehicle = data.board.cellFields.includes("vehicle");
-  const showShiftIcon = data.shifts.length > 1;
   let lastGroup: string | null | undefined;
 
   return (
@@ -241,6 +239,9 @@ export function WeekGrid({
               Bil
             </th>
             <th className="border-b border-(--color-line) px-3 py-2 text-left font-medium">Linje</th>
+            <th className="border-b border-l border-(--color-line) px-2 py-2 text-left font-medium">
+              Skift
+            </th>
             {data.dates.map((d) => (
               <th
                 key={d}
@@ -260,47 +261,81 @@ export function WeekGrid({
                 {groupHeader && (
                   <tr>
                     <td
-                      colSpan={2 + data.dates.length}
+                      colSpan={3 + data.dates.length}
                       className="border-b border-(--color-line) bg-gray-100 px-3 py-1 text-xs font-semibold tracking-wide uppercase"
                     >
                       {groupHeader}
                     </td>
                   </tr>
                 )}
-                <tr className="align-top">
-                  <RowHeader row={row} />
-                  <td className="border-b border-(--color-line) px-3 py-2 text-(--color-muted) whitespace-nowrap">
-                    {row.sublabel}
-                  </td>
-                  {data.dates.map((date) => {
-                    const inactive = row.inactiveDates.includes(date);
-                    return (
-                      <td
-                        key={date}
-                        className={`border-b border-l border-(--color-line) p-0 ${
-                          inactive ? "bg-gray-50" : ""
-                        }`}
-                      >
-                        {inactive ? (
-                          <div className="px-3 py-2 text-xs text-(--color-muted)">–</div>
-                        ) : (
-                          data.shifts.map((shift) => (
+                {/* En tabellrad per skift, inte en cell med två halvor.
+                    Skiftet står då en gång till vänster i stället för som
+                    en ikon i var och en av veckans celler, och dagfolket
+                    hamnar i linje över hela veckan även när en dag har två
+                    nattchaufförer. */}
+                {data.shifts.map((shift, i) => {
+                  /* En skiftrad utan ett enda pass hela veckan görs smal.
+                     De flesta bilar körs bara dagtid, och en tom nattrad i
+                     full höjd per sådan bil är mest luft att skrolla förbi.
+                     Raden får inte försvinna — den är släppzonen för att
+                     lägga ut ett nattpass. */
+                  const tomRad = data.dates.every(
+                    (d) => (row.cells[`${d}|${shift}`] ?? []).length === 0,
+                  );
+                  return (
+                  /* Raden är adresserbar på bil och skift. En bil spänner
+                     numera flera tabellrader, så den som vill åt "hela
+                     BT08/09" kan inte längre gå på rubrikcellen ensam. */
+                  <tr key={shift} data-row={row.label} data-shift={shift} className="align-top">
+                    {i === 0 && (
+                      <>
+                        <RowHeader row={row} rowSpan={data.shifts.length} />
+                        <td
+                          rowSpan={data.shifts.length}
+                          className="border-b border-(--color-line) px-3 py-2 text-(--color-muted) whitespace-nowrap"
+                        >
+                          {row.sublabel}
+                        </td>
+                      </>
+                    )}
+                    <td
+                      className={`border-l border-(--color-line) px-2 text-xs whitespace-nowrap text-(--color-muted) ${
+                        tomRad ? "py-0.5" : "py-1.5"
+                      } ${
+                        i === data.shifts.length - 1 ? "border-b" : ""
+                      } ${shift === "night" ? "bg-gray-50" : ""}`}
+                    >
+                      <span aria-hidden>{SHIFT_ICON[shift]}</span>{" "}
+                      {data.shifts.length > 1 ? SHIFT_LABEL[shift] : ""}
+                    </td>
+                    {data.dates.map((date) => {
+                      const inactive = row.inactiveDates.includes(date);
+                      return (
+                        <td
+                          key={date}
+                          className={`border-l border-(--color-line) p-0 ${
+                            i === data.shifts.length - 1 ? "border-b" : ""
+                          } ${inactive ? "bg-gray-50" : shift === "night" ? "bg-gray-50/60" : ""}`}
+                        >
+                          {inactive ? (
+                            <div className="px-3 py-2 text-xs text-(--color-muted)">–</div>
+                          ) : (
                             <ShiftCell
-                              key={shift}
                               row={row}
                               date={date}
                               shift={shift}
-                              showShiftIcon={showShiftIcon}
                               showVehicle={showVehicle}
+                              compact={tomRad}
                               onOpen={onOpen}
                               dropCheck={dropCheck}
                             />
-                          ))
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  );
+                })}
               </Fragment>
             );
           })}

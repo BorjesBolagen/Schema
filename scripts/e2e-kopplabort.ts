@@ -69,7 +69,7 @@ await page.getByRole("button", { name: "Klar" }).click();
 await page.waitForTimeout(600);
 
 /* ---- Riktningen ska vara läsbar ---- */
-const rad = page.locator('tbody tr:has(th:text-is("BT08/09"))');
+const rad = page.locator('tbody tr[data-row="BT08/09"]');
 const upp = rad.locator("span[aria-label='Upp']").first();
 const ner = rad.locator("span[aria-label='Ner']").first();
 check("riktningen upp finns med egen etikett", (await upp.count()) > 0);
