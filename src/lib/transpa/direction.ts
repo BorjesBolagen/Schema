@@ -40,5 +40,13 @@ export function parseDirection(name: string | null | undefined): Direction | nul
   return upp ? "upp" : "ner";
 }
 
-export const DIRECTION_ARROW: Record<Direction, string> = { upp: "↑", ner: "↓" };
+/**
+ * Fyllda trianglar, inte tunna pilar.
+ *
+ * ↑ och ↓ är hårstrecksglyfer som försvinner i ett tätt rutnät, och de
+ * två skiljer sig bara på vilken ände spetsen sitter. ▲ och ▼ har en
+ * massa att känna igen på avstånd och läses även i utskrift, där färgen
+ * kan falla bort.
+ */
+export const DIRECTION_ARROW: Record<Direction, string> = { upp: "▲", ner: "▼" };
 export const DIRECTION_LABEL: Record<Direction, string> = { upp: "Upp", ner: "Ner" };

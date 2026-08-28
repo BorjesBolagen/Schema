@@ -257,3 +257,88 @@ export async function clearWeekAssignments(
 
   return removed.length;
 }
+
+export interface CrewRemovalFacts {
+  /** Bas-schemarader som kopplar personen till en rad på tavlan. */
+  baseSchedule: number;
+  /** Utlagda pass personen har kvar på tavlan, oavsett vecka. */
+  assignments: number;
+}
+
+/**
+ * Vad som hänger på en person på just den här tavlan.
+ *
+ * Kopplingarna följer med när hen tas bort ur bemanningen — de betyder
+ * ingenting utan henne. Passen gör det inte: de är utfört eller planerat
+ * arbete, och att radera dem för att någon ska bort ur en lista vore att
+ * kasta något annat än det man bad om.
+ */
+export async function crewRemovalFacts(
+  boardId: string,
+  employeeId: string,
+  dbOverride?: Db,
+): Promise<CrewRemovalFacts> {
+  const db = dbOverride ?? getDb();
+
+  const base = await db
+    .select({ id: schema.baseSchedule.id })
+    .from(schema.baseSchedule)
+    .where(
+      and(
+        eq(schema.baseSchedule.boardId, boardId),
+        eq(schema.baseSchedule.employeeId, employeeId),
+      ),
+    );
+
+  const rows = await db
+    .select({ id: schema.boardRow.id })
+    .from(schema.boardRow)
+    .where(eq(schema.boardRow.boardId, boardId));
+
+  const assignments = rows.length
+    ? await db
+        .select({ id: schema.assignment.id })
+        .from(schema.assignment)
+        .where(
+          and(
+            inArray(
+              schema.assignment.boardRowId,
+              rows.map((r) => r.id),
+            ),
+            eq(schema.assignment.employeeId, employeeId),
+          ),
+        )
+    : [];
+
+  return { baseSchedule: base.length, assignments: assignments.length };
+}
+
+/**
+ * Kopplar bort en person från en tavla.
+ *
+ * Bemanningen och bas-schemat på den här tavlan försvinner. Personen
+ * själv rörs inte — hen hör till registret, inte till tavlan — och
+ * hennes utlagda pass står kvar. Ett pass är planerat arbete; det ska
+ * tas bort medvetet, inte som bieffekt av att någon städar en lista.
+ */
+export async function removeFromCrew(
+  boardId: string,
+  employeeId: string,
+  dbOverride?: Db,
+): Promise<void> {
+  const db = dbOverride ?? getDb();
+
+  await db
+    .delete(schema.baseSchedule)
+    .where(
+      and(
+        eq(schema.baseSchedule.boardId, boardId),
+        eq(schema.baseSchedule.employeeId, employeeId),
+      ),
+    );
+  await db
+    .delete(schema.boardCrew)
+    .where(
+      and(eq(schema.boardCrew.boardId, boardId), eq(schema.boardCrew.employeeId, employeeId)),
+    );
+}

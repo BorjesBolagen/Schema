@@ -8,6 +8,11 @@
   --color-accent: #1f5fa9;
   --color-warn: #b45309;
   --color-danger: #b42318;
+
+  /* Riktningen på ett linjepass. Två tydligt skilda kulörer, båda mörka
+     nog för vit text ovanpå — upp mot Stockholm, ner mot hemmaorten. */
+  --color-dir-up: #1f5fa9;
+  --color-dir-down: #7a3ea3;
 }
 
 html {

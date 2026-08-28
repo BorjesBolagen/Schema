@@ -1,6 +1,7 @@
 import type { BoardWeek } from "@/server/board-week";
 import { shortDayLabel } from "@/lib/week";
 import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
+import { personColor } from "@/lib/person-color";
 
 /**
  * Samma vecka med personerna som rader.
@@ -41,9 +42,17 @@ export function PersonGrid({ data }: { data: BoardWeek }) {
         <tbody>
           {data.personRows.map((p) => (
             <tr key={p.employeeId} className="align-top">
+              {/* Samma kulör som personens kort i bilvyn, som en rand i
+                  stället för en fyllning: här är hela raden personen, så
+                  en fylld cell skulle bara måla rubrikkolumnen. */}
               <th
                 scope="row"
-                className="sticky left-0 z-10 border-b border-(--color-line) bg-white px-3 py-2 text-left font-medium whitespace-nowrap"
+                style={{
+                  borderLeftColor: personColor(p.employeeId).border,
+                  printColorAdjust: "exact",
+                  WebkitPrintColorAdjust: "exact",
+                }}
+                className="sticky left-0 z-10 border-b border-l-4 border-(--color-line) bg-white px-3 py-2 text-left font-medium whitespace-nowrap"
               >
                 {p.name}
               </th>

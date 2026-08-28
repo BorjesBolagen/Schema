@@ -1,37 +1,117 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CrewMember } from "@/server/board-week";
 import { ROLE_LABEL, type PickerEmployee } from "./CrewPicker";
 import { shortDayLabel } from "@/lib/week";
 import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
 import { dragId } from "./dnd";
+import {
+  crewRemovalPreview,
+  detachFromBoard,
+  type CrewRemovalFacts,
+} from "@/app/actions";
 
-function CrewCard({ member, dates }: { member: CrewMember; dates: string[] }) {
+function CrewCard({
+  member,
+  dates,
+  boardSlug,
+}: {
+  member: CrewMember;
+  dates: string[];
+  boardSlug: string;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId.crew(member.employeeId),
   });
+  const [facts, setFacts] = useState<CrewRemovalFacts | null>(null);
+  const [pending, startTransition] = useTransition();
 
   const byDate = new Map(member.workDays.map((w) => [w.date, w.shift]));
   const unplaced = new Set(member.unplaced.map((w) => w.date));
+
+  /* Bekräftelsen tar över kortet i stället för att öppna en ruta: den
+     hör till just den här personen, och en ruta mitt på skärmen skulle
+     tappa bort vem det gällde. */
+  if (facts) {
+    return (
+      <li className="rounded border border-(--color-danger) bg-white px-2 py-1.5">
+        <span className="block text-sm font-medium">{member.name}</span>
+        <p className="mt-1 text-[11px] text-(--color-muted)">
+          Kopplas bort från tavlan.
+          {facts.baseSchedule > 0 &&
+            ` ${facts.baseSchedule} ${
+              facts.baseSchedule === 1 ? "bas-schemarad tas" : "bas-schemarader tas"
+            } bort.`}
+          {facts.assignments > 0
+            ? ` ${facts.assignments} ${
+                facts.assignments === 1 ? "utlagt pass står" : "utlagda pass står"
+              } kvar — rensa veckan om de ska bort.`
+            : " Personen finns kvar i registret."}
+        </p>
+        <div className="mt-1.5 flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            onClick={() => setFacts(null)}
+            className="text-(--color-muted) hover:underline"
+          >
+            Avbryt
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                await detachFromBoard({ boardSlug, employeeId: member.employeeId });
+                setFacts(null);
+              })
+            }
+            className="rounded bg-(--color-danger) px-2 py-0.5 text-white disabled:opacity-50"
+          >
+            {pending ? "Kopplar bort …" : "Koppla bort"}
+          </button>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`cursor-grab rounded border border-(--color-line) bg-white px-2 py-1.5 ${
+      className={`group cursor-grab rounded border border-(--color-line) bg-white px-2 py-1.5 ${
         isDragging ? "opacity-40" : ""
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium">{member.name}</span>
-        {member.absence && (
-          <span title={member.absence.type} className="text-xs">
-            {ABSENCE_ICON[member.absence.type] ?? "•"}
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {member.absence && (
+            <span title={member.absence.type} className="text-xs">
+              {ABSENCE_ICON[member.absence.type] ?? "•"}
+            </span>
+          )}
+          {/* Hela kortet är dragyta — det är så personer läggs ut, och
+              den ytan ska inte krympa för en knapps skull. Knappen
+              stoppar därför pekaren innan dragsensorn hinner starta. */}
+          <button
+            type="button"
+            disabled={pending}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() =>
+              startTransition(async () =>
+                setFacts(await crewRemovalPreview({ boardSlug, employeeId: member.employeeId })),
+              )
+            }
+            aria-label={`Koppla bort ${member.name} från tavlan`}
+            title="Koppla bort från tavlan"
+            className="cursor-pointer text-xs leading-none text-(--color-muted) opacity-0 transition hover:text-(--color-danger) focus:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+          >
+            ✕
+          </button>
+        </span>
       </div>
       <div className="mt-0.5 flex gap-1 text-[11px]">
         {dates.map((d) => {
@@ -105,11 +185,13 @@ export function CrewPanel({
   crew,
   dates,
   allEmployees,
+  boardSlug,
   onOpenPicker,
 }: {
   crew: CrewMember[];
   dates: string[];
   allEmployees: PickerEmployee[];
+  boardSlug: string;
   onOpenPicker: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: dragId.crewPanel });
@@ -198,7 +280,7 @@ export function CrewPanel({
           </h3>
           <ul className="mt-1.5 space-y-1.5">
             {unplaced.map((m) => (
-              <CrewCard key={m.employeeId} member={m} dates={dates} />
+              <CrewCard key={m.employeeId} member={m} dates={dates} boardSlug={boardSlug} />
             ))}
           </ul>
         </>
@@ -211,7 +293,7 @@ export function CrewPanel({
           </h3>
           <ul className="mt-1.5 space-y-1.5">
             {rest.map((m) => (
-              <CrewCard key={m.employeeId} member={m} dates={dates} />
+              <CrewCard key={m.employeeId} member={m} dates={dates} boardSlug={boardSlug} />
             ))}
           </ul>
         </>

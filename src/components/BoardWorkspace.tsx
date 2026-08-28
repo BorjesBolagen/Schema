@@ -332,6 +332,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           crew={data.crew}
           dates={data.dates}
           allEmployees={allEmployees}
+          boardSlug={data.board.slug}
           onOpenPicker={() => setPicker(true)}
         />
       </div>

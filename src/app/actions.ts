@@ -13,10 +13,13 @@ import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 import { fetchWeekShifts, type ShiftFetchResult } from "@/server/shift-fetch";
 import {
   clearWeekAssignments,
+  crewRemovalFacts,
+  removeFromCrew,
   weekClearFacts,
+  type CrewRemovalFacts,
   type WeekClearFacts,
 } from "@/server/boards";
-export type { WeekClearFacts };
+export type { CrewRemovalFacts, WeekClearFacts };
 export type { ShiftFetchResult };
 
 const refresh = (slug: string) => revalidatePath(`/tavla/${slug}`);
@@ -447,6 +450,32 @@ export async function clearWeek(input: {
   const removed = await clearWeekAssignments(board.id, from, to);
   refresh(input.boardSlug);
   return { removed };
+}
+
+/** Vad en bortkoppling skulle ta med sig — underlag för bekräftelsen. */
+export async function crewRemovalPreview(input: {
+  boardSlug: string;
+  employeeId: string;
+}): Promise<CrewRemovalFacts> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  return crewRemovalFacts(board.id, input.employeeId);
+}
+
+/**
+ * Kopplar bort en person från tavlan.
+ *
+ * Tavlan slås upp på slug och personen anges för sig, så bortkopplingen
+ * inte kan träffa en tavla behörigheten inte gäller.
+ */
+export async function detachFromBoard(input: {
+  boardSlug: string;
+  employeeId: string;
+}): Promise<void> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  await removeFromCrew(board.id, input.employeeId);
+  refresh(input.boardSlug);
 }
 
 /** Sätter vilka personer tavlan hanterar. */

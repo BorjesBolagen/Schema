@@ -23,16 +23,24 @@ const rad = (label: string) => page.locator(`tbody tr:has(th:text-is("${label}")
 await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
 
+/* Riktningen känns igen på sin etikett, inte på sin glyf: glyfen är
+   ett designval som får ändras utan att testet blir rött. */
+const riktningar = (label: string) => rad(label).locator("span[aria-label='Upp'], span[aria-label='Ner']");
+
 /* ---- Linjebilen visar riktning ---- */
 const linjen = await rad("BT08/09").innerText();
 console.log("  BT08/09:", linjen.replace(/\s+/g, " ").slice(0, 150));
-check("linjebilen visar pilar", /[↑↓]/.test(linjen));
-check("både upp och ner förekommer", linjen.includes("↑") && linjen.includes("↓"));
+check("linjebilen visar riktning", (await riktningar("BT08/09").count()) > 0);
+check(
+  "både upp och ner förekommer",
+  (await rad("BT08/09").locator("span[aria-label='Upp']").count()) > 0 &&
+    (await rad("BT08/09").locator("span[aria-label='Ner']").count()) > 0,
+);
 
-/* ---- En rad som inte är linjebil visar ingen pil ---- */
+/* ---- En rad som inte är linjebil visar ingen riktning ---- */
 const annan = await rad("BT13/14").innerText();
 console.log("  BT13/14:", annan.replace(/\s+/g, " ").slice(0, 110));
-check("rad som inte är linjebil visar ingen pil", !/[↑↓]/.test(annan));
+check("rad som inte är linjebil visar ingen riktning", (await riktningar("BT13/14").count()) === 0);
 
 /* ---- Riktningen har en läsbar förklaring ---- */
 const pil = rad("BT08/09").locator("span[title*='ur passets benämning']").first();
@@ -53,8 +61,7 @@ await page.waitForTimeout(1500);
 await page.getByRole("button", { name: "Klar" }).click();
 await page.waitForTimeout(1200);
 
-const efterByte = await rad("BT08/09").innerText();
-check("bytesbil visar ingen riktning", !/[↑↓]/.test(efterByte));
+check("bytesbil visar ingen riktning", (await riktningar("BT08/09").count()) === 0);
 
 /* ---- Och tillbaka igen ---- */
 await page.getByRole("button", { name: "⚙ Tavla" }).click();
@@ -63,7 +70,18 @@ await page.locator("li[data-row-id]").first().locator("select").nth(2).selectOpt
 await page.waitForTimeout(1500);
 await page.getByRole("button", { name: "Klar" }).click();
 await page.waitForTimeout(1200);
-check("riktningen kommer tillbaka", /[↑↓]/.test(await rad("BT08/09").innerText()));
+check("riktningen kommer tillbaka", (await riktningar("BT08/09").count()) > 0);
+
+/* Tydligheten är hela poängen med markeringen: två saker ska skilja
+   upp från ner, så den håller även i svartvit utskrift. */
+const upp = rad("BT08/09").locator("span[aria-label='Upp']").first();
+const ner = rad("BT08/09").locator("span[aria-label='Ner']").first();
+check("upp och ner har olika glyf", (await upp.innerText()) !== (await ner.innerText()));
+check(
+  "upp och ner har olika färg",
+  (await upp.evaluate((el) => getComputedStyle(el).backgroundColor)) !==
+    (await ner.evaluate((el) => getComputedStyle(el).backgroundColor)),
+);
 
 await page.screenshot({ path: "/tmp/riktning.png" });
 await browser.close();

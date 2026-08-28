@@ -8,6 +8,7 @@ import { shortDayLabel } from "@/lib/week";
 import { DIRECTION_ARROW, DIRECTION_LABEL } from "@/lib/transpa/direction";
 import { showsDirection } from "@/lib/vehicle-kind";
 import type { VehicleKind } from "@/lib/vehicle-kind";
+import { personColor } from "@/lib/person-color";
 import { ConflictMark } from "./ConflictBadge";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 import { dragId } from "./dnd";
@@ -28,19 +29,33 @@ export interface DropCheck {
  */
 function DirectionMark({ cell }: { cell: CellAssignment }) {
   if (!cell.employeeName) return null;
+
+  /* Okänd riktning tar samma plats men ritar ingenting.
+     Platsen behövs för att namnen ska stå i linje — ett hopp i
+     vänsterkanten läses som struktur och drar ögat till fel sak. Men en
+     synlig markering behövs inte: dagpassen på en linjebil saknar
+     nästan alltid riktning, och fem frågetecken i rad tar bara
+     uppmärksamhet från de pilar som faktiskt säger något. */
   if (!cell.direction) {
     return (
       <span
-        className="text-xs text-(--color-muted)"
+        className="inline-block h-4 w-4 shrink-0"
         title="Riktningen står inte i passets benämning i TransPA"
-      >
-        –
-      </span>
+      />
     );
   }
+
+  /* Två saker skiljer upp från ner, inte en: både formen på triangeln
+     och färgen. Färgen ensam faller bort i svartvit utskrift och för
+     den som inte skiljer rött från grönt; formen ensam är för lik på
+     avstånd i ett tätt rutnät. */
+  const upp = cell.direction === "upp";
   return (
     <span
-      className="text-xs font-semibold text-(--color-accent)"
+      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] leading-none font-bold text-white ${
+        upp ? "bg-(--color-dir-up)" : "bg-(--color-dir-down)"
+      }`}
+      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       title={`${DIRECTION_LABEL[cell.direction]} — ur passets benämning i TransPA`}
       aria-label={DIRECTION_LABEL[cell.direction]}
     >
@@ -62,15 +77,33 @@ function Pass({
     id: dragId.assignment(cell.id),
   });
 
+  /* Kulören hör till personen, inte till cellen: samma person ser
+     likadan ut på varje dag och varje rad, så ögat kan följa en linje
+     utan att läsa namnen. Tomma pass och fritextnoteringar får ingen
+     kulör — det finns ingen att känna igen. */
+  const color = cell.employeeId ? personColor(cell.employeeId) : null;
+
   return (
     <span
       ref={setNodeRef}
       {...listeners}
       {...attributes}
       onClick={() => onOpen(cell)}
-      className={`flex cursor-grab items-center gap-1 rounded px-1 hover:bg-blue-50 ${
-        isDragging ? "opacity-40" : ""
-      } ${cell.source === "generated" ? "" : "font-medium"}`}
+      style={
+        color
+          ? {
+              backgroundColor: color.bg,
+              borderColor: color.border,
+              printColorAdjust: "exact",
+              WebkitPrintColorAdjust: "exact",
+            }
+          : undefined
+      }
+      className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-0.5 ${
+        color ? "" : "border-transparent hover:bg-blue-50"
+      } ${isDragging ? "opacity-40" : ""} ${
+        cell.source === "generated" ? "" : "font-medium"
+      }`}
       title={cell.source === "generated" ? "Från bas-schemat" : "Ändrad för hand"}
     >
       {showsDirection(vehicleKind) && <DirectionMark cell={cell} />}
@@ -155,7 +188,7 @@ function ShiftCell({
         isOver ? (problem ? "bg-red-100 outline outline-(--color-danger)" : "bg-blue-100") : ""
       }`}
     >
-      <div className="flex flex-wrap items-center gap-x-2">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         {showShiftIcon && (
           <span className="text-xs text-(--color-muted)" title={SHIFT_LABEL[shift]}>
             {SHIFT_ICON[shift]}
