@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import type { VehicleKind } from "@/lib/vehicle-kind";
@@ -301,6 +301,10 @@ export interface FillResult {
   created: number;
   removed: number;
   unplaced: Array<{ employeeId: string; date: string; shift: Shift }>;
+  /** Personer som var kopplade till flera bilar lika starkt samma dag. */
+  ambiguous: Array<{ employeeId: string; name: string; alternatives: number }>;
+  /** Arbetsdagar på ett skift tavlan inte visar. */
+  hiddenShift: number;
 }
 
 /**
@@ -320,7 +324,7 @@ export async function fillWeek(input: {
   await assertBoardAccess(user, { slug: input.boardSlug });
   const db = getDb();
   const [board] = await db.select().from(schema.board).where(eq(schema.board.id, input.boardId));
-  if (!board) return { created: 0, removed: 0, unplaced: [] };
+  if (!board) return { created: 0, removed: 0, unplaced: [], ambiguous: [], hiddenShift: 0 };
 
   const dates = weekDates(input.year, input.week, board.weekStartsOn, board.visibleWeekdays);
   const first = dates[0];
@@ -332,10 +336,14 @@ export async function fillWeek(input: {
     .select()
     .from(schema.boardCrew)
     .where(eq(schema.boardCrew.boardId, board.id));
+  /* Ordnad läsning, inte godtycklig radordning: planWeek väljer första
+     träffen när flera bas-schemarader gäller samma dag, och det valet
+     ska bli detsamma varje gång. */
   const baseRows = await db
     .select()
     .from(schema.baseSchedule)
-    .where(eq(schema.baseSchedule.boardId, board.id));
+    .where(eq(schema.baseSchedule.boardId, board.id))
+    .orderBy(asc(schema.baseSchedule.sortOrder), asc(schema.baseSchedule.id));
   const rows = await db
     .select()
     .from(schema.boardRow)
@@ -378,6 +386,7 @@ export async function fillWeek(input: {
   const plan = planWeek({
     workDays,
     baseSchedule: baseRows.map((b) => ({
+      id: b.id,
       boardRowId: b.boardRowId,
       employeeId: b.employeeId,
       shift: b.shift,
@@ -391,6 +400,8 @@ export async function fillWeek(input: {
       fromDate: a.fromDate,
       toDate: a.toDate,
     })),
+    rows: rows.map((r) => ({ id: r.id, validFrom: r.validFrom, validTo: r.validTo })),
+    visibleShifts: board.visibleShifts as Shift[],
     dates,
   });
 
@@ -403,8 +414,39 @@ export async function fillWeek(input: {
       .values(plan.create.map((c) => ({ ...c, source: "generated" as const })));
   }
 
+  /* Tvetydigheterna sammanfattas per person: samma koppling ger samma
+     val varje dag i veckan, så fem rader om samma sak vore brus. */
+  const namn = new Map(
+    (
+      await db
+        .select({
+          id: schema.employee.id,
+          firstName: schema.employee.firstName,
+          lastName: schema.employee.lastName,
+        })
+        .from(schema.employee)
+        .where(
+          inArray(schema.employee.id, [...new Set(plan.ambiguous.map((a) => a.employeeId))]),
+        )
+    ).map((e) => [e.id, `${e.firstName} ${e.lastName}`.trim()]),
+  );
+  const perPerson = new Map<string, number>();
+  for (const a of plan.ambiguous) {
+    perPerson.set(a.employeeId, Math.max(perPerson.get(a.employeeId) ?? 0, a.alternatives.length));
+  }
+
   refresh(input.boardSlug);
-  return { created: plan.create.length, removed: plan.deleteIds.length, unplaced: plan.unplaced };
+  return {
+    created: plan.create.length,
+    removed: plan.deleteIds.length,
+    unplaced: plan.unplaced,
+    ambiguous: [...perPerson].map(([employeeId, alternatives]) => ({
+      employeeId,
+      name: namn.get(employeeId) ?? "Okänd",
+      alternatives,
+    })),
+    hiddenShift: plan.hiddenShift.length,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -497,7 +539,6 @@ export async function setCrew(
 }
 
 export async function addBaseScheduleEntry(input: {
-  boardId: string;
   boardRowId: string;
   employeeId: string;
   shift: Shift;
@@ -505,23 +546,89 @@ export async function addBaseScheduleEntry(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await requireBoardBySlug(user, input.boardSlug);
   const db = getDb();
+
+  /* Raden måste tillhöra tavlan. Ett radid som kommer från klienten är
+     inte bundet till den tavla behörigheten gäller. */
+  const [row] = await db
+    .select({ id: schema.boardRow.id })
+    .from(schema.boardRow)
+    .where(
+      and(eq(schema.boardRow.id, input.boardRowId), eq(schema.boardRow.boardId, board.id)),
+    );
+  if (!row) return;
+
+  /* Ny koppling hamnar sist bland personens befintliga på samma skift,
+     så den inte tar över en ordning någon redan satt. */
+  const syskon = await db
+    .select({ sortOrder: schema.baseSchedule.sortOrder })
+    .from(schema.baseSchedule)
+    .where(
+      and(
+        eq(schema.baseSchedule.boardId, board.id),
+        eq(schema.baseSchedule.employeeId, input.employeeId),
+        eq(schema.baseSchedule.shift, input.shift),
+      ),
+    );
+
   await db.insert(schema.baseSchedule).values({
-    boardId: input.boardId,
+    boardId: board.id,
     boardRowId: input.boardRowId,
     employeeId: input.employeeId,
     shift: input.shift,
     validFrom: input.validFrom,
+    sortOrder: syskon.length ? Math.max(...syskon.map((s) => s.sortOrder)) + 1 : 0,
   });
+  refresh(input.boardSlug);
+}
+
+/**
+ * Sätter ordningen mellan en persons kopplingar på samma skift.
+ *
+ * Ordningen avgör vilken bil som vinner när flera kopplingar gäller
+ * samma dag. Utan den valdes en av dem ur databasens godtyckliga
+ * radordning, och personen kunde byta bil mellan två tryck på "Fyll
+ * veckan".
+ */
+export async function reorderBaseSchedule(input: {
+  boardSlug: string;
+  ids: string[];
+}): Promise<void> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  const db = getDb();
+
+  const egna = await db
+    .select({ id: schema.baseSchedule.id })
+    .from(schema.baseSchedule)
+    .where(
+      and(
+        eq(schema.baseSchedule.boardId, board.id),
+        inArray(schema.baseSchedule.id, input.ids),
+      ),
+    );
+  const tillatna = new Set(egna.map((e) => e.id));
+
+  let ordning = 0;
+  for (const id of input.ids) {
+    if (!tillatna.has(id)) continue;
+    await db
+      .update(schema.baseSchedule)
+      .set({ sortOrder: ordning++ })
+      .where(eq(schema.baseSchedule.id, id));
+  }
   refresh(input.boardSlug);
 }
 
 export async function removeBaseScheduleEntry(id: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await requireBoardBySlug(user, boardSlug);
   const db = getDb();
-  await db.delete(schema.baseSchedule).where(eq(schema.baseSchedule.id, id));
+  // Avgränsat till tavlan: id:t kommer från klienten och är inte bundet.
+  await db
+    .delete(schema.baseSchedule)
+    .where(and(eq(schema.baseSchedule.id, id), eq(schema.baseSchedule.boardId, board.id)));
   refresh(boardSlug);
 }
 

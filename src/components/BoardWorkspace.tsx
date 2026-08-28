@@ -271,6 +271,19 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
             {fillReport.created} pass utlagda
             {fillReport.unplaced.length > 0 &&
               `, ${new Set(fillReport.unplaced.map((u) => u.employeeId)).size} personer utan bil`}
+            {fillReport.hiddenShift > 0 &&
+              `, ${fillReport.hiddenShift} pass på skift tavlan inte visar`}
+          </span>
+        )}
+
+        {/* En person kopplad till flera bilar lika starkt: valet står,
+            men det är en gissning som någon behöver reda ut. Tyst vore
+            värre — då byter personen bil av sig själv nästa gång. */}
+        {fillReport && fillReport.ambiguous.length > 0 && (
+          <span className="text-xs text-(--color-warn)">
+            {fillReport.ambiguous.map((a) => a.name).join(", ")}{" "}
+            {fillReport.ambiguous.length === 1 ? "är kopplad" : "är kopplade"} till flera bilar
+            samma skift — sätt ordning i Bas-schema.
           </span>
         )}
 

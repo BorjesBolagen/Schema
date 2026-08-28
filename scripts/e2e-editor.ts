@@ -68,7 +68,8 @@ await page.waitForTimeout(500);
 const dialog = page.locator("div.fixed");
 await pick(dialog.locator("select").nth(0), "BT57/58");
 await pick(dialog.locator("select").nth(1), "Max Kellgren");
-await page.getByRole("button", { name: "Koppla" }).click();
+// "Koppla" matchar även "Koppla bort" i bemanningen — därför exakt, i rutan.
+await dialog.getByRole("button", { name: "Koppla", exact: true }).click();
 await page.waitForTimeout(1200);
 const coupled = (await dialog.locator("table tbody tr").allInnerTexts()).some(
   (t) => t.includes("BT57/58") && t.includes("Max Kellgren"),

@@ -106,7 +106,8 @@ await page.waitForTimeout(500);
 const dialog = page.locator("div.fixed");
 await dialog.locator("select").nth(0).selectOption({ label: "Bil 1" });
 await pick(dialog.locator("select").nth(1), "Björn Westman");
-await page.getByRole("button", { name: "Koppla" }).click();
+// "Koppla" matchar även "Koppla bort" i bemanningen — därför exakt, i rutan.
+await dialog.getByRole("button", { name: "Koppla", exact: true }).click();
 await page.waitForTimeout(1500);
 check(
   "bas-schemat kopplar person till bil",

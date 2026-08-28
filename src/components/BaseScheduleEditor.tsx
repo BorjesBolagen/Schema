@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import type { BoardWeek } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
-import { addBaseScheduleEntry, removeBaseScheduleEntry } from "@/app/actions";
+import {
+  addBaseScheduleEntry,
+  removeBaseScheduleEntry,
+  reorderBaseSchedule,
+} from "@/app/actions";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
 /**
@@ -32,6 +36,36 @@ export function BaseScheduleEditor({
     "Okänd";
   const rowOf = (id: string) => data.rows.find((r) => r.id === id);
 
+  /**
+   * Tabellen grupperas på person och skift, för det är där ordningen
+   * betyder något: den avgör vilken bil som vinner när flera kopplingar
+   * gäller samma dag. Sorterad på rad-etikett, som tidigare, gick det
+   * inte att se vilka som konkurrerade med varandra.
+   */
+  const ordnade = useMemo(() => {
+    const grupper = new Map<string, typeof data.baseSchedule>();
+    for (const e of data.baseSchedule) {
+      const key = `${e.employeeId}|${e.shift}`;
+      grupper.set(key, [...(grupper.get(key) ?? []), e]);
+    }
+    for (const [, g] of grupper) g.sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+
+    return [...grupper.values()]
+      .sort((a, b) =>
+        nameOf(a[0].employeeId).localeCompare(nameOf(b[0].employeeId), "sv") ||
+        a[0].shift.localeCompare(b[0].shift),
+      )
+      .flatMap((syskon) => syskon.map((entry, index) => ({ entry, syskon, index })));
+    // nameOf läser data, som är hela beroendet.
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Byter plats på två kopplingar och skriver om hela gruppens ordning. */
+  const flytta = (syskon: typeof data.baseSchedule, index: number, steg: number) => {
+    const ids = syskon.map((e) => e.id);
+    [ids[index], ids[index + steg]] = [ids[index + steg], ids[index]];
+    startTransition(() => reorderBaseSchedule({ boardSlug: data.board.slug, ids }));
+  };
+
   const canAdd =
     rowId &&
     employeeId &&
@@ -57,50 +91,77 @@ export function BaseScheduleEditor({
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="bg-gray-50 text-left text-xs text-(--color-muted)">
-              <th className="px-5 py-2 font-medium">Rad</th>
-              <th className="px-3 py-2 font-medium">Person</th>
+              <th className="px-5 py-2 font-medium">Person</th>
               <th className="px-3 py-2 font-medium">Skift</th>
+              <th className="px-3 py-2 font-medium">Rad</th>
+              <th className="px-3 py-2 font-medium">Ordning</th>
               <th className="px-5 py-2" />
             </tr>
           </thead>
           <tbody>
             {data.baseSchedule.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-5 py-6 text-sm text-(--color-muted)">
+                <td colSpan={5} className="px-5 py-6 text-sm text-(--color-muted)">
                   Inget bas-schema ännu. Koppla en person till en bil nedan.
                 </td>
               </tr>
             )}
-            {data.baseSchedule
-              .slice()
-              .sort(
-                (a, b) =>
-                  (rowOf(a.boardRowId)?.label ?? "").localeCompare(
-                    rowOf(b.boardRowId)?.label ?? "",
-                    "sv",
-                  ) || nameOf(a.employeeId).localeCompare(nameOf(b.employeeId), "sv"),
-              )
-              .map((entry) => (
-                <tr key={entry.id} className="border-t border-(--color-line)">
-                  <td className="px-5 py-1.5 font-medium">{rowOf(entry.boardRowId)?.label ?? "—"}</td>
-                  <td className="px-3 py-1.5">{nameOf(entry.employeeId)}</td>
-                  <td className="px-3 py-1.5">
-                    {SHIFT_ICON[entry.shift]} {SHIFT_LABEL[entry.shift]}
-                  </td>
-                  <td className="px-5 py-1.5 text-right">
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() =>
-                        startTransition(() => removeBaseScheduleEntry(entry.id, data.board.slug))
-                      }
-                      className="text-xs text-(--color-danger) hover:underline"
-                    >
-                      Ta bort
-                    </button>
-                  </td>
-                </tr>
-              ))}
+            {ordnade.map(({ entry, syskon, index }) => (
+              <tr key={entry.id} className="border-t border-(--color-line)">
+                <td className="px-5 py-1.5 font-medium">{nameOf(entry.employeeId)}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap">
+                  {SHIFT_ICON[entry.shift]} {SHIFT_LABEL[entry.shift]}
+                </td>
+                <td className="px-3 py-1.5">{rowOf(entry.boardRowId)?.label ?? "—"}</td>
+                <td className="px-3 py-1.5">
+                  {/* Ordningen betyder bara något när personen är kopplad
+                      till mer än en bil på samma skift. Där den inte gör
+                      det ska den inte heller synas som ett val. */}
+                  {syskon.length < 2 ? (
+                    <span className="text-xs text-(--color-muted)">—</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs">
+                      <span
+                        className={index === 0 ? "font-semibold" : "text-(--color-muted)"}
+                        title={index === 0 ? "Vinner när båda gäller samma dag" : undefined}
+                      >
+                        {index + 1}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={pending || index === 0}
+                        onClick={() => flytta(syskon, index, -1)}
+                        aria-label="Flytta upp"
+                        className="px-0.5 leading-none disabled:opacity-25"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pending || index === syskon.length - 1}
+                        onClick={() => flytta(syskon, index, 1)}
+                        aria-label="Flytta ner"
+                        className="px-0.5 leading-none disabled:opacity-25"
+                      >
+                        ▼
+                      </button>
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-1.5 text-right">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      startTransition(() => removeBaseScheduleEntry(entry.id, data.board.slug))
+                    }
+                    className="text-xs text-(--color-danger) hover:underline"
+                  >
+                    Ta bort
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -157,7 +218,6 @@ export function BaseScheduleEditor({
             onClick={() =>
               startTransition(() =>
                 addBaseScheduleEntry({
-                  boardId: data.board.id,
                   boardRowId: rowId,
                   employeeId,
                   shift,
