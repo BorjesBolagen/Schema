@@ -57,6 +57,13 @@
       "when": 1787657714770,
       "tag": "0007_shift_ends_at",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787657715770,
+      "tag": "0008_rotation",
+      "breakpoints": true
     }
   ]
 }

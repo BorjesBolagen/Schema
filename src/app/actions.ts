@@ -6,6 +6,7 @@ import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
+import { cyclePosition } from "@/lib/rotation";
 import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
@@ -393,6 +394,8 @@ export async function fillWeek(input: {
       validFrom: b.validFrom,
       validTo: b.validTo,
       sortOrder: b.sortOrder,
+      cycleWeeks: b.cycleWeeks,
+      weekdays: b.weekdays,
     })),
     existing,
     absences: absences.map((a) => ({
@@ -402,6 +405,7 @@ export async function fillWeek(input: {
     })),
     rows: rows.map((r) => ({ id: r.id, validFrom: r.validFrom, validTo: r.validTo })),
     visibleShifts: board.visibleShifts as Shift[],
+    cyclePosition: cyclePosition(input.week, board.cycleLength, board.cycleOffset),
     dates,
   });
 
@@ -584,6 +588,35 @@ export async function addBaseScheduleEntry(input: {
 }
 
 /**
+ * Sätter när en koppling gäller.
+ *
+ * Tomma listor sparas som null, inte som tomma arrayer: null och tomt
+ * betyder samma sak för planeringen ("alltid"), och två stavningar av
+ * samma sak i databasen är en för mycket.
+ */
+export async function setBaseScheduleRule(input: {
+  boardSlug: string;
+  id: string;
+  cycleWeeks: number[];
+  weekdays: number[];
+}): Promise<void> {
+  const user = await requireUser();
+  const board = await requireBoardBySlug(user, input.boardSlug);
+  const db = getDb();
+
+  await db
+    .update(schema.baseSchedule)
+    .set({
+      cycleWeeks: input.cycleWeeks.length ? [...input.cycleWeeks].sort((a, b) => a - b) : null,
+      weekdays: input.weekdays.length ? [...input.weekdays].sort((a, b) => a - b) : null,
+    })
+    .where(
+      and(eq(schema.baseSchedule.id, input.id), eq(schema.baseSchedule.boardId, board.id)),
+    );
+  refresh(input.boardSlug);
+}
+
+/**
  * Sätter ordningen mellan en persons kopplingar på samma skift.
  *
  * Ordningen avgör vilken bil som vinner när flera kopplingar gäller
@@ -643,6 +676,8 @@ export async function removeBaseScheduleEntry(id: string, boardSlug: string): Pr
 export async function updateBoard(input: {
   boardId: string;
   boardSlug: string;
+  cycleLength?: number;
+  cycleOffset?: number;
   name?: string;
   weekStartsOn?: number;
   visibleWeekdays?: number[];

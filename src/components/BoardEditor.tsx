@@ -32,6 +32,8 @@ import {
 import { boardRemovalPreview, removeBoard } from "@/app/basedata-actions";
 import type { BoardRemovalFacts } from "@/server/boards";
 import { SHIFT_LABEL } from "./shift";
+import { cyclePosition, MAX_CYCLE_WEEKS } from "@/lib/rotation";
+import { isoWeek, toIso } from "@/lib/week";
 
 export interface EditableRow {
   id: string;
@@ -49,6 +51,8 @@ export interface EditableBoard {
   slug: string;
   name: string;
   weekStartsOn: number;
+  cycleLength: number;
+  cycleOffset: number;
   visibleWeekdays: number[];
   visibleShifts: string[];
   cellFields: string[];
@@ -310,6 +314,50 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete 
               <option value={0}>Söndag</option>
             </select>
           </label>
+
+          {/* Rullande schema. Längd 1 betyder ingen rotation, och då är
+              förskjutningen meningslös och göms. */}
+          <label className="text-xs text-(--color-muted)">
+            Rullande schema
+            <select
+              defaultValue={board.cycleLength}
+              onChange={(e) => set({ cycleLength: Number(e.target.value) })}
+              className="mt-1 w-full rounded border border-(--color-line) px-2 py-1.5 text-sm text-(--color-ink)"
+              title="Antal veckor innan schemat upprepar sig"
+            >
+              <option value={1}>Ingen rotation</option>
+              {Array.from({ length: MAX_CYCLE_WEEKS - 1 }, (_, i) => i + 2).map((n) => (
+                <option key={n} value={n}>
+                  {n} veckor
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {board.cycleLength > 1 && (
+            <label className="text-xs text-(--color-muted)">
+              Vecka {new Date().getFullYear()} v.1 är cykelvecka
+              <select
+                defaultValue={board.cycleOffset}
+                onChange={(e) => set({ cycleOffset: Number(e.target.value) })}
+                className="mt-1 w-full rounded border border-(--color-line) px-2 py-1.5 text-sm text-(--color-ink)"
+              >
+                {Array.from({ length: board.cycleLength }, (_, i) => i).map((offset) => (
+                  <option key={offset} value={offset}>
+                    {cyclePosition(1, board.cycleLength, offset)}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px]">
+                Nu: v.{isoWeek(toIso(new Date())).week} är cykelvecka{" "}
+                {cyclePosition(
+                  isoWeek(toIso(new Date())).week,
+                  board.cycleLength,
+                  board.cycleOffset,
+                )}
+              </span>
+            </label>
+          )}
 
           <div className="text-xs text-(--color-muted)">
             Dagar som visas

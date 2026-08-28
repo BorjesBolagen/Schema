@@ -114,6 +114,8 @@ export interface BoardWeek {
     validTo: string | null;
     /** Avgör vilken bil som vinner när flera kopplingar gäller samma dag. */
     sortOrder: number;
+    cycleWeeks: number[] | null;
+    weekdays: number[] | null;
   }>;
 }
 
@@ -160,6 +162,8 @@ interface BoardWeekBundle {
     validFrom: string | null;
     validTo: string | null;
     sortOrder: number;
+    cycleWeeks: number[] | null;
+    weekdays: number[] | null;
   }>;
   all_boards: Array<{ id: string; name: string }>;
   assignments: Array<{
@@ -283,7 +287,8 @@ async function runGetBoardWeek(
       (select coalesce(json_agg(json_build_object(
         'id', b.id, 'boardRowId', b.board_row_id, 'employeeId', b.employee_id,
         'shift', b.shift, 'validFrom', b.valid_from, 'validTo', b.valid_to,
-        'sortOrder', b.sort_order)), '[]'::json)
+        'sortOrder', b.sort_order, 'cycleWeeks', b.cycle_weeks,
+        'weekdays', b.weekdays)), '[]'::json)
        from base_schedule b where b.board_id = ${board.id}) as base_schedule,
 
       (select coalesce(json_agg(json_build_object(
@@ -559,6 +564,8 @@ async function runGetBoardWeek(
       validFrom: b.validFrom,
       validTo: b.validTo,
       sortOrder: b.sortOrder,
+      cycleWeeks: b.cycleWeeks,
+      weekdays: b.weekdays,
     })),
   };
 }

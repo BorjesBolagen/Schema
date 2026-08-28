@@ -379,6 +379,8 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
             slug: data.board.slug,
             name: data.board.name,
             weekStartsOn: data.board.weekStartsOn,
+            cycleLength: data.board.cycleLength,
+            cycleOffset: data.board.cycleOffset,
             visibleWeekdays: data.board.visibleWeekdays,
             visibleShifts: data.board.visibleShifts,
             cellFields: data.board.cellFields,

@@ -333,3 +333,116 @@ describe("planWeek respekterar tavlan och raderna", () => {
     expect(plan.hiddenShift).toEqual([]);
   });
 });
+
+/**
+ * De tre rotationsformerna Johan beskrev.
+ *
+ * Alla tre ryms i samma modell: cykelns längd sitter på tavlan, och
+ * varje koppling säger vilka veckodagar och vilka cykelveckor den
+ * gäller. Tomt betyder alla, så en stående koppling är oförändrad.
+ */
+describe("planWeek med rotation", () => {
+  /* 1. Olika bilar olika dagar, likadant varje vecka. */
+  it("kopplar olika bilar till olika veckodagar", () => {
+    const plan = planWeek({
+      workDays: work("e1", [MON, TUE, WED, THU]),
+      baseSchedule: [
+        base({ boardRowId: "BT13", employeeId: "e1", weekdays: [2, 4] }), // tis, tors
+        base({ boardRowId: "BT24", employeeId: "e1", weekdays: [1, 3] }), // mån, ons
+      ],
+      existing: [],
+      dates: WEEK,
+    });
+
+    expect(plan.create.map((c) => [c.date, c.boardRowId])).toEqual([
+      [MON, "BT24"],
+      [TUE, "BT13"],
+      [WED, "BT24"],
+      [THU, "BT13"],
+    ]);
+  });
+
+  /* 2. Olika bilar olika veckor. */
+  it("byter bil mellan cykelveckor", () => {
+    const schema = [
+      base({ boardRowId: "BT13", employeeId: "e1", cycleWeeks: [1, 2] }),
+      base({ boardRowId: "BT24", employeeId: "e1", cycleWeeks: [3, 4] }),
+    ];
+    const bilen = (position: number) =>
+      planWeek({
+        workDays: work("e1", [MON]),
+        baseSchedule: schema,
+        existing: [],
+        cyclePosition: position,
+        dates: WEEK,
+      }).create[0]?.boardRowId;
+
+    expect([1, 2, 3, 4].map(bilen)).toEqual(["BT13", "BT13", "BT24", "BT24"]);
+  });
+
+  /* 3. Fyra veckors rotation med olika bilar olika dagar inom cykeln. */
+  it("klarar olika bilar olika dagar inom en fyraveckorscykel", () => {
+    const schema = [
+      base({ boardRowId: "BT13", employeeId: "e1", cycleWeeks: [1], weekdays: [1, 2] }),
+      base({ boardRowId: "BT24", employeeId: "e1", cycleWeeks: [1], weekdays: [3, 4] }),
+      base({ boardRowId: "BT50", employeeId: "e1", cycleWeeks: [2] }),
+    ];
+    const veckan = (position: number) =>
+      planWeek({
+        workDays: work("e1", [MON, TUE, WED, THU]),
+        baseSchedule: schema,
+        existing: [],
+        cyclePosition: position,
+        dates: WEEK,
+      }).create.map((c) => c.boardRowId);
+
+    expect(veckan(1)).toEqual(["BT13", "BT13", "BT24", "BT24"]);
+    expect(veckan(2)).toEqual(["BT50", "BT50", "BT50", "BT50"]);
+  });
+
+  /* Poängen med specificitet: ett undantag ska kunna läggas ovanpå en
+     stående koppling utan att huvudregeln skrivs om. */
+  it("låter en mer preciserad koppling slå den stående", () => {
+    const plan = planWeek({
+      workDays: work("e1", [MON, TUE]),
+      baseSchedule: [
+        base({ boardRowId: "BT13", employeeId: "e1" }), // alltid
+        base({ boardRowId: "BT24", employeeId: "e1", weekdays: [2] }), // utom tisdagar
+      ],
+      existing: [],
+      dates: WEEK,
+    });
+
+    expect(plan.create.map((c) => [c.date, c.boardRowId])).toEqual([
+      [MON, "BT13"],
+      [TUE, "BT24"],
+    ]);
+    // Det är inget tvetydigt: den ena är uttryckligen snävare.
+    expect(plan.ambiguous).toEqual([]);
+  });
+
+  it("lämnar en stående koppling oförändrad", () => {
+    const plan = planWeek({
+      workDays: work("e1", [MON, TUE]),
+      baseSchedule: [base({ boardRowId: "BT13", employeeId: "e1" })],
+      existing: [],
+      cyclePosition: 3,
+      dates: WEEK,
+    });
+
+    expect(plan.create).toHaveLength(2);
+    expect(plan.create.every((c) => c.boardRowId === "BT13")).toBe(true);
+  });
+
+  it("räknar personen som ej utlagd när ingen koppling gäller den dagen", () => {
+    const plan = planWeek({
+      workDays: work("e1", [MON, TUE]),
+      baseSchedule: [base({ boardRowId: "BT13", employeeId: "e1", weekdays: [2] })],
+      existing: [],
+      dates: WEEK,
+    });
+
+    expect(plan.create.map((c) => c.date)).toEqual([TUE]);
+    expect(plan.unplaced.map((u) => u.date)).toEqual([MON]);
+  });
+});

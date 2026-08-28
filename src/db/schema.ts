@@ -325,6 +325,18 @@ export const board = pgTable("board", {
   cellFields: text("cell_fields").array().notNull().default(["driver", "vehicle"]),
 
   sortOrder: integer("sort_order").notNull().default(0),
+
+  /**
+   * Rullande schema: cykelns längd i veckor och var i den vecka 1 hamnar.
+   *
+   * Värnamos fyra pass roterar över fyra veckor, och Excelbladet löser
+   * det med en tabell som mappar veckonummer till passnummer. Det är en
+   * cykel med en förskjutning, och den hör till tavlan eftersom hela
+   * tavlan delar samma tabell. Längd 1 betyder ingen rotation.
+   */
+  cycleLength: integer("cycle_length").notNull().default(1),
+  cycleOffset: integer("cycle_offset").notNull().default(0),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -429,6 +441,18 @@ export const baseSchedule = pgTable(
       .notNull()
       .references(() => employee.id, { onDelete: "cascade" }),
     shift: shift("shift").notNull().default("day"),
+
+    /**
+     * När kopplingen gäller. Tomt betyder alltid, inte aldrig.
+     *
+     * Utan dem säger bas-schemat bara *vilken bil* en person hör till,
+     * och det räcker för den som kör samma bil varje dag. Den som kör
+     * olika bilar olika dagar, eller olika bilar olika veckor i en
+     * rotation, behöver kunna skriva ned just det.
+     */
+    cycleWeeks: integer("cycle_weeks").array(),
+    weekdays: integer("weekdays").array(),
+
     validFrom: date("valid_from"),
     validTo: date("valid_to"),
     sortOrder: integer("sort_order").notNull().default(0),

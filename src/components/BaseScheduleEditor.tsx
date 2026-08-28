@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import type { BoardWeek } from "@/server/board-week";
 import type { Shift } from "@/lib/work-days";
 import {
   addBaseScheduleEntry,
   removeBaseScheduleEntry,
   reorderBaseSchedule,
+  setBaseScheduleRule,
 } from "@/app/actions";
+import { describeRule, MAX_CYCLE_WEEKS } from "@/lib/rotation";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
 /**
@@ -18,6 +20,125 @@ import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
  * av deras arbetsdagar. Det är så BT13/14 kan bemannas av en person
  * fyra dagar och av en annan den femte utan att någon skriver in det.
  */
+/** Måndag först — så läses ett schema. */
+const VECKODAGAR: Array<[number, string]> = [
+  [1, "Mån"],
+  [2, "Tis"],
+  [3, "Ons"],
+  [4, "Tors"],
+  [5, "Fre"],
+  [6, "Lör"],
+  [0, "Sön"],
+];
+
+/**
+ * När en koppling gäller.
+ *
+ * Två rader kryssrutor och inget mer: veckodagar, och — bara när tavlan
+ * har en rotation — vilka veckor i cykeln. Ingenting ikryssat betyder
+ * alltid, vilket sägs rakt ut i stället för att lämnas åt gissning: det
+ * är den vanligaste inställningen och den minst uppenbara.
+ */
+function RuleEditor({
+  entry,
+  cycleLength,
+  pending,
+  onSave,
+  onClose,
+}: {
+  entry: { cycleWeeks: number[] | null; weekdays: number[] | null };
+  cycleLength: number;
+  pending: boolean;
+  onSave: (cycleWeeks: number[], weekdays: number[]) => void;
+  onClose: () => void;
+}) {
+  const [weekdays, setWeekdays] = useState<number[]>(entry.weekdays ?? []);
+  const [cycleWeeks, setCycleWeeks] = useState<number[]>(entry.cycleWeeks ?? []);
+
+  const toggle = (list: number[], set: (v: number[]) => void, value: number) =>
+    set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+
+  const Chip = ({
+    on,
+    label,
+    onClick,
+  }: {
+    on: boolean;
+    label: string;
+    onClick: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded border px-2 py-1 text-xs ${
+        on
+          ? "border-(--color-accent) bg-(--color-accent) text-white"
+          : "border-(--color-line) bg-white text-(--color-muted) hover:border-(--color-accent)"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="w-24 text-xs text-(--color-muted)">Veckodagar</span>
+        {VECKODAGAR.map(([n, label]) => (
+          <Chip
+            key={n}
+            on={weekdays.includes(n)}
+            label={label}
+            onClick={() => toggle(weekdays, setWeekdays, n)}
+          />
+        ))}
+        {weekdays.length === 0 && (
+          <span className="text-xs text-(--color-muted)">inga valda = alla dagar</span>
+        )}
+      </div>
+
+      {cycleLength > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-24 text-xs text-(--color-muted)">Cykelvecka</span>
+          {Array.from({ length: Math.min(cycleLength, MAX_CYCLE_WEEKS) }, (_, i) => i + 1).map(
+            (n) => (
+              <Chip
+                key={n}
+                on={cycleWeeks.includes(n)}
+                label={String(n)}
+                onClick={() => toggle(cycleWeeks, setCycleWeeks, n)}
+              />
+            ),
+          )}
+          {cycleWeeks.length === 0 && (
+            <span className="text-xs text-(--color-muted)">inga valda = alla veckor</span>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 text-xs">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onSave(cycleWeeks, weekdays)}
+          className="rounded bg-(--color-accent) px-3 py-1 text-white disabled:opacity-50"
+        >
+          {pending ? "Sparar …" : "Spara"}
+        </button>
+        <button type="button" onClick={onClose} className="text-(--color-muted) hover:underline">
+          Avbryt
+        </button>
+        {cycleLength === 1 && (
+          <span className="text-(--color-muted)">
+            Tavlan har ingen rotation — sätt cykellängd under ⚙ Tavla för att kunna välja
+            cykelvecka.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function BaseScheduleEditor({
   data,
   onClose,
@@ -29,6 +150,8 @@ export function BaseScheduleEditor({
   const [employeeId, setEmployeeId] = useState(data.crew[0]?.employeeId ?? "");
   const [shift, setShift] = useState<Shift>(data.shifts[0] ?? "day");
   const [pending, startTransition] = useTransition();
+  /** Vilken kopplings regel som redigeras. Null = ingen. */
+  const [oppen, setOppen] = useState<string | null>(null);
 
   const nameOf = (id: string) =>
     data.crew.find((c) => c.employeeId === id)?.name ??
@@ -94,6 +217,7 @@ export function BaseScheduleEditor({
               <th className="px-5 py-2 font-medium">Person</th>
               <th className="px-3 py-2 font-medium">Skift</th>
               <th className="px-3 py-2 font-medium">Rad</th>
+              <th className="px-3 py-2 font-medium">Gäller</th>
               <th className="px-3 py-2 font-medium">Ordning</th>
               <th className="px-5 py-2" />
             </tr>
@@ -101,18 +225,33 @@ export function BaseScheduleEditor({
           <tbody>
             {data.baseSchedule.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-6 text-sm text-(--color-muted)">
+                <td colSpan={6} className="px-5 py-6 text-sm text-(--color-muted)">
                   Inget bas-schema ännu. Koppla en person till en bil nedan.
                 </td>
               </tr>
             )}
             {ordnade.map(({ entry, syskon, index }) => (
-              <tr key={entry.id} className="border-t border-(--color-line)">
+              <Fragment key={entry.id}>
+              <tr className="border-t border-(--color-line)">
                 <td className="px-5 py-1.5 font-medium">{nameOf(entry.employeeId)}</td>
                 <td className="px-3 py-1.5 whitespace-nowrap">
                   {SHIFT_ICON[entry.shift]} {SHIFT_LABEL[entry.shift]}
                 </td>
                 <td className="px-3 py-1.5">{rowOf(entry.boardRowId)?.label ?? "—"}</td>
+                <td className="px-3 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOppen(oppen === entry.id ? null : entry.id)}
+                    className={`rounded px-1.5 py-0.5 text-xs hover:bg-gray-100 ${
+                      describeRule(entry, data.board.cycleLength) === "alltid"
+                        ? "text-(--color-muted)"
+                        : "font-medium text-(--color-accent)"
+                    }`}
+                    title="Ändra när kopplingen gäller"
+                  >
+                    {describeRule(entry, data.board.cycleLength)} ▾
+                  </button>
+                </td>
                 <td className="px-3 py-1.5">
                   {/* Ordningen betyder bara något när personen är kopplad
                       till mer än en bil på samma skift. Där den inte gör
@@ -161,6 +300,30 @@ export function BaseScheduleEditor({
                   </button>
                 </td>
               </tr>
+              {oppen === entry.id && (
+                <tr className="bg-gray-50">
+                  <td colSpan={6} className="px-5 py-3">
+                    <RuleEditor
+                      entry={entry}
+                      cycleLength={data.board.cycleLength}
+                      pending={pending}
+                      onSave={(cycleWeeks, weekdays) =>
+                        startTransition(async () => {
+                          await setBaseScheduleRule({
+                            boardSlug: data.board.slug,
+                            id: entry.id,
+                            cycleWeeks,
+                            weekdays,
+                          });
+                          setOppen(null);
+                        })
+                      }
+                      onClose={() => setOppen(null)}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

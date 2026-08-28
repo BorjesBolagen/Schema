@@ -1,4 +1,6 @@
 import type { Shift, WorkDay } from "@/lib/work-days";
+import { appliesTo, specificity } from "@/lib/rotation";
+import { weekdayOf } from "@/lib/week";
 
 export interface BaseScheduleEntry {
   /** Behövs som sista utslagsgivare när två rader är lika specifika. */
@@ -9,6 +11,10 @@ export interface BaseScheduleEntry {
   validFrom: string | null;
   validTo: string | null;
   sortOrder: number;
+  /** Cykelveckor kopplingen gäller. Tomt eller null betyder alla. */
+  cycleWeeks?: number[] | null;
+  /** Veckodagar 0–6 kopplingen gäller. Tomt eller null betyder alla. */
+  weekdays?: number[] | null;
 }
 
 export interface ExistingAssignment {
@@ -97,6 +103,14 @@ export function planWeek(input: {
   rows?: RowValidity[];
   /** Skiften tavlan visar. Utelämnas de accepteras alla. */
   visibleShifts?: Shift[];
+  /**
+   * Var i tavlans rotation veckan ligger, räknat från 1.
+   *
+   * Räknas av anroparen ur veckans nummer, inte per datum: med söndag
+   * som veckostart hör den första dagen till föregående ISO-vecka, och
+   * då skulle en dag i veckan hamna på fel plats i cykeln.
+   */
+  cyclePosition?: number;
   dates: string[];
 }): WeekPlan {
   const inWeek = new Set(input.dates);
@@ -155,11 +169,15 @@ export function planWeek(input: {
     );
     if (away) continue;
 
+    const nu = { position: input.cyclePosition ?? 1, weekday: weekdayOf(wd.date) };
     const candidates = input.baseSchedule.filter(
       (e) =>
         e.employeeId === wd.employeeId &&
         e.shift === wd.shift &&
         covers(e, wd.date) &&
+        /* Rotationen: gäller kopplingen den här veckodagen och den här
+           veckan i cykeln? Tomma listor betyder alla. */
+        appliesTo({ cycleWeeks: e.cycleWeeks ?? null, weekdays: e.weekdays ?? null }, nu) &&
         /* En inställd linje ska inte bemannas. Raden kan ha avslutats
            mitt i veckan, så giltigheten prövas per dag. */
         (!rowById.has(e.boardRowId) || covers(rowById.get(e.boardRowId)!, wd.date)),
@@ -171,19 +189,28 @@ export function planWeek(input: {
     }
 
     /* Ordningen måste vara bestämd hela vägen ned.
-       sortOrder ensamt räckte inte: ingenting satte det, så alla rader
-       låg på 0 och valet avgjordes av databasens godtyckliga radordning.
-       Följden var att en person kopplad till två bilar kunde byta bil
-       mellan två tryck på "Fyll veckan", utan att något sagt ifrån.
-       id är sista utslagsgivare — inte meningsfullt i sig, men stabilt. */
+
+       Först specificitet: en koppling som pekar ut både cykelvecka och
+       veckodag är skriven för just det här tillfället och slår den
+       stående kopplingen. Utan det gick ett undantag inte att lägga
+       ovanpå en regel — man vore tvungen att skriva om huvudregeln.
+
+       Sedan sortOrder, som planeraren sätter. Sist id, som inte betyder
+       något i sig men är stabilt: sortOrder ensamt räckte inte, för
+       ingenting satte det, och valet avgjordes då av databasens
+       godtyckliga radordning. */
+    const rank = (e: BaseScheduleEntry) =>
+      specificity({ cycleWeeks: e.cycleWeeks ?? null, weekdays: e.weekdays ?? null });
     const rows = [...candidates].sort(
-      (a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id),
+      (a, b) => rank(b) - rank(a) || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id),
     );
     const target = rows[0];
 
-    /* Lika sortOrder betyder att ingen sagt vilken som gäller. Valet
-       står, men det ska synas. */
-    const equallyRanked = rows.filter((r) => r.sortOrder === target.sortOrder);
+    /* Lika specifika och lika ordnade betyder att ingen sagt vilken som
+       gäller. Valet står, men det ska synas. */
+    const equallyRanked = rows.filter(
+      (r) => rank(r) === rank(target) && r.sortOrder === target.sortOrder,
+    );
     if (equallyRanked.length > 1) {
       ambiguous.push({
         employeeId: wd.employeeId,

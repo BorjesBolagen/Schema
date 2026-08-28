@@ -4,7 +4,7 @@
 -- Går att köra om. Det som redan finns hoppas över, det som fattas
 -- läggs på. Kör den alltså i sin helhet även mot en databas som
 -- redan är uppsatt — du behöver inte veta hur långt den kommit.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql
 
 BEGIN;
 
@@ -596,6 +596,26 @@ ALTER TABLE "board_row" ADD COLUMN IF NOT EXISTS "vehicle_kind" "vehicle_kind" D
 
 ALTER TABLE "transpa_shift" ADD COLUMN IF NOT EXISTS "ends_at" timestamp with time zone;
 
+-- 0008_rotation.sql
+-- Rullande scheman.
+--
+-- Bas-schemat sade bara *vilken bil* en person hör till, och det räcker
+-- för den som kör samma bil varje dag. Den som kör olika bilar olika
+-- dagar, eller olika bilar olika veckor i en rotation, kunde inte
+-- skrivas ned alls.
+--
+-- Cykeln hör till tavlan: i Värnamo delar hela tavlan samma
+-- vecka→pass-tabell, precis som i Excel. Längd 1 betyder ingen
+-- rotation, vilket är förvalet, så befintliga tavlor är oförändrade.
+--
+-- cycle_weeks och weekdays är nullbara. Tomt betyder alltid, inte
+-- aldrig — en koppling utan angivna dagar är en stående koppling.
+
+ALTER TABLE "board" ADD COLUMN IF NOT EXISTS "cycle_length" integer DEFAULT 1 NOT NULL;
+ALTER TABLE "board" ADD COLUMN IF NOT EXISTS "cycle_offset" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "cycle_weeks" integer[];
+ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "weekdays" integer[];
+
 -- Markera migrationerna som körda, så npm run db:migrate inte
 -- försöker köra dem igen mot samma databas.
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -620,5 +640,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '347e303d73
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '347e303d73a62497984afc90077045204a7f86f4180f42394bea2ccadd3110e8');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'ec4bfd13f9d121540fcbac335e5bf33ced0e7b1df380826312815f2011c1638c', 1787657714770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'ec4bfd13f9d121540fcbac335e5bf33ced0e7b1df380826312815f2011c1638c');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '3bf0923e349d0a6744ce92950400d1d2477770df82bbba48c5e69ec366934a00', 1787657715770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '3bf0923e349d0a6744ce92950400d1d2477770df82bbba48c5e69ec366934a00');
 
 COMMIT;
