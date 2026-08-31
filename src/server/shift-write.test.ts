@@ -69,7 +69,7 @@ afterAll(async () => {
 });
 
 /** Fejkar token, GET av passet och PUT:en — och räknar vad som anropades. */
-function fakeApi(over: { putStatus?: number } = {}) {
+function fakeApi(over: { putStatus?: number; getStatus?: number; getBody?: string } = {}) {
   const calls: Array<{ method: string; url: string; body?: unknown }> = [];
   const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -84,6 +84,9 @@ function fakeApi(over: { putStatus?: number } = {}) {
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     if ((init?.method ?? "GET") === "GET") {
+      if (over.getStatus && over.getStatus !== 200) {
+        return new Response(over.getBody ?? "", { status: over.getStatus });
+      }
       return new Response(
         JSON.stringify({
           id: "s1",
@@ -207,6 +210,66 @@ describe("flytten", () => {
     const [rad] = await recentWrites(1, db);
     expect(rad.status).toBe("failed");
     expect(rad.responseStatus).toBe(403);
+  });
+});
+
+/**
+ * Vad felet säger.
+ *
+ * Johan tryckte på knappen och fick "0 skickade, 1 misslyckades" — och
+ * ingenting mer, någonstans. Felet fångas här och sparas, så det når
+ * aldrig Vercels logg, och Supabase loggar inte ett lyckat INSERT. Står
+ * skälet inte i meddelandet står det ingenstans.
+ */
+describe("felet ska gå att förstå", () => {
+  it("säger vilket av de två anropen som föll", async () => {
+    const läsfel = await sendShiftMove(
+      flytt(prov),
+      fakeApi({ getStatus: 404, getBody: '{"detail":"Shift not found"}' }).impl,
+      db,
+    );
+    expect(läsfel.message).toContain("läsa tillbaka passet");
+
+    const skrivfel = await sendShiftMove(flytt(prov), fakeApi({ putStatus: 403 }).impl, db);
+    expect(skrivfel.message).toContain("skriva passet");
+  });
+
+  /* Ett 404 utan problem+json gav förut bara "404 från /v1/shifts/s1".
+     Råsvaret är då det enda som finns att gå på. */
+  it("tar med råsvaret när det inte är problem+json", async () => {
+    const { impl } = fakeApi({ getStatus: 404, getBody: "<html>Not Found</html>" });
+    const result = await sendShiftMove(flytt(prov), impl, db);
+    expect(result.message).toContain("Not Found");
+  });
+
+  it("säger tomt svar i stället för att tiga när kroppen är tom", async () => {
+    const { impl } = fakeApi({ getStatus: 500, getBody: "" });
+    const result = await sendShiftMove(flytt(prov), impl, db);
+    expect(result.message).toContain("tomt svar");
+  });
+
+  /* Skälet måste finnas kvar efter en omladdning — det är hela
+     poängen med utkorgen. */
+  it("sparar skälet i utkorgen, inte bara i svaret", async () => {
+    const { impl } = fakeApi({ putStatus: 403 });
+    await sendShiftMove(flytt(prov), impl, db);
+    const [rad] = await recentWrites(1, db);
+    expect(rad.responseBody).toContain("skriva passet");
+  });
+
+  /* Fallande sortering före limit. Med stigande sortering plockades de
+     äldsta raderna och vändes sedan — loggen visade alltså de första
+     skrivningarna någonsin i stället för de senaste. */
+  it("visar de senaste skrivningarna, inte de första", async () => {
+    for (let i = 0; i < 4; i++) {
+      await sendShiftMove(
+        { ...flytt(prov), to: `2026-08-2${i}` },
+        fakeApi({ putStatus: 403 }).impl,
+        db,
+      );
+    }
+    const [senast] = await recentWrites(2, db);
+    expect(senast.summary).toContain("2026-08-23");
   });
 });
 

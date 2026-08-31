@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { TranspaClient, TranspaApiError } from "@/lib/transpa/client";
 import { credentialsForTenant, SHIFT_WRITE_SCOPES } from "@/lib/transpa/auth";
@@ -28,6 +28,30 @@ export interface SendMoveResult {
 
 /** Så mycket av svaret som sparas. Ett helt felsvar kan vara långt. */
 const MAX_RESPONSE = 2000;
+
+/**
+ * Kör ett anrop och namnger vilket det var om det faller.
+ *
+ * En flytt är två anrop mot samma URL — läs tillbaka, skriv — och de
+ * misslyckas på olika sätt av olika skäl. Utan namnet är felet
+ * "TransPA svarade 404 på /v1/shifts/abc" i båda fallen, och det säger
+ * inte om passet saknas eller om skrivningen nekas.
+ */
+async function steg<T>(vad: string, gör: () => Promise<T>): Promise<T> {
+  try {
+    return await gör();
+  } catch (error) {
+    if (error instanceof TranspaApiError) {
+      throw new TranspaApiError(
+        `vid ${vad}: ${error.message}`,
+        error.status,
+        error.path,
+        error.problem,
+      );
+    }
+    throw error;
+  }
+}
 
 export async function sendShiftMove(
   input: {
@@ -99,10 +123,17 @@ export async function sendShiftMove(
     /* Färskt pass, inte vår kopia: PUT ersätter hela passet, så ett
        fält som hunnit ändras i TransPA skulle annars skrivas tillbaka
        till sitt gamla värde. */
-    const current = await client.request<TranspaShift>(path, { scopes: SHIFT_WRITE_SCOPES });
+    /* Vilket av de två anropen som föll är halva svaret på varför.
+       Utan steget i meddelandet är "TransPA svarade 404" lika förenligt
+       med "passet finns inte" som med "vi får inte skriva". */
+    const current = await steg("läsa tillbaka passet", () =>
+      client.request<TranspaShift>(path, { scopes: SHIFT_WRITE_SCOPES }),
+    );
     const body = buildMovePayload(current, shiftDays(input));
 
-    const response = await client.put<unknown>(path, body, { scopes: SHIFT_WRITE_SCOPES });
+    const response = await steg("skriva passet", () =>
+      client.put<unknown>(path, body, { scopes: SHIFT_WRITE_SCOPES }),
+    );
     await spara("ok", 200, response === null ? null : JSON.stringify(response), body);
     return { ok: true, message: `${summary}. Skickat till TransPA.` };
   } catch (error) {
@@ -135,12 +166,16 @@ export async function sendShiftMove(
  */
 export async function recentWrites(limit = 20, dbOverride?: Db) {
   const db = dbOverride ?? getDb();
-  const rows = await db
+  /* Sorteringen måste vara fallande *före* limit. Stigande sortering
+     med limit plockar de äldsta raderna och vänder sedan på dem — så
+     fort loggen har fler än limit rader visade den alltså de första
+     skrivningarna någonsin i stället för de senaste, vilket är precis
+     tvärtemot vad den som just fått ett fel behöver se. */
+  return db
     .select()
     .from(schema.transpaOutbox)
-    .orderBy(schema.transpaOutbox.createdAt)
+    .orderBy(desc(schema.transpaOutbox.createdAt))
     .limit(limit);
-  return rows.reverse();
 }
 
 /** Vilka i en grupp som får skrivas till. Underlag för knappens läge. */

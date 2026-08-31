@@ -54,13 +54,38 @@ export function SendChangesButton({
           {pending ? "Jämför …" : "4 · Skicka till TransPA"}
         </button>
         {result && (
+          /* Skälet stod tidigare bara i en title-attribut, alltså
+             ingenstans: "0 skickade, 1 misslyckades" utan att det gick
+             att se varför, och felet finns inte i någon serverlogg
+             heller eftersom det fångas och sparas. Nu skrivs det ut. */
           <span
             className={`text-xs ${result.failed > 0 ? "text-(--color-danger)" : "text-(--color-muted)"}`}
-            title={result.messages.join("\n")}
           >
             {result.sent} skickade
             {result.failed > 0 && `, ${result.failed} misslyckades`}
           </span>
+        )}
+        {result && result.messages.length > 0 && (
+          <ul
+            className={`w-full max-w-[80ch] space-y-1 rounded border p-2 text-xs ${
+              result.failed > 0
+                ? "border-red-300 bg-red-50 text-(--color-danger)"
+                : "border-(--color-line) bg-white text-(--color-muted)"
+            }`}
+          >
+            {result.messages.map((m, i) => (
+              <li key={i}>{m}</li>
+            ))}
+            {result.failed > 0 && (
+              <li className="pt-1 text-(--color-muted)">
+                Hela svaret sparas under <strong>Skrivningar till TransPA</strong> på{" "}
+                <a href="/transpa" className="underline">
+                  TransPA-sidan
+                </a>
+                .
+              </li>
+            )}
+          </ul>
         )}
       </>
     );

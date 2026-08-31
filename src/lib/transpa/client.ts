@@ -160,8 +160,14 @@ export class TranspaClient {
       } catch {
         /* svaret var inte problem+json */
       }
+      /* Råsvaret med när det inte är problem+json. Utan det blev
+         meddelandet "404 från /v1/shifts/…" och sa ingenting om
+         varför — och eftersom felet fångas och sparas finns det ingen
+         serverlogg att gå till i stället. */
       throw new TranspaApiError(
-        problem?.detail ?? problem?.title ?? `${response.status} från ${path}`,
+        problem?.detail ??
+          problem?.title ??
+          `${response.status} från ${path}${text ? `: ${text.slice(0, 300)}` : " (tomt svar)"}`,
         response.status,
         path,
         problem,

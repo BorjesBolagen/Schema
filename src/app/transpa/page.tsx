@@ -5,6 +5,7 @@ import { credentialsFromEnv } from "@/lib/transpa/auth";
 import { SyncButton } from "@/components/SyncButton";
 import { CopyReport } from "@/components/CopyReport";
 import { ShiftLookup } from "@/components/ShiftLookup";
+import { WriteLog } from "@/components/WriteLog";
 import { groupWrites, TOPIC_LABEL, writeVerdict } from "@/lib/transpa/write-paths";
 
 export const dynamic = "force-dynamic";
@@ -235,6 +236,19 @@ export default async function TranspaPage() {
           defaultFrom="2026-08-17"
           defaultTo="2026-08-28"
         />
+      </section>
+
+      {/* Skrivloggen näst efter uppslaget. En misslyckad skrivning
+          syns ingen annanstans: felet fångas och sparas, så det når
+          aldrig Vercels logg, och Supabase loggar inte heller ett
+          lyckat INSERT. Står svaret inte här står det ingenstans. */}
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold">Skrivningar till TransPA</h2>
+        <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
+          Varje försök att skicka en schemaändring, med TransPA:s eget svar. Misslyckade
+          försök står kvar — det är där skälet finns när knappen säger att något gick fel.
+        </p>
+        <WriteLog />
       </section>
 
       {report.shiftVariants && report.shiftVariants.length > 0 && (
