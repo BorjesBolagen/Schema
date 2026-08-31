@@ -55,8 +55,86 @@ function Row({ probe }: { probe: EndpointProbe }) {
   );
 }
 
-export default async function TranspaPage() {
+/**
+ * Rubriken, som båda lägena visar.
+ *
+ * Sidan har två: en vilande som inte rör API:t, och en körd. Utan den
+ * här delade biten skulle de två glida isär.
+ */
+function Header() {
+  return (
+    <>
+      <Link href="/" className="text-xs text-(--color-muted) hover:underline">
+        ← Tavlor
+      </Link>
+      <h1 className="mt-1 text-xl font-semibold">TransPA-anslutning</h1>
+    </>
+  );
+}
+
+/**
+ * Diagnostiken körs inte längre av sig själv.
+ *
+ * Den gör ett trettiotal anrop per körning, och sidan hade
+ * force-dynamic — alltså en full svepning varje gång någon öppnade
+ * eller laddade om den. Under felsökningen blev det hundratals anrop på
+ * några dagar, och prenumerationens anropskvot tog slut: TransPA
+ * svarade 429 på skrivningen, med drygt ett och ett halvt dygn kvar
+ * till påfyllning. Kvoten är en delad resurs som synken också lever av,
+ * så den får inte gå åt till att rita om en sida.
+ *
+ * Nu krävs ett aktivt val. ?kor=1 är medvetet en länk och inte en
+ * knapp: en länk visar i webbläsarens adressfält att körningen är på,
+ * och en omladdning av den vilande sidan kostar ingenting.
+ */
+export default async function TranspaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ kor?: string }>;
+}) {
   await requireAdmin();
+  const { kor } = await searchParams;
+
+  if (kor !== "1") {
+    const utanUppgifter = credentialsFromEnv() === null;
+    return (
+      <main className="mx-auto max-w-4xl px-6 py-10">
+        <Header />
+        <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
+          Kontrollen frågar er tenant vad den faktiskt exponerar — ett trettiotal anrop per
+          körning. Den startar inte av sig själv, eftersom anropskvoten är delad med synken
+          och tar slut.
+        </p>
+
+        {utanUppgifter ? (
+          <div className="mt-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm">
+            <p className="font-medium text-(--color-warn)">Inga uppgifter inlagda</p>
+            <p className="mt-1 text-(--color-muted)">
+              Sätt <code>TRANSPA_CLIENT_ID</code>, <code>TRANSPA_CLIENT_SECRET</code> och{" "}
+              <code>TRANSPA_TENANT_ID</code> i miljön.
+            </p>
+          </div>
+        ) : (
+          <Link
+            href="/transpa?kor=1"
+            className="mt-6 inline-block rounded border border-(--color-warn) bg-white px-3 py-1.5 text-sm font-medium text-(--color-warn)"
+          >
+            Kör kontrollen mot TransPA
+          </Link>
+        )}
+
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold">Skrivningar till TransPA</h2>
+          <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
+            Varje försök att skicka en schemaändring, med TransPA:s eget svar. Läses ur
+            databasen och kostar inga anrop.
+          </p>
+          <WriteLog />
+        </section>
+      </main>
+    );
+  }
+
   const report = await probeTenant();
   const known = report.endpoints.filter((e) => e.known);
   const guesses = report.endpoints.filter((e) => !e.known);
@@ -138,14 +216,14 @@ export default async function TranspaPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
-      <Link href="/" className="text-xs text-(--color-muted) hover:underline">
-        ← Tavlor
-      </Link>
-      <h1 className="mt-1 text-xl font-semibold">TransPA-anslutning</h1>
+      <Header />
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-        Sidan frågar er tenant vad den faktiskt exponerar. Vismas genererade klient är föråldrad —
+        <Link href="/transpa" className="underline">
+          ← tillbaka utan att köra om
+        </Link>{" "}
+        · Sidan frågar er tenant vad den faktiskt exponerar. Vismas genererade klient är föråldrad —
         den saknar <code>/v1/trips</code>, som deras egna exempel anropar — så den duger inte som
-        facit. Ladda om sidan för att köra om kontrollen.
+        facit.
       </p>
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller

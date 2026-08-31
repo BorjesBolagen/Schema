@@ -30,9 +30,11 @@ export function SendChangesButton({
   week: number;
 }) {
   const [changes, setChanges] = useState<PendingChanges | null>(null);
-  const [result, setResult] = useState<{ sent: number; failed: number; messages: string[] } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    sent: number;
+    failed: number;
+    messages: string[];
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const ask = () =>
@@ -78,7 +80,8 @@ export function SendChangesButton({
             ))}
             {result.failed > 0 && (
               <li className="pt-1 text-(--color-muted)">
-                Hela svaret sparas under <strong>Skrivningar till TransPA</strong> på{" "}
+                Hela svaret sparas under{" "}
+                <strong>Skrivningar till TransPA</strong> på{" "}
                 <a href="/transpa" className="underline">
                   TransPA-sidan
                 </a>
@@ -123,8 +126,10 @@ export function SendChangesButton({
 
       {(changes.added > 0 || changes.removed > 0) && (
         <p className="mt-2 max-w-[62ch] text-xs text-(--color-muted)">
-          {changes.added > 0 && `${changes.added} pass står på tavlan utan motsvarighet i TransPA. `}
-          {changes.removed > 0 && `${changes.removed} pass i TransPA står ingen på. `}
+          {changes.added > 0 &&
+            `${changes.added} pass står på tavlan utan motsvarighet i TransPA. `}
+          {changes.removed > 0 &&
+            `${changes.removed} pass i TransPA står ingen på. `}
           Sådana skapas eller tas inte bort härifrån — bara flyttar skickas.
         </p>
       )}

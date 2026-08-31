@@ -3,10 +3,12 @@ import {
   TranspaClient,
   TranspaApiError,
   TranspaShapeError,
+  TranspaQuotaError,
   MAX_LIMIT,
   rowsOf,
 } from "./client";
 import { clearTokenCache } from "./auth";
+import { clearQuotaBlock } from "./quota";
 
 const credentials = { clientId: "id", clientSecret: "hemlis", tenantId: "t1" };
 
@@ -31,7 +33,10 @@ function fakeFetch(handler: (url: string, init?: RequestInit) => Response) {
 const listPage = (items: unknown[], nextToken: string | null) =>
   new Response(JSON.stringify({ items, cursor: { nextToken } }));
 
-beforeEach(() => clearTokenCache());
+beforeEach(() => {
+  clearTokenCache();
+  clearQuotaBlock();
+});
 
 describe("TranspaClient", () => {
   it("skickar token och filter", async () => {
@@ -156,5 +161,53 @@ describe("TranspaClient", () => {
     const { impl, calls } = fakeFetch(() => listPage([], null));
     await new TranspaClient({ credentials, fetchImpl: impl }).request("/v1/stationPlaces");
     expect(calls.find((c) => c.includes("/v1/stationPlaces"))!).not.toContain("limit=");
+  });
+});
+
+/**
+ * Kvoten.
+ *
+ * Prenumerationen har ett tak, och över taket svarar TransPA 429. Det
+ * som provas är att felet läses som just det, och att resten av
+ * körningen ställer in i stället för att göra taket värre.
+ */
+describe("429 — kvoten är slut", () => {
+  const kvotsvar = () =>
+    new Response(
+      "Out of call volume quota. Quota will be replenished in 1.16:10:17. You might want to consider upgrading quota capacity for your subscription",
+      { status: 429 },
+    );
+
+  it("blir ett eget fel som säger hur länge till", async () => {
+    const { impl } = fakeFetch(() => kvotsvar());
+    const client = new TranspaClient({ credentials, fetchImpl: impl });
+
+    await expect(client.request("/v1/employees")).rejects.toThrow(TranspaQuotaError);
+    await expect(client.request("/v1/employees")).rejects.toThrow(/1 dygn 16 tim/);
+  });
+
+  /* Det här är hela poängen. Diagnostiksidan gör ett trettiotal anrop
+     per körning; utan spärren går de alla i väg mot ett tak som redan
+     är nått och skjuter påfyllningen framför sig. */
+  it("ställer in följdanropen i stället för att prova igen", async () => {
+    let träffar = 0;
+    const { impl } = fakeFetch(() => {
+      träffar++;
+      return kvotsvar();
+    });
+    const client = new TranspaClient({ credentials, fetchImpl: impl });
+
+    for (let i = 0; i < 5; i++) {
+      await client.request("/v1/employees").catch(() => {});
+    }
+    expect(träffar).toBe(1);
+  });
+
+  it("är fortfarande en TranspaApiError med status 429", async () => {
+    const { impl } = fakeFetch(() => kvotsvar());
+    const client = new TranspaClient({ credentials, fetchImpl: impl });
+    const fel = await client.request("/v1/employees").catch((e: unknown) => e);
+    expect(fel).toBeInstanceOf(TranspaApiError);
+    expect((fel as TranspaApiError).status).toBe(429);
   });
 });

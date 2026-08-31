@@ -19,7 +19,8 @@ export async function WriteLog() {
   if (rader.length === 0) {
     return (
       <p className="text-xs text-(--color-muted)">
-        Ingenting har skickats till TransPA än. Raden skrivs här så fort någon trycker på
+        Ingenting har skickats till TransPA än. Raden skrivs här så fort någon
+        trycker på
         <em> Skicka till TransPA</em>, oavsett om det gick bra eller inte.
       </p>
     );
@@ -46,7 +47,9 @@ export async function WriteLog() {
             </span>
             <span className="text-sm">{r.summary}</span>
             <span className="ml-auto text-(--color-muted)">
-              {r.createdAt instanceof Date ? r.createdAt.toISOString().slice(0, 16).replace("T", " ") : ""}
+              {r.createdAt instanceof Date
+                ? r.createdAt.toISOString().slice(0, 16).replace("T", " ")
+                : ""}
             </span>
           </div>
           <div className="mt-1 font-mono break-all text-(--color-muted)">
@@ -60,7 +63,9 @@ export async function WriteLog() {
           )}
           {r.requestBody && (
             <details className="mt-1">
-              <summary className="cursor-pointer text-(--color-muted)">Skickad kropp</summary>
+              <summary className="cursor-pointer text-(--color-muted)">
+                Skickad kropp
+              </summary>
               <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono">
                 {r.requestBody}
               </pre>

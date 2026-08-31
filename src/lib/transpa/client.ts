@@ -1,4 +1,10 @@
 import { getAccessToken, type TranspaCredentials } from "./auth";
+import {
+  humanDuration,
+  noteQuotaExhausted,
+  parseReplenish,
+  quotaBlockedFor,
+} from "./quota";
 
 export const API_BASE = "https://api.mytranspa.com/publicApi";
 
@@ -28,6 +34,33 @@ export class TranspaApiError extends Error {
   ) {
     super(message);
     this.name = "TranspaApiError";
+  }
+}
+
+/**
+ * Kvoten är slut.
+ *
+ * Egen typ och inte bara "429 bland alla andra fel", för det är det
+ * enda felet där rätt åtgärd är att sluta anropa. Ett 404 lönar sig att
+ * undersöka; ett 429 blir bara värre av att provas igen.
+ */
+export class TranspaQuotaError extends TranspaApiError {
+  constructor(
+    path: string,
+    readonly replenishMs: number | null,
+    detail?: string,
+  ) {
+    super(
+      "TransPA:s anropskvot är slut" +
+        (replenishMs === null
+          ? ""
+          : `. Den fylls på om ${humanDuration(replenishMs)}`) +
+        ". Ingenting skickades." +
+        (detail ? ` (${detail})` : ""),
+      429,
+      path,
+    );
+    this.name = "TranspaQuotaError";
   }
 }
 
@@ -71,7 +104,10 @@ export class TranspaShapeError extends Error {
  * lista. Ett tyst [] är precis det som gjorde att synken rapporterade
  * lyckat utan att ha hämtat en enda person.
  */
-export function rowsOf<T>(response: unknown, path: string): { rows: T[]; key: RowKey } {
+export function rowsOf<T>(
+  response: unknown,
+  path: string,
+): { rows: T[]; key: RowKey } {
   const body = (response ?? {}) as Record<string, unknown>;
   for (const key of ROW_KEYS) {
     if (Array.isArray(body[key])) return { rows: body[key] as T[], key };
@@ -125,7 +161,11 @@ export class TranspaClient {
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const token = await getAccessToken(this.options.credentials, options.scopes, this.fetchImpl);
+    const token = await getAccessToken(
+      this.options.credentials,
+      options.scopes,
+      this.fetchImpl,
+    );
     const url = new URL(this.baseUrl + path);
     if (options.filter) url.searchParams.set("filter", options.filter);
     for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -140,19 +180,37 @@ export class TranspaClient {
     }
     if (options.cursor) url.searchParams.set("cursor", options.cursor);
 
+    /* Kvoten redan känt slut: stoppa här. Diagnostiksidan gör ett
+       trettiotal anrop per körning, och att låta dem gå i väg mot ett
+       tak som redan är nått gör bara nästa påfyllning senare. */
+    const blocked = quotaBlockedFor();
+    if (blocked > 0) throw new TranspaQuotaError(path, blocked);
+
     const method = options.method ?? "GET";
     const response = await this.fetchImpl(url.toString(), {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
-        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(options.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: options.signal,
     });
 
     const text = await response.text();
+    if (response.status === 429) {
+      const replenish = parseReplenish(text);
+      noteQuotaExhausted(replenish);
+      throw new TranspaQuotaError(
+        path,
+        replenish,
+        text.slice(0, 200) || undefined,
+      );
+    }
     if (!response.ok) {
       let problem: Problem | undefined;
       try {
@@ -189,11 +247,19 @@ export class TranspaClient {
    * en token som kan skriva ska inte ligga och vänta på att användas av
    * något som bara skulle läsa.
    */
-  async post<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+  async post<T>(
+    path: string,
+    body: unknown,
+    options: RequestOptions = {},
+  ): Promise<T> {
     return this.request<T>(path, { ...options, method: "POST", body });
   }
 
-  async put<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+  async put<T>(
+    path: string,
+    body: unknown,
+    options: RequestOptions = {},
+  ): Promise<T> {
     return this.request<T>(path, { ...options, method: "PUT", body });
   }
 
@@ -207,12 +273,19 @@ export class TranspaClient {
    * maxPages finns som spärr: en markör som av misstag pekar tillbaka
    * skulle annars ge en oändlig loop mot ett externt API.
    */
-  async list<T>(path: string, options: RequestOptions = {}, maxPages = 100): Promise<T[]> {
+  async list<T>(
+    path: string,
+    options: RequestOptions = {},
+    maxPages = 100,
+  ): Promise<T[]> {
     const out: T[] = [];
     let cursor = options.cursor;
 
     for (let page = 0; page < maxPages; page++) {
-      const response: ListResponse<T> = await this.request(path, { ...options, cursor });
+      const response: ListResponse<T> = await this.request(path, {
+        ...options,
+        cursor,
+      });
       out.push(...rowsOf<T>(response, path).rows);
 
       const next = response.cursor?.nextToken;

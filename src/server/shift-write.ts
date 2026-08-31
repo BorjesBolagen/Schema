@@ -1,10 +1,21 @@
 import "server-only";
 import { desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
-import { TranspaClient, TranspaApiError } from "@/lib/transpa/client";
+import {
+  TranspaClient,
+  TranspaApiError,
+  TranspaQuotaError,
+} from "@/lib/transpa/client";
 import { credentialsForTenant, SHIFT_WRITE_SCOPES } from "@/lib/transpa/auth";
-import { assertMayWriteTo, WriteNotAllowedError } from "@/lib/transpa/write-guard";
-import { buildMovePayload, shiftDays, ShiftMoveError } from "@/lib/transpa/shift-move";
+import {
+  assertMayWriteTo,
+  WriteNotAllowedError,
+} from "@/lib/transpa/write-guard";
+import {
+  buildMovePayload,
+  shiftDays,
+  ShiftMoveError,
+} from "@/lib/transpa/shift-move";
 import type { TranspaShift } from "@/lib/transpa/shifts";
 
 /**
@@ -41,6 +52,9 @@ async function steg<T>(vad: string, gör: () => Promise<T>): Promise<T> {
   try {
     return await gör();
   } catch (error) {
+    /* Kvoten är slut oavsett vilket steg som råkade upptäcka det.
+       "vid skriva passet: kvoten är slut" pekar ut fel sak att laga. */
+    if (error instanceof TranspaQuotaError) throw error;
     if (error instanceof TranspaApiError) {
       throw new TranspaApiError(
         `vid ${vad}: ${error.message}`,
@@ -77,7 +91,9 @@ export async function sendShiftMove(
     .from(schema.employee)
     .where(eq(schema.employee.id, input.employeeId));
 
-  const namn = person ? `${person.firstName} ${person.lastName}`.trim() : "okänd person";
+  const namn = person
+    ? `${person.firstName} ${person.lastName}`.trim()
+    : "okänd person";
   const summary = `Flyttade pass för ${namn}: ${input.from} → ${input.to}`;
   const path = `/v1/shifts/${input.transpaShiftId}`;
 
@@ -94,7 +110,10 @@ export async function sendShiftMove(
       summary,
       method: "PUT",
       path,
-      requestBody: requestBody === undefined ? null : JSON.stringify(requestBody).slice(0, MAX_RESPONSE),
+      requestBody:
+        requestBody === undefined
+          ? null
+          : JSON.stringify(requestBody).slice(0, MAX_RESPONSE),
       status,
       responseStatus,
       responseBody: responseBody?.slice(0, MAX_RESPONSE) ?? null,
@@ -134,19 +153,26 @@ export async function sendShiftMove(
     const response = await steg("skriva passet", () =>
       client.put<unknown>(path, body, { scopes: SHIFT_WRITE_SCOPES }),
     );
-    await spara("ok", 200, response === null ? null : JSON.stringify(response), body);
+    await spara(
+      "ok",
+      200,
+      response === null ? null : JSON.stringify(response),
+      body,
+    );
     return { ok: true, message: `${summary}. Skickat till TransPA.` };
   } catch (error) {
     const message =
-      error instanceof WriteNotAllowedError
+      error instanceof TranspaQuotaError
         ? error.message
-        : error instanceof ShiftMoveError
-          ? `Kunde inte bygga ändringen: ${error.message}`
-          : error instanceof TranspaApiError
-            ? `TransPA svarade ${error.status}: ${error.message}`
-            : error instanceof Error
-              ? error.message
-              : String(error);
+        : error instanceof WriteNotAllowedError
+          ? error.message
+          : error instanceof ShiftMoveError
+            ? `Kunde inte bygga ändringen: ${error.message}`
+            : error instanceof TranspaApiError
+              ? `TransPA svarade ${error.status}: ${error.message}`
+              : error instanceof Error
+                ? error.message
+                : String(error);
 
     await spara(
       "failed",
