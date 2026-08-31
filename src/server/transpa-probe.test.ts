@@ -520,3 +520,89 @@ paths:
     expect(sedda.filter((u) => u.includes("//v1/"))).toEqual([]);
   });
 });
+
+/**
+ * Skrivvägarna hela vägen ut i rapporten.
+ *
+ * Läsningen plockade bara ut GET, så en POST i specen kunde finnas utan
+ * att synas någonstans i verktyget. Slutsatsen "TransPA har ingen
+ * skrivväg" — som fas 3 och 4 vilar på — byggde på det. Nu ska den gå
+ * att läsa av i stället för att antas.
+ */
+describe("skrivvägar ur specen", () => {
+  const SPEC = `
+openapi: 3.0.1
+info:
+  title: TransPA Public API
+  version: 0.1.138
+servers:
+  - url: https://api.mytranspa.com/publicApi
+paths:
+  /v1/shifts/:
+    get:
+      summary: Get shifts
+      parameters: []
+    post:
+      summary: Create a shift
+      parameters: []
+  /v1/employees:
+    get:
+      summary: Get employees
+      parameters: []
+  /v1/vehicles/{id}:
+    put:
+      summary: Update a vehicle
+      parameters: []
+`.trim();
+
+  const medSpec = (spec: string) =>
+    fakeFetch((url) => {
+      if (url.includes("doc/openapi")) {
+        return new Response(spec, {
+          headers: { "content-type": "application/yaml", "x-handled": "1" },
+        });
+      }
+      return new Response(JSON.stringify({ items: [], cursor: {} }));
+    });
+
+  it("redovisar skrivvägarna, inte bara läsvägarna", async () => {
+    const report = await probeTenant(medSpec(SPEC));
+    const writes = report.spec?.writes ?? [];
+
+    expect(writes.map((w) => `${w.method} ${w.path}`).sort()).toEqual([
+      "POST /v1/shifts/",
+      "PUT /v1/vehicles/{id}",
+    ]);
+  });
+
+  it("bär med sammanfattningen så vägen går att förstå", async () => {
+    const report = await probeTenant(medSpec(SPEC));
+    expect(report.spec?.writes?.find((w) => w.method === "POST")?.summary).toBe("Create a shift");
+  });
+
+  /* Det som faktiskt ska besvaras: går fas 3 och 4 att bygga? Är svaret
+     nej ska det vara ett nej och inte en tom lista av bara slarv. */
+  it("ger tom lista när specen bara har läsvägar", async () => {
+    const baraLasning = `
+openapi: 3.0.1
+info:
+  title: TransPA Public API
+  version: 0.1.138
+servers:
+  - url: https://api.mytranspa.com/publicApi
+paths:
+  /v1/shifts/:
+    get:
+      summary: Get shifts
+      parameters: []
+  /v1/employees:
+    get:
+      summary: Get employees
+      parameters: []
+`.trim();
+
+    const report = await probeTenant(medSpec(baraLasning));
+    expect(report.spec?.outcome).toBe("ok");
+    expect(report.spec?.writes).toEqual([]);
+  });
+});

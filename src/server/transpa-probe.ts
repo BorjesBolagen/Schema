@@ -1,6 +1,7 @@
 import "server-only";
 import { overlapsRange } from "@/lib/transpa/filter";
 import { describeSpecPaths, parseOpenApiYaml } from "@/lib/transpa/openapi-yaml";
+import type { SpecWrite } from "@/lib/transpa/write-paths";
 import {
   TranspaApiError,
   TranspaClient,
@@ -158,6 +159,8 @@ export interface PathVariant {
   sampleKeys?: string[];
 }
 
+export type { SpecWrite };
+
 export interface SpecProbe {
   url: string;
   outcome: ProbeOutcome;
@@ -171,6 +174,15 @@ export interface SpecProbe {
    * servern någon annanstans än den vi anropar är det förklaringen.
    */
   servers?: string[];
+  /**
+   * Vägarna som inte bara går att läsa.
+   *
+   * Hela frågan för fas 3 och 4: går det att skriva tillbaka en
+   * schemaändring och en frånvaro till TransPA? Svaret står i specen,
+   * men läsningen kastade bort allt utom GET innan det nådde skärmen —
+   * så det gick inte att se.
+   */
+  writes?: SpecWrite[];
   /**
    * Obligatoriska frågeparametrar per väg, för GET.
    *
@@ -648,6 +660,12 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         if (named.length) queryParams[entry.path] = named.map((x) => x.name);
       }
 
+      const writes: SpecWrite[] = parsed.paths.flatMap((entry) =>
+        entry.operations
+          .filter((op) => op.method !== "GET")
+          .map((op) => ({ path: entry.path, method: op.method, summary: op.summary })),
+      );
+
       return {
         url,
         outcome: "ok",
@@ -655,6 +673,7 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         version: parsed.version,
         paths,
         servers: parsed.servers,
+        writes,
         requiredQuery,
         queryParams,
         parameterCount: parsed.paths.reduce(
@@ -688,12 +707,19 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       })
       .sort();
 
+    const writes: SpecWrite[] = Object.entries(spec.paths).flatMap(([path, ops]) =>
+      Object.keys(ops ?? {})
+        .filter((m) => ["post", "put", "patch", "delete"].includes(m.toLowerCase()))
+        .map((m) => ({ path, method: m.toUpperCase() })),
+    );
+
     return {
       url,
       outcome: "ok",
       status: response.status,
       version: spec.info?.version,
       paths,
+      writes,
       servers: (spec.servers ?? []).map((x) => x.url ?? "").filter(Boolean),
     };
   } catch {

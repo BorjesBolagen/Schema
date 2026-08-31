@@ -253,3 +253,74 @@ describe("describeSpecPaths", () => {
     expect(get.parameters.map((x) => x.name)).not.toContain("429Throttling");
   });
 });
+
+/**
+ * Skrivvägarna.
+ *
+ * Läsningen plockade tidigare bara ut GET, så en POST i specen kunde
+ * finnas utan att synas någonstans — och slutsatsen "TransPA har ingen
+ * skrivväg" byggde på det. Formen nedan är TransPA:s egen: vägar under
+ * paths, operationer under vägen.
+ */
+describe("operationer som inte är GET", () => {
+  const spec = `
+openapi: 3.0.1
+info:
+  title: TransPA Public API
+  version: 0.1.138
+servers:
+  - url: https://api.mytranspa.com/publicApi
+paths:
+  /v1/shifts/:
+    get:
+      summary: Get shifts
+      parameters:
+        - name: startDateTimeAfter
+          in: query
+          required: true
+          schema:
+            type: string
+    post:
+      summary: Create a shift
+      parameters: []
+  /v1/shifts/{id}:
+    put:
+      summary: Update a shift
+      parameters: []
+    delete:
+      summary: Delete a shift
+      parameters: []
+  /v1/employees:
+    get:
+      summary: Get employees
+      parameters: []
+`.trim();
+
+  it("läser ut alla metoder per väg", () => {
+    const parsed = parseOpenApiYaml(spec);
+    const metoder = (path: string) =>
+      parsed.paths.find((p) => p.path === path)?.operations.map((o) => o.method).sort();
+
+    expect(metoder("/v1/shifts/")).toEqual(["GET", "POST"]);
+    expect(metoder("/v1/shifts/{id}")).toEqual(["DELETE", "PUT"]);
+    expect(metoder("/v1/employees")).toEqual(["GET"]);
+  });
+
+  it("bär med sig sammanfattningen", () => {
+    const parsed = parseOpenApiYaml(spec);
+    const post = parsed.paths
+      .find((p) => p.path === "/v1/shifts/")
+      ?.operations.find((o) => o.method === "POST");
+    expect(post?.summary).toBe("Create a shift");
+  });
+
+  it("tappar inte GET:s obligatoriska parametrar när en POST finns bredvid", () => {
+    const parsed = parseOpenApiYaml(spec);
+    const get = parsed.paths
+      .find((p) => p.path === "/v1/shifts/")
+      ?.operations.find((o) => o.method === "GET");
+    expect(get?.parameters.filter((x) => x.required).map((x) => x.name)).toEqual([
+      "startDateTimeAfter",
+    ]);
+  });
+});

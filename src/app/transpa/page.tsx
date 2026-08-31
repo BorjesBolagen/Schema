@@ -5,6 +5,7 @@ import { credentialsFromEnv } from "@/lib/transpa/auth";
 import { SyncButton } from "@/components/SyncButton";
 import { CopyReport } from "@/components/CopyReport";
 import { ShiftLookup } from "@/components/ShiftLookup";
+import { groupWrites, TOPIC_LABEL, writeVerdict } from "@/lib/transpa/write-paths";
 
 export const dynamic = "force-dynamic";
 
@@ -452,6 +453,68 @@ export default async function TranspaPage() {
                 </>
               )}
             </p>
+
+            {/* Svaret på om fas 3 och 4 går att bygga. Det står i specen
+                men drunknade bland sextio vägar, och slutsatsen "det
+                finns ingen skrivväg" var därför en gissning. */}
+            {(() => {
+              const writes = report.spec.writes ?? [];
+              const verdict = writeVerdict(writes);
+              return (
+                <div
+                  className={`mt-3 rounded border p-3 ${
+                    verdict.shifts || verdict.absence
+                      ? "border-(--color-accent) bg-white"
+                      : "border-(--color-warn) bg-white"
+                  }`}
+                >
+                  <p className="text-sm font-medium">
+                    Skrivvägar i specen: {verdict.total}
+                  </p>
+                  <ul className="mt-1 text-sm">
+                    <li>
+                      {verdict.shifts ? "✓" : "✗"} Skicka schemaändring —{" "}
+                      {verdict.shifts ? "går att bygga" : "ingen väg att skapa eller ändra ett pass"}
+                    </li>
+                    <li>
+                      {verdict.absence ? "✓" : "✗"} Skicka frånvaro —{" "}
+                      {verdict.absence ? "går att bygga" : "ingen väg att skapa eller ändra frånvaro"}
+                    </li>
+                  </ul>
+
+                  {writes.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {groupWrites(writes).map(({ topic, writes: rader }) => (
+                        <div key={topic}>
+                          <p className="text-xs text-(--color-muted)">{TOPIC_LABEL[topic]}</p>
+                          <ul className="font-mono text-xs">
+                            {rader.map((w) => (
+                              <li key={`${w.method} ${w.path}`} className="py-0.5">
+                                <span className="font-semibold">{w.method}</span> {w.path}
+                                {w.summary && (
+                                  <span className="ml-2 font-sans text-(--color-muted)">
+                                    {w.summary}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {writes.length === 0 && (
+                    <p className="mt-2 max-w-[62ch] text-xs text-(--color-muted)">
+                      Specen anger inga vägar alls utöver läsning. Är det riktigt är fas 3 och 4
+                      blockerade på Visma och inte på kod — men kontrollera först att
+                      skriv-scopen är beviljade för den här tenanten, eftersom en spec kan
+                      vara filtrerad på behörighet.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Passen är det vi letar efter. Ligger de i listan ska de
                 inte behöva letas upp för hand bland sextio rader. */}
