@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { probeTenant } from "./transpa-probe";
+import { CHECKS, checkById } from "@/lib/transpa/checks";
 import { clearTokenCache } from "@/lib/transpa/auth";
 
 const env = {
@@ -604,5 +605,88 @@ paths:
     const report = await probeTenant(medSpec(baraLasning));
     expect(report.spec?.outcome).toBe("ok");
     expect(report.spec?.writes).toEqual([]);
+  });
+});
+
+/**
+ * Urvalet.
+ *
+ * Det som provas är inte att listan i checks.ts ser rimlig ut — den kan
+ * vara perfekt medan probeTenant struntar i den — utan att anropen
+ * faktiskt uteblir. Kvoten tog slut en gång; nästa gång ska det inte
+ * vara sidan som gjorde det.
+ */
+describe("urvalet av kontroller", () => {
+  /** Räknar anrop mot API:t, inte mot token- eller dokumentvärden. */
+  function räknare() {
+    const urls: string[] = [];
+    const impl = fakeFetch((url) => {
+      if (url.includes("api.mytranspa.com/publicApi")) urls.push(url);
+      if (url.includes("/v1/employees") && !url.includes("shifts")) {
+        return new Response(JSON.stringify({ items: [{ id: "e1" }], cursor: { nextToken: null } }));
+      }
+      return new Response(JSON.stringify({ items: [], cursor: { nextToken: null } }));
+    });
+    return { impl, urls };
+  }
+
+  it("gör ett enda anrop för anslutningskontrollen", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl, checkById("anslutning")!.selection);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("/v1/alive");
+  });
+
+  it("rör bara passvägarna när passkontrollen körs", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl, checkById("pass")!.selection);
+
+    /* Ett för personen som ger id:t, sedan de två passvägarna. */
+    expect(urls).toHaveLength(3);
+    expect(urls.filter((u) => u.includes("shifts"))).toHaveLength(2);
+    expect(urls.some((u) => u.includes("/v1/vehicles"))).toBe(false);
+    expect(urls.some((u) => u.includes("/v1/trips"))).toBe(false);
+  });
+
+  it("sätter in ett riktigt person-id i underresursen", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl, checkById("pass")!.selection);
+    expect(urls.some((u) => u.includes("/v1/employees/e1/shifts/"))).toBe(true);
+  });
+
+  /* Spec-kontrollen ska inte kosta ett enda API-anrop. */
+  it("rör inte API:t när bara specen läses", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl, checkById("spec")!.selection);
+    expect(urls).toHaveLength(0);
+  });
+
+  it("sveper fortfarande när svepningen väljs", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl, checkById("allt")!.selection);
+    expect(urls.length).toBeGreaterThan(10);
+  });
+
+  /* Utan urval ska allt köras — annars skulle synken och testerna få
+     en tystare probe än de bett om. */
+  it("kör allt när inget urval anges", async () => {
+    const { impl, urls } = räknare();
+    await probeTenant(impl);
+    expect(urls.length).toBeGreaterThan(10);
+  });
+
+  it("visar bara de valda vägarna i rapporten", async () => {
+    const { impl } = räknare();
+    const report = await probeTenant(impl, checkById("anslutning")!.selection);
+    expect(report.endpoints.map((e) => e.path)).toEqual(["/v1/alive"]);
+  });
+
+  it("håller varje liten kontroll under fem anrop", async () => {
+    for (const check of CHECKS.filter((c) => c.id !== "allt")) {
+      clearTokenCache();
+      const { impl, urls } = räknare();
+      await probeTenant(impl, check.selection);
+      expect(urls.length, check.id).toBeLessThanOrEqual(5);
+    }
   });
 });

@@ -1,6 +1,9 @@
 import "server-only";
 import { overlapsRange } from "@/lib/transpa/filter";
-import { describeSpecPaths, parseOpenApiYaml } from "@/lib/transpa/openapi-yaml";
+import {
+  describeSpecPaths,
+  parseOpenApiYaml,
+} from "@/lib/transpa/openapi-yaml";
 import type { SpecWrite } from "@/lib/transpa/write-paths";
 import {
   TranspaApiError,
@@ -28,7 +31,13 @@ import {
  * att fråga API:t.
  */
 
-export type ProbeOutcome = "ok" | "empty" | "forbidden" | "missing" | "error" | "not-run";
+export type ProbeOutcome =
+  | "ok"
+  | "empty"
+  | "forbidden"
+  | "missing"
+  | "error"
+  | "not-run";
 
 export interface EndpointProbe {
   path: string;
@@ -207,7 +216,11 @@ export interface SpecProbe {
    */
   parameterCount?: number;
   /** Parametrarna på passvägen, krävda som valfria. */
-  shiftParameters?: Array<{ name: string; location?: string; required: boolean }>;
+  shiftParameters?: Array<{
+    name: string;
+    location?: string;
+    required: boolean;
+  }>;
 }
 
 export interface TenantReport {
@@ -377,26 +390,30 @@ const SPEC_FALLBACKS = [
 export function specUrlsFrom(html: string, base: string): string[] {
   const found = new Set<string>();
 
-  for (const m of html.matchAll(/["'](?:config)?[Uu]rl["']\s*:\s*["']([^"']+)["']/g)) {
+  for (const m of html.matchAll(
+    /["'](?:config)?[Uu]rl["']\s*:\s*["']([^"']+)["']/g,
+  )) {
     found.add(m[1]);
   }
   for (const m of html.matchAll(/["']([^"'\s]+\.(?:json|yaml|yml))["']/g)) {
     found.add(m[1]);
   }
 
-  return [...found]
-    .filter((u) => !/\.(js|css|png|svg|ico|map)$/i.test(u))
-    // Swagger UI:s inbyggda demo. Den stod kvar i sidan och togs för
-    // TransPA:s spec, med fjorton husdjursvägar som följd.
-    .filter((u) => !/petstore|swagger\.io/i.test(u))
-    .map((u) => {
-      try {
-        return new URL(u, base).toString();
-      } catch {
-        return "";
-      }
-    })
-    .filter(Boolean);
+  return (
+    [...found]
+      .filter((u) => !/\.(js|css|png|svg|ico|map)$/i.test(u))
+      // Swagger UI:s inbyggda demo. Den stod kvar i sidan och togs för
+      // TransPA:s spec, med fjorton husdjursvägar som följd.
+      .filter((u) => !/petstore|swagger\.io/i.test(u))
+      .map((u) => {
+        try {
+          return new URL(u, base).toString();
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean)
+  );
 }
 
 /**
@@ -407,13 +424,59 @@ export function specUrlsFrom(html: string, base: string): string[] {
  * token-hämtningen misslyckades försvann pass-kandidaterna tyst ur
  * tabellen — vilket såg ut som att de aldrig funnits.
  */
-function allPaths(employeeId: string | null): Array<[string, string]> {
+function allPaths(
+  employeeId: string | null,
+  urval: readonly string[] | "alla" = "alla",
+): Array<[string, string]> {
   const shifts: Array<[string, string]> = SHIFT_CANDIDATES.map((c) => [
-    employeeId ? c.replace("{id}", employeeId) : c,
-    c.includes("{id}") ? "Pass under en person" : "Pass",
+    c,
+    "Pass under en person",
   ]);
-  return [...KNOWN, ...shifts, ...GUESSES];
+  const alla: Array<[string, string]> = [...KNOWN, ...shifts, ...GUESSES];
+
+  /* Filtret läggs på mallen och inte på den färdiga adressen: efter att
+     {id} bytts mot ett riktigt person-id går vägen inte längre att
+     känna igen. */
+  return alla
+    .filter(([mall]) => urval === "alla" || urval.includes(mall))
+    .map(([mall, label]) => [
+      employeeId ? mall.replace("{id}", employeeId) : mall,
+      label,
+    ]);
 }
+
+/**
+ * Vad en körning ska omfatta.
+ *
+ * Finns för att kvoten är liten. Hela svepningen är ett trettiotal
+ * anrop, och den som vill veta en enda sak — svarar passvägen? — ska
+ * inte behöva betala för de tjugonio andra. Utelämnade fält betyder
+ * "kör allt", så det som redan anropar probeTenant utan urval får
+ * samma sak som förut.
+ */
+export interface ProbeOptions {
+  /** Vägar att prova, som de står i listorna (med {id} kvar). */
+  paths?: readonly string[] | "alla";
+  /** Läs OpenAPI-specen. Ligger på dokumentvärden, inte på API:t. */
+  spec?: boolean;
+  /**
+   * Hämta en person först, för att kunna sätta in ett riktigt id.
+   * Kostar ett anrop, och behövs bara för underresurserna.
+   */
+  sampleEmployee?: boolean;
+  trips?: boolean;
+  grouping?: boolean;
+  shiftVariants?: boolean;
+}
+
+const ALLT: Required<ProbeOptions> = {
+  paths: "alla",
+  spec: true,
+  sampleEmployee: true,
+  trips: true,
+  grouping: true,
+  shiftVariants: true,
+};
 
 /**
  * Scopet ur ett nekat svar.
@@ -434,12 +497,17 @@ function describe(error: unknown): {
 } {
   if (error instanceof TranspaApiError) {
     const outcome: ProbeOutcome =
-      error.status === 404 ? "missing" : error.status === 403 || error.status === 401 ? "forbidden" : "error";
+      error.status === 404
+        ? "missing"
+        : error.status === 403 || error.status === 401
+          ? "forbidden"
+          : "error";
     return {
       outcome,
       status: error.status,
       detail: error.message,
-      requiredScope: outcome === "forbidden" ? scopeFromDenial(error.message) : undefined,
+      requiredScope:
+        outcome === "forbidden" ? scopeFromDenial(error.message) : undefined,
     };
   }
   if (error instanceof TranspaAuthError) {
@@ -451,7 +519,10 @@ function describe(error: unknown): {
   if (error instanceof TranspaShapeError) {
     return { outcome: "error", status: 200, detail: error.message };
   }
-  return { outcome: "error", detail: error instanceof Error ? error.message : String(error) };
+  return {
+    outcome: "error",
+    detail: error instanceof Error ? error.message : String(error),
+  };
 }
 
 /**
@@ -461,7 +532,10 @@ function describe(error: unknown): {
  * Filtret är på startDateTime eftersom det är fältet Vismas egna
  * exempel filtrerar på.
  */
-async function probeTrips(client: TranspaClient, scopes: string[]): Promise<TripsWindow> {
+async function probeTrips(
+  client: TranspaClient,
+  scopes: string[],
+): Promise<TripsWindow> {
   const now = Date.now();
   const iso = (ms: number) => new Date(ms).toISOString();
   const DAY = 86_400_000;
@@ -484,10 +558,16 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
        skillnad från employeeId och tiderna, som aldrig lämnar servern.
        Personerna räknas, men inga id:n förs vidare. */
     const statuses = [
-      ...new Set(rows.map((r) => (typeof r.status === "string" ? r.status : "")).filter(Boolean)),
+      ...new Set(
+        rows
+          .map((r) => (typeof r.status === "string" ? r.status : ""))
+          .filter(Boolean),
+      ),
     ].sort();
     const employees = new Set(
-      rows.map((r) => (typeof r.employeeId === "string" ? r.employeeId : "")).filter(Boolean),
+      rows
+        .map((r) => (typeof r.employeeId === "string" ? r.employeeId : ""))
+        .filter(Boolean),
     ).size;
 
     return {
@@ -501,7 +581,12 @@ async function probeTrips(client: TranspaClient, scopes: string[]): Promise<Trip
   try {
     const future = await window(iso(now), iso(now + 7 * DAY));
     const past = await window(iso(now - 7 * DAY), iso(now));
-    const verdict = future.rows > 0 ? "planerade" : past.rows > 0 ? "bara-korda" : "inga-turer";
+    const verdict =
+      future.rows > 0
+        ? "planerade"
+        : past.rows > 0
+          ? "bara-korda"
+          : "inga-turer";
     return { outcome: "ok", future, past, verdict };
   } catch (error) {
     return { ...describe(error), future: undefined, past: undefined };
@@ -535,17 +620,24 @@ function groupValue(raw: unknown): string | null {
   if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
     for (const key of ["name", "Name", "description", "value"]) {
-      if (typeof o[key] === "string" && o[key].trim()) return (o[key] as string).trim();
+      if (typeof o[key] === "string" && o[key].trim())
+        return (o[key] as string).trim();
     }
   }
   return null;
 }
 
-async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<GroupingProbe> {
+async function probeGrouping(
+  client: TranspaClient,
+  scopes: string[],
+): Promise<GroupingProbe> {
   try {
     /* Bläddring, inte en stor sida: stationPlaces har ingen
        limit-parameter alls, och där den finns är taket 100. */
-    const stations = await client.list<Record<string, unknown>>("/v1/stationPlaces", { scopes });
+    const stations = await client.list<Record<string, unknown>>(
+      "/v1/stationPlaces",
+      { scopes },
+    );
     const stationNames = stations
       .map((s) => (typeof s.name === "string" ? s.name : ""))
       .filter(Boolean)
@@ -573,7 +665,9 @@ async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<G
 
       const values = [...counts.entries()]
         .map(([value, count]) => ({ value, count }))
-        .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, "sv"));
+        .sort(
+          (a, b) => b.count - a.count || a.value.localeCompare(b.value, "sv"),
+        );
 
       return {
         field,
@@ -602,7 +696,11 @@ async function probeGrouping(client: TranspaClient, scopes: string[]): Promise<G
  */
 export function looksLikeTranspa(
   url: string,
-  spec: { servers?: Array<{ url?: string }>; host?: string; info?: { title?: string } },
+  spec: {
+    servers?: Array<{ url?: string }>;
+    host?: string;
+    info?: { title?: string };
+  },
   paths: string[],
 ): boolean {
   const haystack = [
@@ -619,13 +717,21 @@ export function looksLikeTranspa(
 
   /* Ingen självidentifiering: godta ändå om vägarna ser ut som TransPA:s
      egna — /v1/employees och /v1/stationPlaces är bekräftade. */
-  const known = ["/v1/employees", "/v1/stationplaces", "/v1/vehicles", "/v1/trips"];
+  const known = [
+    "/v1/employees",
+    "/v1/stationplaces",
+    "/v1/vehicles",
+    "/v1/trips",
+  ];
   const lower = paths.map((p) => p.toLowerCase());
   return known.filter((k) => lower.some((p) => p.startsWith(k))).length >= 2;
 }
 
 /** Ett hämtat spec-dokument, eller varför det inte gick. */
-async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe | null> {
+async function readSpec(
+  url: string,
+  fetchImpl: typeof fetch,
+): Promise<SpecProbe | null> {
   try {
     const response = await fetchImpl(url, {
       headers: { Accept: "application/json, application/yaml, text/yaml, */*" },
@@ -644,7 +750,10 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       if (
         !looksLikeTranspa(
           url,
-          { servers: parsed.servers.map((u) => ({ url: u })), info: { title: parsed.title } },
+          {
+            servers: parsed.servers.map((u) => ({ url: u })),
+            info: { title: parsed.title },
+          },
           parsed.paths.map((x) => x.path),
         )
       ) {
@@ -654,7 +763,9 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       const queryParams: Record<string, string[]> = {};
       for (const entry of parsed.paths) {
         const get = entry.operations.find((o) => o.method === "GET");
-        const named = (get?.parameters ?? []).filter((x) => x.location === "query");
+        const named = (get?.parameters ?? []).filter(
+          (x) => x.location === "query",
+        );
         const required = named.filter((x) => x.required).map((x) => x.name);
         if (required.length) requiredQuery[entry.path] = required;
         if (named.length) queryParams[entry.path] = named.map((x) => x.name);
@@ -663,7 +774,11 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
       const writes: SpecWrite[] = parsed.paths.flatMap((entry) =>
         entry.operations
           .filter((op) => op.method !== "GET")
-          .map((op) => ({ path: entry.path, method: op.method, summary: op.summary })),
+          .map((op) => ({
+            path: entry.path,
+            method: op.method,
+            summary: op.summary,
+          })),
       );
 
       return {
@@ -677,11 +792,15 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
         requiredQuery,
         queryParams,
         parameterCount: parsed.paths.reduce(
-          (n, entry) => n + entry.operations.reduce((m, op) => m + op.parameters.length, 0),
+          (n, entry) =>
+            n + entry.operations.reduce((m, op) => m + op.parameters.length, 0),
           0,
         ),
         shiftParameters: parsed.paths
-          .find((entry) => entry.path === "/v1/shifts/" || entry.path === "/v1/shifts")
+          .find(
+            (entry) =>
+              entry.path === "/v1/shifts/" || entry.path === "/v1/shifts",
+          )
           ?.operations.find((op) => op.method === "GET")?.parameters,
       };
     }
@@ -700,17 +819,22 @@ async function readSpec(url: string, fetchImpl: typeof fetch): Promise<SpecProbe
     const paths = Object.entries(spec.paths)
       .map(([path, ops]) => {
         const methods = Object.keys(ops ?? {})
-          .filter((m) => ["get", "post", "put", "patch", "delete"].includes(m.toLowerCase()))
+          .filter((m) =>
+            ["get", "post", "put", "patch", "delete"].includes(m.toLowerCase()),
+          )
           .map((m) => m.toUpperCase())
           .sort();
         return methods.length ? `${path}  [${methods.join(" ")}]` : path;
       })
       .sort();
 
-    const writes: SpecWrite[] = Object.entries(spec.paths).flatMap(([path, ops]) =>
-      Object.keys(ops ?? {})
-        .filter((m) => ["post", "put", "patch", "delete"].includes(m.toLowerCase()))
-        .map((m) => ({ path, method: m.toUpperCase() })),
+    const writes: SpecWrite[] = Object.entries(spec.paths).flatMap(
+      ([path, ops]) =>
+        Object.keys(ops ?? {})
+          .filter((m) =>
+            ["post", "put", "patch", "delete"].includes(m.toLowerCase()),
+          )
+          .map((m) => ({ path, method: m.toUpperCase() })),
     );
 
     return {
@@ -758,8 +882,10 @@ function guessParamValue(name: string, employeeId: string | null): string {
      både "start" och "before" — läses "start" först får båda gränserna
      samma datum, och API:t svarar "startDateTimeBefore has to be after
      startDateTimeAfter". Det är precis vad som hände. */
-  if (/(after|from|since)$|^(from|after)/.test(n)) return new Date(now - 7 * day).toISOString();
-  if (/(before|until|to)$|^(to|before|until)/.test(n)) return new Date(now + 7 * day).toISOString();
+  if (/(after|from|since)$|^(from|after)/.test(n))
+    return new Date(now - 7 * day).toISOString();
+  if (/(before|until|to)$|^(to|before|until)/.test(n))
+    return new Date(now + 7 * day).toISOString();
 
   if (/(start|begin)/.test(n)) return new Date(now - 7 * day).toISOString();
   if (/(end|stop)/.test(n)) return new Date(now + 7 * day).toISOString();
@@ -780,7 +906,9 @@ async function probeShiftVariants(
      anropen publicApi//v1/shifts/ — en dubbel snedstreck som gör alla
      varianter mot den basen värdelösa. */
   const trim = (u: string) => u.replace(/\/+$/, "");
-  const bases = [...new Set([API_BASE, ...(spec.servers ?? []).map(trim).filter(Boolean)])];
+  const bases = [
+    ...new Set([API_BASE, ...(spec.servers ?? []).map(trim).filter(Boolean)]),
+  ];
 
   /**
    * Frågesträngen för en vägs parametrar.
@@ -825,7 +953,10 @@ async function probeShiftVariants(
     if (employeeId) {
       const perPerson = queryFor(PER_PERSON);
       const path = `/v1/employees/${employeeId}/shifts/`;
-      attempts.push({ url: `${base}${path}`, what: `under personen, utan parametrar${where}` });
+      attempts.push({
+        url: `${base}${path}`,
+        what: `under personen, utan parametrar${where}`,
+      });
       if (perPerson.query) {
         attempts.push({
           url: `${base}${path}${perPerson.query}`,
@@ -839,7 +970,10 @@ async function probeShiftVariants(
   for (const attempt of attempts) {
     try {
       const response = await fetchImpl(attempt.url, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
       });
       const text = await response.text();
 
@@ -855,10 +989,16 @@ async function probeShiftVariants(
            ett routningsfel eller ett modulnamn, och det är precis vad
            som behövs när vägen står i specen men inte svarar. */
         const raw = text.trim().slice(0, 200);
-        if (raw && !detail.includes(raw.slice(0, 40))) detail += ` · svar: ${raw}`;
+        if (raw && !detail.includes(raw.slice(0, 40)))
+          detail += ` · svar: ${raw}`;
         out.push({
           ...attempt,
-          outcome: response.status === 404 ? "missing" : response.status === 403 ? "forbidden" : "error",
+          outcome:
+            response.status === 404
+              ? "missing"
+              : response.status === 403
+                ? "forbidden"
+                : "error",
           status: response.status,
           detail,
         });
@@ -875,7 +1015,8 @@ async function probeShiftVariants(
         outcome: rows.length === 0 ? "empty" : "ok",
         status: response.status,
         rows: rows.length,
-        sampleKeys: first && typeof first === "object" ? Object.keys(first).sort() : [],
+        sampleKeys:
+          first && typeof first === "object" ? Object.keys(first).sort() : [],
       });
     } catch (error) {
       out.push({ ...attempt, ...describe(error) });
@@ -890,14 +1031,18 @@ async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
   for (const uiUrl of SWAGGER_UI_URLS) {
     let html: string;
     try {
-      const response = await fetchImpl(uiUrl, { headers: { Accept: "text/html" } });
+      const response = await fetchImpl(uiUrl, {
+        headers: { Accept: "text/html" },
+      });
       if (!response.ok) {
         tried.push(`${uiUrl} → ${response.status}`);
         continue;
       }
       html = await response.text();
     } catch (error) {
-      tried.push(`${uiUrl} → ${error instanceof Error ? error.message : "fel"}`);
+      tried.push(
+        `${uiUrl} → ${error instanceof Error ? error.message : "fel"}`,
+      );
       continue;
     }
 
@@ -905,7 +1050,9 @@ async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
        adressen där i stället för i HTML:en. */
     const candidates = specUrlsFrom(html, uiUrl);
     try {
-      const init = await fetchImpl(new URL("swagger-initializer.js", uiUrl).toString());
+      const init = await fetchImpl(
+        new URL("swagger-initializer.js", uiUrl).toString(),
+      );
       if (init.ok) candidates.push(...specUrlsFrom(await init.text(), uiUrl));
     } catch {
       /* Finns inte alltid. */
@@ -932,17 +1079,21 @@ async function probeSpec(fetchImpl: typeof fetch): Promise<SpecProbe> {
   };
 }
 
-export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<TenantReport> {
+export async function probeTenant(
+  fetchImpl: typeof fetch = fetch,
+  options: ProbeOptions = {},
+): Promise<TenantReport> {
+  const val = { ...ALLT, ...options };
   const ranAt = new Date().toISOString();
   const credentials = credentialsFromEnv();
-  const spec = await probeSpec(fetchImpl);
+  const spec = val.spec ? await probeSpec(fetchImpl) : undefined;
 
   if (!credentials) {
     return {
       hasCredentials: false,
       token: { outcome: "not-run", scopes: READ_SCOPES },
       spec,
-      endpoints: allPaths(null).map(([path, label]) => ({
+      endpoints: allPaths(null, val.paths).map(([path, label]) => ({
         path,
         label,
         known: KNOWN.some(([p]) => p === path),
@@ -973,7 +1124,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
         tenantId: credentials.tenantId,
         token: { outcome: d.outcome, detail: d.detail, scopes: READ_SCOPES },
         spec,
-        endpoints: allPaths(null).map(([path, label]) => ({
+        endpoints: allPaths(null, val.paths).map(([path, label]) => ({
           path,
           label,
           known: KNOWN.some(([p]) => p === path),
@@ -992,27 +1143,34 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
      finns, och svaret vore värdelöst. */
   let sampleEmployeeId: string | null = null;
   let sampleEmployeeKeys: string[] = [];
-  try {
-    const r = await client.request<unknown>("/v1/employees", { limit: 1, scopes });
-    const first = rowsOf<Record<string, unknown>>(r, "/v1/employees").rows[0];
-    if (first && typeof first === "object") {
-      sampleEmployeeKeys = Object.keys(first);
-      /* Fältnamnet gissas inte. Vismas genererade klient är PascalCase
-         (Id, FirstName), medan deras Postman-exempel filtrerar på
-         camelCase (employeeId) — vilket av dem JSON:en faktiskt
-         använder syns först här. Därför letas nyckeln upp utan hänsyn
-         till skiftläge i stället för att antas. */
-      const key = sampleEmployeeKeys.find((k) => k.toLowerCase() === "id");
-      const value = key ? first[key] : undefined;
-      if (typeof value === "string" || typeof value === "number") {
-        sampleEmployeeId = String(value);
+  /* Bara när något i urvalet faktiskt behöver ett id. Anropet kostar
+     ett av de få vi har råd med. */
+  if (val.sampleEmployee) {
+    try {
+      const r = await client.request<unknown>("/v1/employees", {
+        limit: 1,
+        scopes,
+      });
+      const first = rowsOf<Record<string, unknown>>(r, "/v1/employees").rows[0];
+      if (first && typeof first === "object") {
+        sampleEmployeeKeys = Object.keys(first);
+        /* Fältnamnet gissas inte. Vismas genererade klient är PascalCase
+           (Id, FirstName), medan deras Postman-exempel filtrerar på
+           camelCase (employeeId) — vilket av dem JSON:en faktiskt
+           använder syns först här. Därför letas nyckeln upp utan hänsyn
+           till skiftläge i stället för att antas. */
+        const key = sampleEmployeeKeys.find((k) => k.toLowerCase() === "id");
+        const value = key ? first[key] : undefined;
+        if (typeof value === "string" || typeof value === "number") {
+          sampleEmployeeId = String(value);
+        }
       }
+    } catch {
+      /* Går det inte syns det ändå på raden för /v1/employees nedan. */
     }
-  } catch {
-    /* Går det inte syns det ändå på raden för /v1/employees nedan. */
   }
 
-  for (const [path, label] of allPaths(sampleEmployeeId)) {
+  for (const [path, label] of allPaths(sampleEmployeeId, val.paths)) {
     const known = KNOWN.some(([p]) => p === path);
 
     /* Kvar-stående {id} betyder att ingen person gick att plocka ut.
@@ -1071,13 +1229,17 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
 
   /* Körs efter endpoint-svepet: utan att veta att /v1/trips svarar
      alls vore fönsterfrågan bara brus. */
-  const trips = endpoints.some((e) => e.path === "/v1/trips" && e.outcome !== "missing")
-    ? await probeTrips(client, scopes)
-    : undefined;
+  const trips =
+    val.trips &&
+    endpoints.some((e) => e.path === "/v1/trips" && e.outcome !== "missing")
+      ? await probeTrips(client, scopes)
+      : undefined;
 
-  const grouping = endpoints.some((e) => e.path === "/v1/employees" && e.outcome === "ok")
-    ? await probeGrouping(client, scopes)
-    : undefined;
+  const grouping =
+    val.grouping &&
+    endpoints.some((e) => e.path === "/v1/employees" && e.outcome === "ok")
+      ? await probeGrouping(client, scopes)
+      : undefined;
 
   /* Specen listar /v1/shifts/ och scopet är beviljat, men vägen svarar
      404. Då provas varianterna var för sig i stället för att jag gissar
@@ -1086,7 +1248,7 @@ export async function probeTenant(fetchImpl: typeof fetch = fetch): Promise<Tena
     (e) => e.path === "/v1/shifts/" && e.outcome === "missing",
   );
   const shiftVariants =
-    shiftsMissing && spec.outcome === "ok"
+    val.shiftVariants && shiftsMissing && spec?.outcome === "ok"
       ? await probeShiftVariants(
           await getAccessToken(credentials, scopes, fetchImpl),
           spec,

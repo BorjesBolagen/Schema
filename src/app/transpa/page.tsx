@@ -1,35 +1,65 @@
 import Link from "next/link";
 import { requireAdmin } from "@/server/auth";
-import { probeTenant, type EndpointProbe, type ProbeOutcome } from "@/server/transpa-probe";
+import {
+  probeTenant,
+  type EndpointProbe,
+  type ProbeOutcome,
+} from "@/server/transpa-probe";
 import { credentialsFromEnv } from "@/lib/transpa/auth";
 import { SyncButton } from "@/components/SyncButton";
 import { CopyReport } from "@/components/CopyReport";
 import { ShiftLookup } from "@/components/ShiftLookup";
 import { WriteLog } from "@/components/WriteLog";
-import { groupWrites, TOPIC_LABEL, writeVerdict } from "@/lib/transpa/write-paths";
+import {
+  groupWrites,
+  TOPIC_LABEL,
+  writeVerdict,
+} from "@/lib/transpa/write-paths";
+import { CHECKS, checkById, costLabel } from "@/lib/transpa/checks";
 
 export const dynamic = "force-dynamic";
 
 const OUTCOME: Record<ProbeOutcome, { label: string; cls: string }> = {
   ok: { label: "Finns", cls: "bg-green-50 text-green-800 border-green-300" },
-  empty: { label: "Finns, tom", cls: "bg-green-50 text-green-800 border-green-300" },
-  forbidden: { label: "Nekad", cls: "bg-amber-50 text-(--color-warn) border-amber-300" },
-  missing: { label: "Finns inte", cls: "bg-gray-50 text-(--color-muted) border-(--color-line)" },
-  error: { label: "Fel", cls: "bg-red-50 text-(--color-danger) border-red-300" },
-  "not-run": { label: "Ej körd", cls: "bg-gray-50 text-(--color-muted) border-(--color-line)" },
+  empty: {
+    label: "Finns, tom",
+    cls: "bg-green-50 text-green-800 border-green-300",
+  },
+  forbidden: {
+    label: "Nekad",
+    cls: "bg-amber-50 text-(--color-warn) border-amber-300",
+  },
+  missing: {
+    label: "Finns inte",
+    cls: "bg-gray-50 text-(--color-muted) border-(--color-line)",
+  },
+  error: {
+    label: "Fel",
+    cls: "bg-red-50 text-(--color-danger) border-red-300",
+  },
+  "not-run": {
+    label: "Ej körd",
+    cls: "bg-gray-50 text-(--color-muted) border-(--color-line)",
+  },
 };
 
 function Badge({ outcome }: { outcome: ProbeOutcome }) {
   const o = OUTCOME[outcome];
   return (
-    <span className={`rounded border px-2 py-0.5 text-xs whitespace-nowrap ${o.cls}`}>{o.label}</span>
+    <span
+      className={`rounded border px-2 py-0.5 text-xs whitespace-nowrap ${o.cls}`}
+    >
+      {o.label}
+    </span>
   );
 }
 
 function Row({ probe }: { probe: EndpointProbe }) {
   return (
     <tr className="border-t border-(--color-line)">
-      <td className="py-1.5 pr-4 font-mono text-xs whitespace-nowrap">{probe.path}</td>
+      <td className="py-1.5 pr-4 font-mono text-xs whitespace-nowrap">
+        {probe.path}
+      </td>
       <td className="py-1.5 pr-4 text-sm">{probe.label}</td>
       <td className="py-1.5 pr-4">
         <Badge outcome={probe.outcome} />
@@ -72,20 +102,54 @@ function Header() {
   );
 }
 
+/** Menyn över kontroller, med kostnaden utskriven på varje. */
+function CheckMenu({ aktiv }: { aktiv?: string }) {
+  return (
+    <ul className="mt-4 space-y-2">
+      {CHECKS.map((c) => (
+        <li key={c.id}>
+          <Link
+            href={`/transpa?kor=${c.id}`}
+            className={`block rounded border p-3 ${
+              c.id === aktiv
+                ? "border-(--color-warn) bg-amber-50"
+                : "border-(--color-line) bg-white hover:border-(--color-warn)"
+            }`}
+          >
+            <span className="flex flex-wrap items-baseline gap-x-3">
+              <span className="text-sm font-medium">{c.label}</span>
+              <span
+                className={`text-xs ${
+                  c.calls > 5 ? "text-(--color-danger)" : "text-(--color-muted)"
+                }`}
+              >
+                {costLabel(c)}
+              </span>
+            </span>
+            <span className="mt-1 block max-w-[68ch] text-xs text-(--color-muted)">
+              {c.what}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
- * Diagnostiken körs inte längre av sig själv.
+ * Diagnostiken körs inte av sig själv, och aldrig mer än den fråga som
+ * ställdes.
  *
- * Den gör ett trettiotal anrop per körning, och sidan hade
- * force-dynamic — alltså en full svepning varje gång någon öppnade
- * eller laddade om den. Under felsökningen blev det hundratals anrop på
- * några dagar, och prenumerationens anropskvot tog slut: TransPA
- * svarade 429 på skrivningen, med drygt ett och ett halvt dygn kvar
- * till påfyllning. Kvoten är en delad resurs som synken också lever av,
- * så den får inte gå åt till att rita om en sida.
+ * Sidan svepte förut över allt vid varje rendering — ett trettiotal
+ * anrop — och hade force-dynamic, så varje omladdning kostade en full
+ * svepning. Under felsökningen blev det hundratals anrop på några
+ * dagar, och prenumerationens anropskvot tog slut: TransPA svarade 429
+ * på skrivningen, med drygt ett och ett halvt dygn kvar till
+ * påfyllning. Kvoten delas med synken, som är det verktyget lever av.
  *
- * Nu krävs ett aktivt val. ?kor=1 är medvetet en länk och inte en
- * knapp: en länk visar i webbläsarens adressfält att körningen är på,
- * och en omladdning av den vilande sidan kostar ingenting.
+ * Nu väljer man en fråga, och betalar bara för den. Kostnaden står på
+ * varje val, eftersom den som väljer är den enda som kan väga den mot
+ * hur bråttom det är.
  */
 export default async function TranspaPage({
   searchParams,
@@ -94,40 +158,39 @@ export default async function TranspaPage({
 }) {
   await requireAdmin();
   const { kor } = await searchParams;
+  const check = checkById(kor);
 
-  if (kor !== "1") {
+  if (!check) {
     const utanUppgifter = credentialsFromEnv() === null;
     return (
       <main className="mx-auto max-w-4xl px-6 py-10">
         <Header />
         <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-          Kontrollen frågar er tenant vad den faktiskt exponerar — ett trettiotal anrop per
-          körning. Den startar inte av sig själv, eftersom anropskvoten är delad med synken
-          och tar slut.
+          Välj vad som ska kontrolleras. Ingenting anropas förrän du väljer, och
+          bara det du valt anropas — anropskvoten är delad med synken och tar
+          slut.
         </p>
 
         {utanUppgifter ? (
           <div className="mt-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm">
-            <p className="font-medium text-(--color-warn)">Inga uppgifter inlagda</p>
+            <p className="font-medium text-(--color-warn)">
+              Inga uppgifter inlagda
+            </p>
             <p className="mt-1 text-(--color-muted)">
-              Sätt <code>TRANSPA_CLIENT_ID</code>, <code>TRANSPA_CLIENT_SECRET</code> och{" "}
+              Sätt <code>TRANSPA_CLIENT_ID</code>,{" "}
+              <code>TRANSPA_CLIENT_SECRET</code> och{" "}
               <code>TRANSPA_TENANT_ID</code> i miljön.
             </p>
           </div>
         ) : (
-          <Link
-            href="/transpa?kor=1"
-            className="mt-6 inline-block rounded border border-(--color-warn) bg-white px-3 py-1.5 text-sm font-medium text-(--color-warn)"
-          >
-            Kör kontrollen mot TransPA
-          </Link>
+          <CheckMenu />
         )}
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold">Skrivningar till TransPA</h2>
           <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
-            Varje försök att skicka en schemaändring, med TransPA:s eget svar. Läses ur
-            databasen och kostar inga anrop.
+            Varje försök att skicka en schemaändring, med TransPA:s eget svar.
+            Läses ur databasen och kostar inga anrop.
           </p>
           <WriteLog />
         </section>
@@ -135,10 +198,12 @@ export default async function TranspaPage({
     );
   }
 
-  const report = await probeTenant();
+  const report = await probeTenant(fetch, check.selection);
   const known = report.endpoints.filter((e) => e.known);
   const guesses = report.endpoints.filter((e) => !e.known);
-  const found = guesses.filter((g) => g.outcome === "ok" || g.outcome === "empty");
+  const found = guesses.filter(
+    (g) => g.outcome === "ok" || g.outcome === "empty",
+  );
   const missing = credentialsFromEnv() === null;
 
   /* Samma uppgifter som tabellerna, men som ren text — se CopyReport. */
@@ -202,7 +267,10 @@ export default async function TranspaPage({
         `\nparametrar på /v1/shifts/: ${
           report.spec.shiftParameters?.length
             ? report.spec.shiftParameters
-                .map((x) => `${x.name} (${x.location ?? "utan in"}${x.required ? ", krävs" : ""})`)
+                .map(
+                  (x) =>
+                    `${x.name} (${x.location ?? "utan in"}${x.required ? ", krävs" : ""})`,
+                )
                 .join(", ")
             : "inga funna"
         }\n` +
@@ -219,38 +287,52 @@ export default async function TranspaPage({
       <Header />
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
         <Link href="/transpa" className="underline">
-          ← tillbaka utan att köra om
+          ← välj en annan kontroll
         </Link>{" "}
-        · Sidan frågar er tenant vad den faktiskt exponerar. Vismas genererade klient är föråldrad —
-        den saknar <code>/v1/trips</code>, som deras egna exempel anropar — så den duger inte som
-        facit.
+        · Kördes: <strong>{check.label}</strong> ({costLabel(check)}). Sidan
+        frågar er tenant vad den faktiskt exponerar. Vismas genererade klient är
+        föråldrad — den saknar <code>/v1/trips</code>, som deras egna exempel
+        anropar — så den duger inte som facit.
       </p>
+      {/* Det som inte kördes står inte som "finns inte" utan visas
+          inte alls, och tabellerna nedan listar bara det valda. En rad
+          som saknas här betyder alltså "inte frågad", inte "svarade
+          inte" — annars vore en sparad körning värre än ingen. */}
       <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-        Fältnamnen från första raden visas — bara namnen, aldrig värdena, så personnummer eller
-        adress aldrig syns här. <strong>Passen är hittade och synken hämtar dem.</strong>{" "}
+        Fältnamnen från första raden visas — bara namnen, aldrig värdena, så
+        personnummer eller adress aldrig syns här.{" "}
+        <strong>Passen är hittade och synken hämtar dem.</strong>{" "}
         <code>/v1/shifts/</code> kräver <code>startDateTimeAfter</code> och{" "}
-        <code>startDateTimeBefore</code>, och svarar 404 utan dem — det var därför vägen såg ut
-        att inte finnas. Arbetsdagarna kommer nu från de synkade passen, med arbetsmönstren som
-        reserv för dem TransPA saknar besked om. Tidrapporterna är en egen resurs och en annan
-        sak: rapporterad tid, inte plan.
+        <code>startDateTimeBefore</code>, och svarar 404 utan dem — det var
+        därför vägen såg ut att inte finnas. Arbetsdagarna kommer nu från de
+        synkade passen, med arbetsmönstren som reserv för dem TransPA saknar
+        besked om. Tidrapporterna är en egen resurs och en annan sak:
+        rapporterad tid, inte plan.
       </p>
 
       {missing ? (
         <div className="mt-6 rounded border border-amber-300 bg-amber-50 p-4 text-sm">
-          <p className="font-medium text-(--color-warn)">Inga uppgifter inlagda</p>
+          <p className="font-medium text-(--color-warn)">
+            Inga uppgifter inlagda
+          </p>
           <p className="mt-1 text-(--color-muted)">
-            Sätt <code>TRANSPA_CLIENT_ID</code>, <code>TRANSPA_CLIENT_SECRET</code> och{" "}
-            <code>TRANSPA_TENANT_ID</code> i miljön. De fås från Visma Developer Portal när
-            organisationen registrerats och access beviljats.
+            Sätt <code>TRANSPA_CLIENT_ID</code>,{" "}
+            <code>TRANSPA_CLIENT_SECRET</code> och{" "}
+            <code>TRANSPA_TENANT_ID</code> i miljön. De fås från Visma Developer
+            Portal när organisationen registrerats och access beviljats.
           </p>
         </div>
       ) : (
         <div className="mt-6 flex flex-wrap items-center gap-3 rounded border border-(--color-line) bg-white p-4">
           <span className="text-sm font-medium">Token</span>
           <Badge outcome={report.token.outcome} />
-          <span className="text-xs text-(--color-muted)">tenant {report.tenantId}</span>
+          <span className="text-xs text-(--color-muted)">
+            tenant {report.tenantId}
+          </span>
           {report.token.detail && (
-            <p className="w-full text-xs text-(--color-warn)">{report.token.detail}</p>
+            <p className="w-full text-xs text-(--color-warn)">
+              {report.token.detail}
+            </p>
           )}
         </div>
       )}
@@ -259,9 +341,13 @@ export default async function TranspaPage({
           resursen finns och namnger scopet som saknas. Den ska inte
           ligga bland de döda vägarna längst ned. */}
       {(() => {
-        const denied = report.endpoints.filter((e) => e.outcome === "forbidden");
+        const denied = report.endpoints.filter(
+          (e) => e.outcome === "forbidden",
+        );
         if (denied.length === 0) return null;
-        const scopes = [...new Set(denied.map((e) => e.requiredScope).filter(Boolean))];
+        const scopes = [
+          ...new Set(denied.map((e) => e.requiredScope).filter(Boolean)),
+        ];
         return (
           <div className="mt-6 rounded border-2 border-(--color-accent) bg-amber-50 p-4">
             <p className="font-medium">Vägar vi saknar behörighet till</p>
@@ -269,7 +355,9 @@ export default async function TranspaPage({
               {denied.map((e) => (
                 <li key={e.path}>
                   <code>{e.path}</code>{" "}
-                  <span className="text-(--color-muted)">svarar {e.status}, inte 404</span>
+                  <span className="text-(--color-muted)">
+                    svarar {e.status}, inte 404
+                  </span>
                 </li>
               ))}
             </ul>
@@ -283,16 +371,18 @@ export default async function TranspaPage({
                       <code className="font-semibold">{sc}</code>
                     </span>
                   ))}{" "}
-                  i Visma Developer Portal, under samma applikation som de övriga scopen.
+                  i Visma Developer Portal, under samma applikation som de
+                  övriga scopen.
                 </p>
                 {/* Ett 403 bevisar att vägen är registrerad, inte vad den
                     innehåller. Namnet tidrapport pekar mot rapporterad
                     tid, alltså historik som turerna — inte planerade
                     pass. Det ska inte påstås åt något håll här. */}
                 <p className="mt-2 max-w-[68ch] text-sm text-(--color-muted)">
-                  Tidrapporterna är den tid de anställda rapporterat in — historik, inte plan. De
-                  behövs alltså inte för att lägga ett schema. Scopet är ändå värt att begära om
-                  ni vill jämföra planerat mot utfört, eller på sikt skriva tillbaka.
+                  Tidrapporterna är den tid de anställda rapporterat in —
+                  historik, inte plan. De behövs alltså inte för att lägga ett
+                  schema. Scopet är ändå värt att begära om ni vill jämföra
+                  planerat mot utfört, eller på sikt skriva tillbaka.
                 </p>
               </>
             )}
@@ -306,8 +396,9 @@ export default async function TranspaPage({
       <section className="mt-6">
         <h2 className="text-sm font-semibold">Slå upp en persons pass</h2>
         <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
-          Hämtar direkt från TransPA, inte ur den synkade tabellen — poängen är att se vad API:t
-          säger, inte vad vi råkar ha sparat. Ange TransPA-id eller anställningsnummer.
+          Hämtar direkt från TransPA, inte ur den synkade tabellen — poängen är
+          att se vad API:t säger, inte vad vi råkar ha sparat. Ange TransPA-id
+          eller anställningsnummer.
         </p>
         <ShiftLookup
           defaultPerson="3bfec2f0-0989-404f-8545-30ebeb9b4b38"
@@ -323,8 +414,9 @@ export default async function TranspaPage({
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Skrivningar till TransPA</h2>
         <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
-          Varje försök att skicka en schemaändring, med TransPA:s eget svar. Misslyckade
-          försök står kvar — det är där skälet finns när knappen säger att något gick fel.
+          Varje försök att skicka en schemaändring, med TransPA:s eget svar.
+          Misslyckade försök står kvar — det är där skälet finns när knappen
+          säger att något gick fel.
         </p>
         <WriteLog />
       </section>
@@ -333,17 +425,21 @@ export default async function TranspaPage({
         <div className="mt-6 rounded border-2 border-(--color-warn) bg-amber-50 p-4 text-sm">
           <p className="font-medium">Passvägen står i specen men svarar inte</p>
           <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-            <code>/v1/shifts/</code> finns i specen, <code>transpaapi:shifts:read</code> är
-            beviljat och modulen är påslagen — ändå kommer 404. Då är felet i anropet.
-            Varianterna nedan provas var för sig i stället för att gissa: med och utan
-            snedstreck, med specens <em>egna obligatoriska parametrar</em> ifyllda, och mot den
-            bas specen anger. Saknas en parameter API:t kräver kan svaret bli 404 i stället för
-            400, och då ser vägen ut att inte finnas.
+            <code>/v1/shifts/</code> finns i specen,{" "}
+            <code>transpaapi:shifts:read</code> är beviljat och modulen är
+            påslagen — ändå kommer 404. Då är felet i anropet. Varianterna nedan
+            provas var för sig i stället för att gissa: med och utan snedstreck,
+            med specens <em>egna obligatoriska parametrar</em> ifyllda, och mot
+            den bas specen anger. Saknas en parameter API:t kräver kan svaret
+            bli 404 i stället för 400, och då ser vägen ut att inte finnas.
           </p>
           <table className="mt-3 w-full border-collapse">
             <tbody>
               {report.shiftVariants.map((v) => (
-                <tr key={v.url} className="border-t border-(--color-line) align-top">
+                <tr
+                  key={v.url}
+                  className="border-t border-(--color-line) align-top"
+                >
                   <td className="py-1.5 pr-3 text-xs">{v.what}</td>
                   <td className="py-1.5 pr-3">
                     <Badge outcome={v.outcome} />
@@ -362,9 +458,9 @@ export default async function TranspaPage({
             </tbody>
           </table>
           <p className="mt-3 max-w-[68ch] text-xs text-(--color-muted)">
-            Svarar den med parametrar men inte de andra är det parametrarna som fattades, och
-            hämtningen skrivs mot den formen. Svarar ingen av dem behöver Visma tillfrågas om
-            hur anropet ska se ut för er tenant.
+            Svarar den med parametrar men inte de andra är det parametrarna som
+            fattades, och hämtningen skrivs mot den formen. Svarar ingen av dem
+            behöver Visma tillfrågas om hur anropet ska se ut för er tenant.
           </p>
         </div>
       )}
@@ -402,7 +498,8 @@ export default async function TranspaPage({
               <p className="mt-2 max-w-[68ch] text-sm">
                 {(() => {
                   const past = report.trips.past;
-                  if (!past || past.rows === 0 || past.employees === 0) return null;
+                  if (!past || past.rows === 0 || past.employees === 0)
+                    return null;
                   const per = past.rows / past.employees;
                   return per < 2
                     ? `Turerna fördelar sig på ${past.employees} personer, ${per.toFixed(1)} per person och vecka. En tur är alltså inget arbetspass — fälten allowanceReductions och borderCrossings pekar mot en traktamentsgrundande resa. Turhistoriken duger då inte för att härleda arbetsdagar, och arbetsmönstren får fyllas i för hand.`
@@ -416,7 +513,9 @@ export default async function TranspaPage({
 
       {report.grouping && (
         <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
-          <p className="font-medium">Kan stationsorten hämtas i stället för att sättas för hand?</p>
+          <p className="font-medium">
+            Kan stationsorten hämtas i stället för att sättas för hand?
+          </p>
           {report.grouping.outcome !== "ok" ? (
             <p className="mt-1 text-xs text-(--color-warn)">
               Gick inte att avgöra: {report.grouping.detail}
@@ -424,24 +523,31 @@ export default async function TranspaPage({
           ) : (
             <>
               <p className="mt-1 text-xs text-(--color-muted)">
-                Bygger på {report.grouping.sampled} personer och {report.grouping.stationNames.length}{" "}
-                stationsorter. Bara gruppnamn och antal visas — aldrig vem som har vilket.
+                Bygger på {report.grouping.sampled} personer och{" "}
+                {report.grouping.stationNames.length} stationsorter. Bara
+                gruppnamn och antal visas — aldrig vem som har vilket.
               </p>
 
               {report.grouping.fields.map((f) => {
-                const share = f.distinct > 0 ? f.matchesStation / f.distinct : 0;
+                const share =
+                  f.distinct > 0 ? f.matchesStation / f.distinct : 0;
                 return (
-                  <div key={f.field} className="mt-3 border-t border-(--color-line) pt-3">
+                  <div
+                    key={f.field}
+                    className="mt-3 border-t border-(--color-line) pt-3"
+                  >
                     <p>
                       <code>{f.field}</code>
                       <span className="ml-2 text-xs text-(--color-muted)">
-                        {f.distinct} olika värden · {f.matchesStation} matchar en stationsort ·{" "}
-                        {f.blank} utan värde
+                        {f.distinct} olika värden · {f.matchesStation} matchar
+                        en stationsort · {f.blank} utan värde
                       </span>
                     </p>
                     <p
                       className={`mt-1 text-sm ${
-                        share >= 0.6 ? "text-(--color-accent)" : "text-(--color-muted)"
+                        share >= 0.6
+                          ? "text-(--color-accent)"
+                          : "text-(--color-muted)"
                       }`}
                     >
                       {f.distinct === 0
@@ -452,8 +558,12 @@ export default async function TranspaPage({
                     </p>
                     {f.values.length > 0 && (
                       <p className="mt-1 font-mono text-xs break-words text-(--color-muted)">
-                        {f.values.map((v) => `${v.value} (${v.count})`).join(" · ")}
-                        {f.distinct > f.values.length ? ` … +${f.distinct - f.values.length} till` : ""}
+                        {f.values
+                          .map((v) => `${v.value} (${v.count})`)
+                          .join(" · ")}
+                        {f.distinct > f.values.length
+                          ? ` … +${f.distinct - f.values.length} till`
+                          : ""}
                       </p>
                     )}
                   </div>
@@ -462,7 +572,8 @@ export default async function TranspaPage({
 
               <details className="mt-3">
                 <summary className="cursor-pointer text-xs text-(--color-muted)">
-                  Stationsorterna i TransPA ({report.grouping.stationNames.length})
+                  Stationsorterna i TransPA (
+                  {report.grouping.stationNames.length})
                 </summary>
                 <p className="mt-1 font-mono text-xs break-words text-(--color-muted)">
                   {report.grouping.stationNames.join(" · ")}
@@ -477,7 +588,8 @@ export default async function TranspaPage({
         <div className="mt-6 rounded border border-(--color-line) bg-white p-4 text-sm">
           <p className="font-medium">Fälten på en person</p>
           <p className="mt-1 font-mono text-xs break-all text-(--color-ink)">
-            {report.employeeSample.keys.join(", ") || "(svaret innehöll inga fält)"}
+            {report.employeeSample.keys.join(", ") ||
+              "(svaret innehöll inga fält)"}
           </p>
           <p className="mt-2 text-xs text-(--color-muted)">
             Id som gick att plocka ut:{" "}
@@ -510,9 +622,10 @@ export default async function TranspaPage({
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Vägar som provats</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Specen har 47 vägar, och ingen av dem rör frånvaro, semester eller arbetsscheman —
-          de ägs alltså här. Listan står kvar som bevakning: svarar någon av dem annat än{" "}
-          <em>finns inte</em> en dag har Visma öppnat resursen, och då är det värt att veta.
+          Specen har 47 vägar, och ingen av dem rör frånvaro, semester eller
+          arbetsscheman — de ägs alltså här. Listan står kvar som bevakning:
+          svarar någon av dem annat än <em>finns inte</em> en dag har Visma
+          öppnat resursen, och då är det värt att veta.
         </p>
         <table className="mt-2 w-full border-collapse">
           <tbody>
@@ -523,9 +636,12 @@ export default async function TranspaPage({
         </table>
         {found.length > 0 && (
           <p className="mt-3 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-            {found.length === 1 ? "En väg svarade" : `${found.length} vägar svarade`}:{" "}
-            {found.map((f) => f.path).join(", ")}. Titta på fältnamnen för att avgöra vad den
-            faktiskt innehåller — att en väg svarar säger inte att den bär arbetsdagar.
+            {found.length === 1
+              ? "En väg svarade"
+              : `${found.length} vägar svarade`}
+            : {found.map((f) => f.path).join(", ")}. Titta på fältnamnen för att
+            avgöra vad den faktiskt innehåller — att en väg svarar säger inte
+            att den bär arbetsdagar.
           </p>
         )}
       </section>
@@ -536,12 +652,14 @@ export default async function TranspaPage({
           <>
             <p className="mt-1 text-xs text-(--color-muted)">
               Hittad på <code>{report.spec.url}</code>
-              {report.spec.version && ` · version ${report.spec.version}`} ·{" "}
+              {report.spec.version &&
+                ` · version ${report.spec.version}`} ·{" "}
               {report.spec.paths?.length} sökvägar
               {report.spec.servers && report.spec.servers.length > 0 && (
                 <>
                   {" "}
-                  · bas enligt specen: <code>{report.spec.servers.join(", ")}</code>
+                  · bas enligt specen:{" "}
+                  <code>{report.spec.servers.join(", ")}</code>
                 </>
               )}
             </p>
@@ -566,11 +684,15 @@ export default async function TranspaPage({
                   <ul className="mt-1 text-sm">
                     <li>
                       {verdict.shifts ? "✓" : "✗"} Skicka schemaändring —{" "}
-                      {verdict.shifts ? "går att bygga" : "ingen väg att skapa eller ändra ett pass"}
+                      {verdict.shifts
+                        ? "går att bygga"
+                        : "ingen väg att skapa eller ändra ett pass"}
                     </li>
                     <li>
                       {verdict.absence ? "✓" : "✗"} Skicka frånvaro —{" "}
-                      {verdict.absence ? "går att bygga" : "ingen väg att skapa eller ändra frånvaro"}
+                      {verdict.absence
+                        ? "går att bygga"
+                        : "ingen väg att skapa eller ändra frånvaro"}
                     </li>
                   </ul>
 
@@ -578,11 +700,19 @@ export default async function TranspaPage({
                     <div className="mt-3 space-y-2">
                       {groupWrites(writes).map(({ topic, writes: rader }) => (
                         <div key={topic}>
-                          <p className="text-xs text-(--color-muted)">{TOPIC_LABEL[topic]}</p>
+                          <p className="text-xs text-(--color-muted)">
+                            {TOPIC_LABEL[topic]}
+                          </p>
                           <ul className="font-mono text-xs">
                             {rader.map((w) => (
-                              <li key={`${w.method} ${w.path}`} className="py-0.5">
-                                <span className="font-semibold">{w.method}</span> {w.path}
+                              <li
+                                key={`${w.method} ${w.path}`}
+                                className="py-0.5"
+                              >
+                                <span className="font-semibold">
+                                  {w.method}
+                                </span>{" "}
+                                {w.path}
                                 {w.summary && (
                                   <span className="ml-2 font-sans text-(--color-muted)">
                                     {w.summary}
@@ -598,10 +728,11 @@ export default async function TranspaPage({
 
                   {writes.length === 0 && (
                     <p className="mt-2 max-w-[62ch] text-xs text-(--color-muted)">
-                      Specen anger inga vägar alls utöver läsning. Är det riktigt är fas 3 och 4
-                      blockerade på Visma och inte på kod — men kontrollera först att
-                      skriv-scopen är beviljade för den här tenanten, eftersom en spec kan
-                      vara filtrerad på behörighet.
+                      Specen anger inga vägar alls utöver läsning. Är det
+                      riktigt är fas 3 och 4 blockerade på Visma och inte på kod
+                      — men kontrollera först att skriv-scopen är beviljade för
+                      den här tenanten, eftersom en spec kan vara filtrerad på
+                      behörighet.
                     </p>
                   )}
                 </div>
@@ -629,7 +760,8 @@ export default async function TranspaPage({
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-(--color-warn)">
-                  Ingen väg i specen rör pass, scheman eller frånvaro. Då är frågan avgjord.
+                  Ingen väg i specen rör pass, scheman eller frånvaro. Då är
+                  frågan avgjord.
                 </p>
               );
             })()}
@@ -651,10 +783,11 @@ export default async function TranspaPage({
           <>
             <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
               Kunde inte hämtas. Sidan läser numera Swagger-UI:t på{" "}
-              <code>api.mytranspa.com/doc/openapi/swaggerui/</code> och plockar ut adressen den
-              själv använder, i stället för att gissa. Går inte heller det behöver specen hämtas för
-              hand: öppna UI:t i en webbläsare, leta upp anropet till spec-filen under
-              Nätverk-fliken, och skicka adressen.
+              <code>api.mytranspa.com/doc/openapi/swaggerui/</code> och plockar
+              ut adressen den själv använder, i stället för att gissa. Går inte
+              heller det behöver specen hämtas för hand: öppna UI:t i en
+              webbläsare, leta upp anropet till spec-filen under Nätverk-fliken,
+              och skicka adressen.
             </p>
             {report.spec?.paths && report.spec.paths.length > 0 && (
               <ul className="mt-2 rounded border border-(--color-line) bg-white p-3 font-mono text-xs text-(--color-muted)">
@@ -672,15 +805,24 @@ export default async function TranspaPage({
       <section className="mt-8">
         <h2 className="text-sm font-semibold">Synk av grunddata</h2>
         <p className="mt-1 max-w-[68ch] text-xs text-(--color-muted)">
-          Hämtar personal, stationsorter och pass, ett bolag i taget, och märker varje person med
-          sitt bolag. Passen hämtas fyra veckor bakåt och tolv framåt och läses sedan ur databasen
-          — tavelvyn rör aldrig nätet, eftersom ett trögt TransPA annars fäller hela sidan. Fordon
-          hämtas inte; de skrivs in för hand under Grunddata. Personalens stationsort ägs lokalt
-          och skrivs aldrig över.
+          Hämtar personal, stationsorter och pass, ett bolag i taget, och märker
+          varje person med sitt bolag. Passen hämtas fyra veckor bakåt och tolv
+          framåt och läses sedan ur databasen — tavelvyn rör aldrig nätet,
+          eftersom ett trögt TransPA annars fäller hela sidan. Fordon hämtas
+          inte; de skrivs in för hand under Grunddata. Personalens stationsort
+          ägs lokalt och skrivs aldrig över.
         </p>
         <div className="mt-3">
           <SyncButton disabled={missing} />
         </div>
+      </section>
+
+      {/* Menyn igen längst ned. Nästa fråga ställs oftast direkt efter
+          den förra, och att behöva gå tillbaka först inbjuder till att
+          i stället ladda om — vilket är just det som kostar. */}
+      <section className="mt-8">
+        <h2 className="text-sm font-semibold">Kontrollera något annat</h2>
+        <CheckMenu aktiv={check.id} />
       </section>
 
       <p className="mt-8 text-xs text-(--color-muted)">Kört {report.ranAt}</p>
