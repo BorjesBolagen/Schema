@@ -95,6 +95,10 @@ export interface RequestOptions {
   cursor?: string;
   scopes?: string[];
   signal?: AbortSignal;
+  /** HTTP-metod. Utelämnad blir det GET. */
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  /** Kropp för skrivande anrop, skickas som JSON. */
+  body?: unknown;
 }
 
 export interface TranspaClientOptions {
@@ -136,8 +140,15 @@ export class TranspaClient {
     }
     if (options.cursor) url.searchParams.set("cursor", options.cursor);
 
+    const method = options.method ?? "GET";
     const response = await this.fetchImpl(url.toString(), {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: options.signal,
     });
 
@@ -158,6 +169,30 @@ export class TranspaClient {
     }
 
     return (text ? JSON.parse(text) : null) as T;
+  }
+
+  /**
+   * Skrivande anrop.
+   *
+   * Egna metoder och inte bara ett method-fält på request(), för att
+   * anropsstället ska läsas som det det är. En skrivning mot en
+   * produktionstenant ska synas i koden, inte gömma sig i en parameter.
+   *
+   * Scope måste anges: läs-scopen räcker inte, och TransPA svarar 403
+   * med vilket scope som saknas. De begärs per anrop och inte globalt —
+   * en token som kan skriva ska inte ligga och vänta på att användas av
+   * något som bara skulle läsa.
+   */
+  async post<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: "POST", body });
+  }
+
+  async put<T>(path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: "PUT", body });
+  }
+
+  async delete<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: "DELETE" });
   }
 
   /**

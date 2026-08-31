@@ -25,6 +25,7 @@ import {
   type ShiftFetchResult,
 } from "@/app/actions";
 import { ClearWeekButton } from "./ClearWeekButton";
+import { SendChangesButton } from "./SendChangesButton";
 import { WeekGrid } from "./WeekGrid";
 import { CrewPanel } from "./CrewPanel";
 import { CrewPicker, type PickerEmployee } from "./CrewPicker";
@@ -318,6 +319,10 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         {/* Rensningen står bredvid Fyll veckan, för det är dess motsats:
             den ena lägger ut veckan, den andra tar tillbaka den. */}
         <ClearWeekButton boardSlug={data.board.slug} year={data.year} week={data.week} />
+
+        {/* Sista steget i kedjan: hämta, fyll, justera — och skicka
+            tillbaka det som justerats. */}
+        <SendChangesButton boardSlug={data.board.slug} year={data.year} week={data.week} />
 
         <span className="ml-auto flex gap-2">
           <button

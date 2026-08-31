@@ -7,7 +7,7 @@
  * går att ändra i tavelredigeraren.
  */
 import { chromium } from "playwright-core";
-import { signIn } from "./e2e-helpers";
+import { signIn, weekQuery } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3280";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -23,7 +23,7 @@ const check = (label: string, ok: boolean) => checks.push([label, ok]);
 const rad = (label: string) => page.locator(`tbody tr[data-row="${label}"]`);
 
 await signIn(page, base);
-await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
+await page.goto(`${base}/tavla/fjarr-nybro${weekQuery()}`, { waitUntil: "networkidle" });
 
 /* Riktningen känns igen på sin etikett, inte på sin glyf: glyfen är
    ett designval som får ändras utan att testet blir rött. */

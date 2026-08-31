@@ -7,7 +7,7 @@
  * enhetstesterna.
  */
 import { chromium } from "playwright-core";
-import { signIn } from "./e2e-helpers";
+import { signIn, weekQuery } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3360";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -44,7 +44,7 @@ const fyll = async () => {
 };
 
 await signIn(page, base);
-await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
+await page.goto(`${base}/tavla/fjarr-nybro${weekQuery()}`, { waitUntil: "networkidle" });
 
 /* ---- Koppla Björn till en andra bil ---- */
 await page.getByRole("button", { name: /Bas-schema/ }).click();

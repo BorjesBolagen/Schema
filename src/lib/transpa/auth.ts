@@ -48,6 +48,17 @@ export const READ_SCOPES = [
   "transpaapi:shifts:read",
 ];
 
+/**
+ * Scope för att skriva pass.
+ *
+ * Begärs bara av de anrop som faktiskt skriver, aldrig som en del av
+ * läs-scopen: en token som får ändra ett schema ska inte ligga i cachen
+ * och användas av något som bara skulle läsa. Att de hämtas per anrop
+ * kostar en tokenhämtning första gången och inget därefter — cachen
+ * nycklas på scope.
+ */
+export const SHIFT_WRITE_SCOPES = [BASE_SCOPE, "transpaapi:shifts:write"];
+
 interface CachedToken {
   token: string;
   expiresAt: number;

@@ -7,7 +7,7 @@
  * underlaget överlever så att Fyll veckan kan lägga ut den igen.
  */
 import { chromium } from "playwright-core";
-import { signIn } from "./e2e-helpers";
+import { signIn, nextWeekQuery, weekQuery } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3270";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -18,8 +18,8 @@ page.on("pageerror", (e) => errors.push(String(e)));
 const checks: Array<[string, boolean]> = [];
 const check = (label: string, ok: boolean) => checks.push([label, ok]);
 
-const veckan = "?ar=2026&vecka=34";
-const grannen = "?ar=2026&vecka=35";
+const veckan = `${weekQuery()}`;
+const grannen = `${nextWeekQuery()}`;
 /* Passen är de dragbara spannen. Skiftikonen ☀️/🌙 bär också title,
    så den selektorn räknar tomma celler med. */
 const passIRutnatet = async () => await page.locator("tbody span.cursor-grab").count();
@@ -42,7 +42,10 @@ await page.getByRole("button", { name: "Rensa veckan" }).click();
 await page.waitForTimeout(1200);
 const text = await page.locator("div.mb-3").innerText();
 check("bekräftelsen räknar passen", /Tar bort \d+ pass/.test(text));
-check("bekräftelsen nämner datumspannet", /17–23 aug 2026/.test(text));
+/* Spannet nämner två datum och ett årtal. Månaden skrivs bara en gång
+   när veckan ligger inom en månad ("17–23 aug 2026") och två gånger när
+   den korsar ett månadsskifte ("31 aug–6 sep 2026") — båda ska godtas. */
+check("bekräftelsen nämner datumspannet", /\d+( \w+)?–\d+ \w+ \d{4}/.test(text));
 console.log("  bekräftelse:", text.split("\n").find((l) => l.includes("Tar bort")) ?? "(saknas)");
 
 /* ---- Avbryt ska inte röra något ---- */

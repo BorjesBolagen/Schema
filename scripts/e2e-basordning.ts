@@ -7,7 +7,7 @@
  * veckan" utan att något sagt ifrån.
  */
 import { chromium } from "playwright-core";
-import { signIn } from "./e2e-helpers";
+import { signIn, weekQuery } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3330";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -36,7 +36,7 @@ async function pick(select: ReturnType<typeof page.locator>, needle: string) {
 }
 
 await signIn(page, base);
-await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
+await page.goto(`${base}/tavla/fjarr-nybro${weekQuery()}`, { waitUntil: "networkidle" });
 console.log("  Björn står på:", await bjornsBil());
 
 /* ---- Koppla Björn till en andra bil ---- */

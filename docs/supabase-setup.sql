@@ -4,7 +4,7 @@
 -- Går att köra om. Det som redan finns hoppas över, det som fattas
 -- läggs på. Kör den alltså i sin helhet även mot en databas som
 -- redan är uppsatt — du behöver inte veta hur långt den kommit.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql, 0009_transpa_outbox.sql
 
 BEGIN;
 
@@ -616,6 +616,51 @@ ALTER TABLE "board" ADD COLUMN IF NOT EXISTS "cycle_offset" integer DEFAULT 0 NO
 ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "cycle_weeks" integer[];
 ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "weekdays" integer[];
 
+-- 0009_transpa_outbox.sql
+-- Spår av varje skrivning till TransPA.
+--
+-- Tenanten är Börjes produktionsmiljö. En ändring där påverkar en
+-- riktig chaufförs arbetsdag, och den som undrar varför ett pass
+-- flyttades ska kunna få veta vem som tryckte, när, och vad som
+-- skickades — utan att leta i en serverlogg som ändå rullat förbi.
+--
+-- Raden skrivs även när anropet misslyckas. Ett misslyckat försök är
+-- också något som hände.
+
+DO $$ BEGIN
+  CREATE TYPE "public"."outbox_status" AS ENUM('ok', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+CREATE TABLE IF NOT EXISTS "transpa_outbox" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "user_id" uuid,
+  "employee_id" uuid,
+  "transpa_shift_id" text,
+  "summary" text NOT NULL,
+  "method" text NOT NULL,
+  "path" text NOT NULL,
+  "request_body" text,
+  "status" "outbox_status" NOT NULL,
+  "response_status" integer,
+  "response_body" text,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+DO $$ BEGIN
+  ALTER TABLE "transpa_outbox" ADD CONSTRAINT "transpa_outbox_user_id_app_user_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "public"."app_user"("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE "transpa_outbox" ADD CONSTRAINT "transpa_outbox_employee_id_employee_id_fk"
+    FOREIGN KEY ("employee_id") REFERENCES "public"."employee"("id") ON DELETE set null;
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
+END $$;
+CREATE INDEX IF NOT EXISTS "transpa_outbox_created_idx" ON "transpa_outbox" ("created_at");
+DO $$ BEGIN
+  ALTER TABLE "transpa_outbox" ENABLE ROW LEVEL SECURITY;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
 -- Markera migrationerna som körda, så npm run db:migrate inte
 -- försöker köra dem igen mot samma databas.
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -642,5 +687,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'ec4bfd13f9
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'ec4bfd13f9d121540fcbac335e5bf33ced0e7b1df380826312815f2011c1638c');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '9f401390fb2ef8e8f98e21aa79d8add57ea90d1d6c0b09105876c00650f43bf6', 1787657715770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '9f401390fb2ef8e8f98e21aa79d8add57ea90d1d6c0b09105876c00650f43bf6');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28', 1787657716770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28');
 
 COMMIT;

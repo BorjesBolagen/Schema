@@ -21,3 +21,34 @@ export async function signIn(page: Page, base: string): Promise<void> {
   ]);
   await page.waitForLoadState("networkidle");
 }
+
+/**
+ * Veckan demounderlaget faktiskt fyller.
+ *
+ * Skripten pekade tidigare på vecka 34 rakt av. Demot fyller veckorna
+ * runt *idag*, så den veckan gled ur intervallet när kalendern gick
+ * vidare — och skripten började köra mot en tom tavla. De flesta
+ * fortsatte vara gröna, eftersom de kontrollerade saker som inte kräver
+ * data, vilket är sämre än att bli röda.
+ */
+export function seededWeek(): { year: number; week: number } {
+  const d = new Date();
+  const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // Torsdagen i samma vecka avgör vilket år veckan tillhör (ISO-8601).
+  utc.setUTCDate(utc.getUTCDate() + 4 - (utc.getUTCDay() || 7));
+  const nyår = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((utc.getTime() - nyår.getTime()) / 86_400_000 + 1) / 7);
+  return { year: utc.getUTCFullYear(), week };
+}
+
+/** "?ar=2026&vecka=36" för den vecka demot fyllt. */
+export function weekQuery(): string {
+  const { year, week } = seededWeek();
+  return `?ar=${year}&vecka=${week}`;
+}
+
+/** Veckan efter, för de tester som behöver en grannvecka. */
+export function nextWeekQuery(): string {
+  const { year, week } = seededWeek();
+  return `?ar=${year}&vecka=${week + 1}`;
+}

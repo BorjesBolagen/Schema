@@ -304,6 +304,50 @@ export const transpaShift = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
+ * Skrivningar till TransPA
+ * ------------------------------------------------------------------ */
+
+export const outboxStatus = pgEnum("outbox_status", ["ok", "failed"]);
+
+/**
+ * Varje skrivning till TransPA, med svaret.
+ *
+ * TransPA-tenanten är Börjes produktionsmiljö. En ändring där påverkar
+ * en riktig chaufförs arbetsdag, och den som undrar varför ett pass
+ * flyttades ska kunna få veta vem som tryckte, när, och vad som
+ * skickades — utan att någon behöver leta i en serverlogg som ändå
+ * rullat förbi.
+ *
+ * Skrivs även när anropet misslyckas. Ett misslyckat försök är också
+ * något som hände.
+ */
+export const transpaOutbox = pgTable(
+  "transpa_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Vem som tryckte. */
+    userId: uuid("user_id").references(() => appUser.id),
+    /** Personen ändringen gällde, som vi känner hen. */
+    employeeId: uuid("employee_id").references(() => employee.id, { onDelete: "set null" }),
+    /** Passets id hos TransPA. */
+    transpaShiftId: text("transpa_shift_id"),
+    /** Vad som gjordes, i klartext: "flyttade pass 2026-08-19 → 2026-08-20". */
+    summary: text("summary").notNull(),
+    method: text("method").notNull(),
+    path: text("path").notNull(),
+    /** Kroppen som skickades, som JSON-text. */
+    requestBody: text("request_body"),
+    status: outboxStatus("status").notNull(),
+    /** HTTP-status, eller null när anropet aldrig nådde fram. */
+    responseStatus: integer("response_status"),
+    /** Svaret eller felet, avkortat. */
+    responseBody: text("response_body"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("transpa_outbox_created_idx").on(t.createdAt)],
+);
+
+/* ------------------------------------------------------------------ *
  * Tavlan
  * ------------------------------------------------------------------ */
 

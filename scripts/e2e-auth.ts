@@ -1,4 +1,5 @@
 /** Inloggning, skydd av rutter och utloggning. */
+import { weekQuery } from "./e2e-helpers";
 import { chromium } from "playwright-core";
 
 const base = process.env.BASE_URL ?? "http://localhost:3230";
@@ -36,7 +37,7 @@ console.log("\nSessionen håller:");
 await page.goto(`${base}/tavla/fjarr-nybro/semester?ar=2026`, { waitUntil: "networkidle" });
 check("semestervyn öppnas", (await page.locator("h1").innerText()).includes("Semesterplanering"));
 
-const dl = await page.request.get(`${base}/tavla/fjarr-nybro/export?ar=2026&vecka=34&vy=resource`);
+const dl = await page.request.get(`${base}/tavla/fjarr-nybro/export${weekQuery()}&vy=resource`);
 check("Excel-exporten svarar 200", dl.status() === 200);
 
 console.log("\nUtloggning:");

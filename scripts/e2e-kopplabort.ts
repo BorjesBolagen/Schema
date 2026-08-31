@@ -7,7 +7,7 @@
  * ska fortfarande gå att dra ut på en rad.
  */
 import { chromium } from "playwright-core";
-import { signIn } from "./e2e-helpers";
+import { signIn, weekQuery } from "./e2e-helpers";
 
 const base = process.env.BASE_URL ?? "http://localhost:3300";
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
@@ -22,7 +22,7 @@ const aside = () => page.locator("aside");
 const kort = (namn: string) => aside().locator("li", { hasText: namn }).first();
 
 await signIn(page, base);
-await page.goto(`${base}/tavla/fjarr-nybro?ar=2026&vecka=34`, { waitUntil: "networkidle" });
+await page.goto(`${base}/tavla/fjarr-nybro${weekQuery()}`, { waitUntil: "networkidle" });
 
 check("personen finns i bemanningen", (await aside().innerText()).includes("Roger Bergström"));
 
