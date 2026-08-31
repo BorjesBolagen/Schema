@@ -22,6 +22,88 @@
  * transaktion, så en halvvägs pålagd migration finns inte som utfall.
  */
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { getTableName, isTable, type Table } from "drizzle-orm";
+import * as schema from "../src/db/schema";
+
+/**
+ * Tabellerna appen äger — allt vi någonsin skapat, inte bara det som
+ * finns kvar.
+ *
+ * Två källor, och båda behövs. Schemat säger vad som gäller i dag;
+ * migrationerna säger vad som funnits. Skillnaden är inte teoretisk:
+ * employee_alias och unresolved_alias skapades av 0000 och droppades av
+ * 0005, så en databas som stannat vid 0003 bär dem. Räknades bara
+ * dagens schema skulle vakten läsa dem som främmande och vägra köra i
+ * *vår egen* databas — vilket är precis vad testet visade.
+ *
+ * Uppräknat för hand skulle listan dessutom rosta vid nästa nya tabell,
+ * och en rostig lista gör vakten till en slumpgenerator.
+ */
+export function ownTables(migrations: string[]): string[] {
+  const names = new Set(
+    /* Schemat exporterar också enum:er och konstanter — isTable sållar,
+       men typen måste vidgas först eftersom Object.values ser dem alla. */
+    (Object.values(schema) as unknown[])
+      .filter((x): x is Table => isTable(x))
+      .map((t) => getTableName(t)),
+  );
+  for (const sql of migrations) {
+    for (const m of sql.matchAll(
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([a-zA-Z0-9_]+)"?/gi,
+    )) {
+      names.add(m[1]);
+    }
+  }
+  return [...names].sort();
+}
+
+/**
+ * Vägrar köra i fel Supabase-projekt.
+ *
+ * Filen klistras in för hand, och SQL-editorn säger ingenting om vilket
+ * projekt man har framme. Hamnar den fel skapas tjugo tabeller där de
+ * inte hör hemma.
+ *
+ * Regeln: har databasen tabeller i public men saknar vårt märke är det
+ * någon annans databas. En tom databas släpps igenom — det är en
+ * förstagångsuppsättning, och märket skrivs av migration 0010.
+ *
+ * Vakten körs innan allt annat och inuti samma transaktion, så ett
+ * avbrott lämnar databasen orörd.
+ */
+function guard(tables: string[]): string[] {
+  const lista = tables.map((t) => `'${t}'`).join(", ");
+  return [
+    "-- Vägrar köra i fel projekt. Se kommentaren i scripts/build-setup-sql.ts.",
+    "DO $$",
+    "DECLARE",
+    "  marke int;",
+    "  frammande int;",
+    "BEGIN",
+    "  SELECT count(*) INTO marke FROM information_schema.tables",
+    "   WHERE table_schema = 'public' AND table_name = 'schema_app_identity';",
+    "",
+    "  SELECT count(*) INTO frammande FROM information_schema.tables",
+    "   WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    `     AND table_name NOT IN (${lista});`,
+    "",
+    "  IF marke = 0 AND frammande > 0 THEN",
+    "    RAISE EXCEPTION",
+    "      'Fel databas. Det här projektet har % tabeller som inte hör till Schema, och saknar Schemas märke. Kontrollera att du är i Supabase-projektet \"Schema\" innan du kör om.',",
+    "      frammande;",
+    "  END IF;",
+    "",
+    "  IF marke > 0 THEN",
+    "    PERFORM 1 FROM schema_app_identity WHERE app = 'borjes-schema';",
+    "    IF NOT FOUND THEN",
+    "      RAISE EXCEPTION",
+    "        'Fel databas. schema_app_identity finns men innehåller inte borjes-schema — databasen tillhör en annan app.';",
+    "    END IF;",
+    "  END IF;",
+    "END $$;",
+    "",
+  ];
+}
 
 /**
  * Gör en enskild sats ofarlig att köra om.
@@ -82,6 +164,7 @@ export function statementsOf(sql: string): string[] {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = "drizzle";
   const files = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort();
+  const migrations = await Promise.all(files.map((f) => readFile(`${dir}/${f}`, "utf8")));
 
   const parts: string[] = [
     "-- Genererad av scripts/build-setup-sql.ts — redigera inte för hand.",
@@ -90,15 +173,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     "-- Går att köra om. Det som redan finns hoppas över, det som fattas",
     "-- läggs på. Kör den alltså i sin helhet även mot en databas som",
     "-- redan är uppsatt — du behöver inte veta hur långt den kommit.",
+    "--",
+    "-- Vägrar köra i ett Supabase-projekt som tillhör något annat. Se",
+    "-- vakten längst upp: har databasen tabeller men saknar Schemas",
+    "-- märke avbryts allt, och ingenting skrivs.",
     `-- Migrationer: ${files.join(", ")}`,
     "",
     "BEGIN;",
     "",
+    ...guard(ownTables(migrations)),
   ];
 
-  for (const file of files) {
+  for (const [i, file] of files.entries()) {
     parts.push(`-- ${file}`);
-    for (const statement of statementsOf(await readFile(`${dir}/${file}`, "utf8"))) {
+    for (const statement of statementsOf(migrations[i])) {
       parts.push(makeIdempotent(statement));
     }
     parts.push("");

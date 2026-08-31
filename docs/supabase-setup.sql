@@ -4,9 +4,41 @@
 -- Går att köra om. Det som redan finns hoppas över, det som fattas
 -- läggs på. Kör den alltså i sin helhet även mot en databas som
 -- redan är uppsatt — du behöver inte veta hur långt den kommit.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql, 0009_transpa_outbox.sql
+--
+-- Vägrar köra i ett Supabase-projekt som tillhör något annat. Se
+-- vakten längst upp: har databasen tabeller men saknar Schemas
+-- märke avbryts allt, och ingenting skrivs.
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql, 0009_transpa_outbox.sql, 0010_app_identity.sql
 
 BEGIN;
+
+-- Vägrar köra i fel projekt. Se kommentaren i scripts/build-setup-sql.ts.
+DO $$
+DECLARE
+  marke int;
+  frammande int;
+BEGIN
+  SELECT count(*) INTO marke FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_name = 'schema_app_identity';
+
+  SELECT count(*) INTO frammande FROM information_schema.tables
+   WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+     AND table_name NOT IN ('absence', 'app_user', 'assignment', 'base_schedule', 'board', 'board_crew', 'board_group', 'board_member', 'board_row', 'employee', 'schema_app_identity', 'session', 'station_place', 'sync_run', 'traffic_area', 'transpa_outbox', 'transpa_shift', 'transpa_tenant', 'vehicle', 'vehicle_group', 'work_pattern', 'work_pattern_day');
+
+  IF marke = 0 AND frammande > 0 THEN
+    RAISE EXCEPTION
+      'Fel databas. Det här projektet har % tabeller som inte hör till Schema, och saknar Schemas märke. Kontrollera att du är i Supabase-projektet "Schema" innan du kör om.',
+      frammande;
+  END IF;
+
+  IF marke > 0 THEN
+    PERFORM 1 FROM schema_app_identity WHERE app = 'borjes-schema';
+    IF NOT FOUND THEN
+      RAISE EXCEPTION
+        'Fel databas. schema_app_identity finns men innehåller inte borjes-schema — databasen tillhör en annan app.';
+    END IF;
+  END IF;
+END $$;
 
 -- 0000_init.sql
 DO $$ BEGIN
@@ -661,6 +693,28 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
+-- 0010_app_identity.sql
+-- Märket som säger vilken app databasen tillhör.
+--
+-- Uppsättningsfilen klistras in för hand i Supabases SQL-editor, och
+-- ingenting i den vyn säger vilket projekt man råkar ha framme.
+-- Klistras den i fel projekt skapas tjugo tabeller där de inte hör
+-- hemma, och felet upptäcks först när någon undrar varför.
+--
+-- Filen kontrollerar det här märket innan den gör något. Tabellen måste
+-- därför skapas här, i en migration, så den finns för nästa körning.
+
+CREATE TABLE IF NOT EXISTS "schema_app_identity" (
+  "app" text PRIMARY KEY NOT NULL,
+  "installed_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+INSERT INTO "schema_app_identity" ("app") VALUES ('borjes-schema')
+  ON CONFLICT ("app") DO NOTHING;
+DO $$ BEGIN
+  ALTER TABLE "schema_app_identity" ENABLE ROW LEVEL SECURITY;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
 -- Markera migrationerna som körda, så npm run db:migrate inte
 -- försöker köra dem igen mot samma databas.
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -689,5 +743,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '9f401390fb
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '9f401390fb2ef8e8f98e21aa79d8add57ea90d1d6c0b09105876c00650f43bf6');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28', 1787657716770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'fbbfa4d767b742a96f3f6fc72f76681209b9fcef0dd66b44606ecde0f4958c78', 1787657717770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'fbbfa4d767b742a96f3f6fc72f76681209b9fcef0dd66b44606ecde0f4958c78');
 
 COMMIT;

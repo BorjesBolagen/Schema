@@ -24,4 +24,5 @@ export const MIGRATIONS: MigrationRef[] = [
   { tag: "0007_shift_ends_at", hash: "ec4bfd13f9d121540fcbac335e5bf33ced0e7b1df380826312815f2011c1638c" },
   { tag: "0008_rotation", hash: "9f401390fb2ef8e8f98e21aa79d8add57ea90d1d6c0b09105876c00650f43bf6" },
   { tag: "0009_transpa_outbox", hash: "82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28" },
+  { tag: "0010_app_identity", hash: "fbbfa4d767b742a96f3f6fc72f76681209b9fcef0dd66b44606ecde0f4958c78" },
 ];

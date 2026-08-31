@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
-import { makeIdempotent, statementsOf } from "../../scripts/build-setup-sql";
+import { makeIdempotent, ownTables, statementsOf } from "../../scripts/build-setup-sql";
 
 /**
  * docs/supabase-setup.sql klistras in i Supabases SQL-editor för hand.
@@ -126,5 +126,109 @@ describe("makeIdempotent", () => {
     expect(makeIdempotent('ALTER TABLE "employee" ADD COLUMN "x" uuid;')).toContain(
       "ADD COLUMN IF NOT EXISTS",
     );
+  });
+});
+
+/**
+ * Vakten mot fel Supabase-projekt.
+ *
+ * Filen klistras in för hand, och SQL-editorn säger ingenting om vilket
+ * projekt man har framme. Hamnar den fel skapas tjugo tabeller där de
+ * inte hör hemma — och felet upptäcks först när någon undrar varför.
+ *
+ * Vakten måste därför stoppa i rätt fall och *inte* stoppa i de tre
+ * lägen som är helt normala: tom databas, vår databas, och vår databas
+ * en gång till.
+ */
+describe("vakten mot fel projekt", () => {
+  const kör = async (db: PGlite) => run(db, await setupSql());
+
+  it("släpper igenom en tom databas", async () => {
+    const db = new PGlite();
+    await expect(kör(db)).resolves.not.toThrow();
+    await db.close();
+  });
+
+  it("skriver märket vid uppsättningen", async () => {
+    const db = new PGlite();
+    await kör(db);
+    const { rows } = await db.query<{ app: string }>("select app from schema_app_identity");
+    expect(rows.map((r) => r.app)).toEqual(["borjes-schema"]);
+    await db.close();
+  });
+
+  it("släpper igenom vår egen databas en gång till", async () => {
+    const db = new PGlite();
+    await kör(db);
+    await expect(kör(db)).resolves.not.toThrow();
+    await db.close();
+  });
+
+  /* Det som faktiskt ska hindras: en databas som redan används av något
+     annat. */
+  it("vägrar köra i en databas som tillhör något annat", async () => {
+    const db = new PGlite();
+    await db.exec("create table fakturor (id serial primary key, belopp int)");
+
+    await expect(kör(db)).rejects.toThrow(/Fel databas/);
+
+    /* Avbrottet lämnar transaktionen öppen och avbruten — nästa fråga
+       får "current transaction is aborted" tills någon avslutar den.
+       Så gör en riktig klient också; rollbacken här är den avslutningen,
+       inte en städning av något testet ställt till med. */
+    await db.exec("ROLLBACK");
+
+    // Och ingenting ska ha skapats — hela filen ligger i en transaktion.
+    const { rows } = await db.query<{ n: number }>(
+      "select count(*)::int as n from information_schema.tables where table_schema='public'",
+    );
+    expect(rows[0].n).toBe(1); // bara fakturor
+    await db.close();
+  });
+
+  it("nämner Supabase-projektets namn i felet, så det går att åtgärda", async () => {
+    const db = new PGlite();
+    await db.exec("create table nagot_annat (id int)");
+    await expect(kör(db)).rejects.toThrow(/Schema/);
+    await db.close();
+  });
+
+  /* Ett märke som säger något annat betyder att tabellnamnen råkar
+     sammanfalla men databasen är någon annans. */
+  it("vägrar när märket tillhör en annan app", async () => {
+    const db = new PGlite();
+    await db.exec(
+      "create table schema_app_identity (app text primary key, installed_at timestamptz default now())",
+    );
+    await db.exec("insert into schema_app_identity (app) values ('nagon-annans-app')");
+
+    await expect(kör(db)).rejects.toThrow(/annan app/);
+    await db.close();
+  });
+
+  /* Listan över egna tabeller genereras ur schemat. Görs den för hand
+     rostar den vid nästa nya tabell, och en rostig lista gör vakten till
+     en slumpgenerator. */
+  it("räknar alla appens tabeller som egna", async () => {
+    const sql = await setupSql();
+    for (const t of ["board", "employee", "transpa_outbox", "schema_app_identity"]) {
+      expect(sql).toContain(`'${t}'`);
+    }
+  });
+
+  /* Det här var det verkliga felet, inte ett tänkt: work_pattern finns
+     inte i dagens schema men skapades av 0000 och droppades först av
+     0005. En databas som stannat däremellan bär den. Räknas den som
+     främmande vägrar vakten köra i vår egen databas. */
+  it("räknar tabeller vi skapat och sedan droppat som egna", async () => {
+    const sql = await setupSql();
+    expect(sql).toContain("'work_pattern'");
+    expect(sql).toContain("'work_pattern_day'");
+  });
+
+  it("läser egna tabeller ur både schemat och migrationerna", () => {
+    const namn = ownTables(['CREATE TABLE "nagot_gammalt" ("id" uuid);']);
+    expect(namn).toContain("nagot_gammalt"); // ur migrationen
+    expect(namn).toContain("board"); // ur schemat
   });
 });

@@ -304,6 +304,30 @@ export const transpaShift = pgTable(
 );
 
 /* ------------------------------------------------------------------ *
+ * Vem databasen tillhör
+ * ------------------------------------------------------------------ */
+
+/** Namnet uppsättningsfilen kräver att databasen bär. */
+export const APP_IDENTITY = "borjes-schema";
+
+/**
+ * Märket som säger att den här databasen är Schemas.
+ *
+ * Uppsättningsfilen klistras in för hand i Supabases SQL-editor, och
+ * ingenting i den vyn säger vilket projekt man råkar ha framme. Klistras
+ * den i fel projekt skapas tjugo tabeller där de inte hör hemma, och
+ * felet upptäcks först när någon undrar varför.
+ *
+ * Filen vägrar därför köra i en databas som redan har tabeller men
+ * saknar det här märket. En tom databas släpps igenom — det är en
+ * förstagångsuppsättning — och märket skrivs då.
+ */
+export const schemaAppIdentity = pgTable("schema_app_identity", {
+  app: text("app").primaryKey(),
+  installedAt: timestamp("installed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/* ------------------------------------------------------------------ *
  * Skrivningar till TransPA
  * ------------------------------------------------------------------ */
 
