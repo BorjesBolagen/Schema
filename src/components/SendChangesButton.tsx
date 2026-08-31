@@ -48,10 +48,10 @@ export function SendChangesButton({
           type="button"
           onClick={ask}
           disabled={pending}
-          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm disabled:opacity-50"
+          className="rounded border border-(--color-warn) bg-white px-3 py-1.5 text-sm font-medium text-(--color-warn) disabled:opacity-50"
           title="Jämför tavlan med TransPA och skickar tillbaka det du ändrat"
         >
-          {pending ? "Jämför …" : "Skicka schemaändring"}
+          {pending ? "Jämför …" : "4 · Skicka till TransPA"}
         </button>
         {result && (
           <span

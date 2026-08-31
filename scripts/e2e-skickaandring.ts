@@ -26,7 +26,7 @@ await signIn(page, base);
 await page.goto(`${base}/tavla/fjarr-nybro${weekQuery()}`, { waitUntil: "networkidle" });
 
 /* ---- Utan ändringar: knappen ska säga att det inte finns något ---- */
-await page.getByRole("button", { name: "Skicka schemaändring" }).click();
+await page.getByRole("button", { name: /Skicka till TransPA/ }).click();
 await page.waitForTimeout(2500);
 const utan = await panel().innerText();
 console.log("  utan ändringar:", utan.replace(/\s+/g, " ").slice(0, 120));
@@ -66,7 +66,7 @@ check("passet flyttades på tavlan", fore !== efter);
 console.log("  HF03 efter:", efter.replace(/\s+/g, " ").slice(0, 130));
 
 /* ---- Nu ska ändringen räknas upp ---- */
-await page.getByRole("button", { name: "Skicka schemaändring" }).click();
+await page.getByRole("button", { name: /Skicka till TransPA/ }).click();
 await page.waitForTimeout(2500);
 const med = await panel().innerText();
 console.log("  med ändring:", med.replace(/\s+/g, " ").slice(0, 220));
@@ -84,7 +84,10 @@ check(
 /* ---- Avbryt ska inte skicka något ---- */
 await panel().getByRole("button", { name: "Avbryt" }).click();
 await page.waitForTimeout(800);
-check("avbryt stänger utan att skicka", (await page.locator("body").innerText()).includes("Skicka schemaändring"));
+check(
+  "avbryt stänger utan att skicka",
+  (await page.locator("body").innerText()).includes("Skicka till TransPA"),
+);
 
 await page.screenshot({ path: "/tmp/skicka.png" });
 await browser.close();

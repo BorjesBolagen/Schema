@@ -220,7 +220,19 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
       onDragCancel={() => setDragging(null)}
       onDragEnd={onDragEnd}
     >
+      {/* Verktygsraden läses vänster till höger som arbetsgången:
+          bas-schema, hämta, fyll, skicka. Stegen låg tidigare i annan
+          ordning — ettan längst till höger — och det sista steget stod
+          utanför numreringen och såg ut som vilken knapp som helst. */}
       <div className="mb-3 flex flex-wrap items-center gap-3 no-print">
+        <button
+          type="button"
+          onClick={() => setPanel("base")}
+          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+        >
+          1 · Bas-schema
+        </button>
+
         <button
           type="button"
           onClick={loadShifts}
@@ -316,22 +328,14 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           </span>
         )}
 
-        {/* Rensningen står bredvid Fyll veckan, för det är dess motsats:
-            den ena lägger ut veckan, den andra tar tillbaka den. */}
-        <ClearWeekButton boardSlug={data.board.slug} year={data.year} week={data.week} />
-
         {/* Sista steget i kedjan: hämta, fyll, justera — och skicka
             tillbaka det som justerats. */}
         <SendChangesButton boardSlug={data.board.slug} year={data.year} week={data.week} />
 
-        <span className="ml-auto flex gap-2">
-          <button
-            type="button"
-            onClick={() => setPanel("base")}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-          >
-            1 · Bas-schema
-          </button>
+        {/* Sidoåtgärder, inte steg: rensningen tar tillbaka veckan och
+            tavelredigeringen rör utseendet. De ska inte ligga i kedjan. */}
+        <span className="ml-auto flex items-center gap-2">
+          <ClearWeekButton boardSlug={data.board.slug} year={data.year} week={data.week} />
           <button
             type="button"
             onClick={() => setPanel("board")}
