@@ -1,0 +1,3173 @@
+openapi: 3.0.1
+info:
+  title: Transpa Public API
+  description: >
+    # This API exposes functionality in Visma Transpa.
+
+    ## Authentication
+
+    The API can be tested without authentication against the mock server in the **Servers** pulldown list.
+    To test against the actual backend you have to register a user on the *Visma Developer Portal* and request
+    access to the API along with the required scopes. The scopes required are documented under each endpoint.
+    For more information about *Visma Developer Portal* see <https://developer.visma.com>.
+    <br/>
+    <br/>
+
+
+    Authentication uses OAuth tokens from *Visma Connect*. Authorization is done on tenant level, so one OAuth
+    token is needed per tenant.<br/>
+    <br/>
+    The scope `transpaapi:api` grants basic access to the API and is required for all routes. Additional scopes might be required and are described inside each route description.
+    <br/>
+
+    ## Details
+
+    All datetimes returned are in UTC (Zulu), and all datetimes sent to any endpoint will be interpreted as UTC unless the timezone is specified. Time is generally only measured in minutes, or otherwise specified.
+    <br/>
+    <br/>
+    All monetary amounts are in the organizations local currency unless otherwise specified.
+    <br/>
+    <br/>
+    ```[Not Ready]``` This is an endpoint where development has not completed and is therefore subject to change.
+    <br/>
+    <br/>
+    The system is protected with throttling on two levels The first level is per client. Your assigned quota can be increased. The second level is the global level.
+
+  version: '0.1.138'
+  contact:
+    name: Visma Transpa
+    url: 'https://www.visma.se/tid-och-projekthantering/tidrapportering-transport/'
+    email: api.transpa@visma.com
+servers:
+  - url: 'https://api.mytranspa.com/publicApi/'
+  - url: 'https://api.mytranspa.com/publicApiMock/'
+paths:
+  /v1/alive:
+    get:
+      tags:
+        - alive
+      summary: Alive
+      description: 'Check if the service is responsive'
+      operationId: get-alivecontroller
+      responses:
+        '200':
+          description: ''
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/employees:
+    get:
+      tags:
+        - employees
+      summary: 'Return a list of Employees'
+      security:
+        - visma_connect: [ "transpaapi:employees:read" ]
+      description: >
+        Returns a list of Employees
+
+
+        Required scope transpaapi:employees:read
+      operationId: get-employees
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: includeInactive
+          description: 'Will include non active employees if set to true'
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 'Return a list of Employees'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/employee'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - employees
+      summary: 'Create an employee'
+      security:
+        - visma_connect: [ "transpaapi:employees:write" ]
+      description: >
+        Required scope transpaapi:employees:write
+      operationId: post-employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/employee'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/employee'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  /v1/employees/{id}:
+    get:
+      tags:
+        - employees
+      summary: 'Get an Employee'
+      security:
+        - visma_connect: [ "transpaapi:employees:read" ]
+      description: >
+        Required scope transpaapi:employees:read
+      operationId: get-employee
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: 'Get a single Employee by id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/employee'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Employee does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  /v1/employees/{id}/salaryConfiguration:
+    get:
+      tags:
+        - salaries
+      summary: 'Get salary configuration for an employee'
+      security:
+        - visma_connect: [ "transpaapi:employeesalaryconfigurations:read" ]
+      description: >
+        Required scope transpaapi:employeesalaryconfigurations:read
+      operationId: get-employee-salaryConfigurations
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: 'Get salary configuration for the employee'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/salaryConfiguration'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: ''
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    put:
+      tags:
+        - salaries
+      summary: 'Update salary configuration for an employee'
+      security:
+        - visma_connect: [ "transpaapi:employeesalaryconfigurations:write" ]
+      description: >
+        Update a salaryConfiguration
+
+
+        Required scope transpaapi:employeesalaryconfigurations:write
+      operationId: put-employee-salaryConfigurations
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/salaryConfiguration'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/salaryConfiguration'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Employee does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/employee/{id}/employeeContracts:
+    get:
+      tags:
+        - employees
+      summary: 'Returns employee contracts for the employees'
+      security:
+        - visma_connect: [ "transpaapi:employeecontracts:read" ]
+      description: >
+        Returns employee contracts for the employee
+
+
+        Required scope transpaapi:employeecontracts:read
+      operationId: get-employeeContracts
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: 'Returns employee contracts for the employee'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/employeeContract'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/calculateAdjustedWorkTime:
+    post:
+      tags:
+        - timereports and shifts
+      summary: 'Calculates the adjusted work time of a TimeReport or Shift'
+      security:
+        - visma_connect: [ "transpaapi:shifts:write", "transpaapi:timereports:write" ]
+      description: >
+        Required scope transpaapi:shifts:write or transpaapi:timereports:write
+      operationId: post-adjustedWorkTime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/adjustedWorkTime'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                title: "adjustedWorkTimeResponseBody"
+                type: object
+                additionalProperties: false
+                properties:
+                  checkSum:
+                    type: string
+                    format: guid
+                    example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+                  adjustedWorkTimeInMinutes:
+                    type: integer
+                    example: 101
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/timereportConfiguration/:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Return timereport settings for the tenant'
+      security:
+        - visma_connect: [ "transpaapi:timereportconfigurations:read" ]
+      description: >
+        Required scope transpaapi:timereportconfigurations:read
+      operationId: get-timereportconfiguration
+      responses:
+        '200':
+          description: 'Return the timereport settings'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/timereportConfiguration'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/files:
+    get:
+      tags:
+        - files
+      summary: '[Not Ready] Get files metadata'
+      security:
+        - visma_connect: [ "transpaapi:files:read" ]
+      description: >
+        Required scope transpaapi:files:read
+
+
+        The result is filtered based on available scopes:
+
+        | File type | Required Scope |
+
+        |--------|-----------------|
+
+        | salaryExport | transpaapi:salaries:read |
+      operationId: get-salaryExportFiles
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - name: limit
+          description: 'Limits the number of salaryExportFiles returned. Default and maximum is 100'
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: filter
+          description: >
+            Uses format field:comp:val:op:field:comp:val etc described on GitHub: <https://github.com/Visma-TransPa/TransPA-Public-API-Client/tree/main/examples/Postman>
+
+
+            Supported fields: fileType, subordinateFileType
+
+
+            Supported comparators: $eq:, $ne:, $gt:, $lt:, $gte:, $lte:, $in:, $nin:
+
+
+            Supported operators: $and:, $or:
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 400
+            example: 'fileType$eq:salaryExport$and:subordinateFileType$eq:salaryTransactions'
+      responses:
+        '200':
+          description: 'Return a list of files metadata'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/file'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/files/{id}:
+    get:
+      tags:
+        - files
+      summary: '[Not Ready] Get a file'
+      security:
+        - visma_connect: [ "transpaapi:files:read" ]
+      description: >
+        Required scope transpaapi:files:read
+
+
+        In addition, each file requires a specific scope depending on file type:
+
+        | File type | Required Scope |
+
+        |--------|-----------------|
+
+        | salaryExport | transpaapi:salaries:read |
+      operationId: get-file
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: File download
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'Indicates the file should be downloaded as an attachment'
+              example: 'attachment; filename="Transpa AB Month 202604.wli"'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'The file does not exist.'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/salaries/{id}:
+    get:
+      tags:
+        - salaries
+      summary: 'Get a salary'
+      security:
+        - visma_connect: [ "transpaapi:salaries:read" ]
+      description: >
+        Required scope transpaapi:salaries:read
+      operationId: get-salary
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/salary'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Salary does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/salaries/{id}/setExportFailed:
+    post:
+      tags:
+        - salaries
+      summary: 'Set salary export status as failed'
+      security:
+        - visma_connect: [ "transpaapi:salaries:write" ]
+      description: >
+        Required scope transpaapi:salaries:write
+      operationId: post-setExportFailed
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/salaryExportFailed'
+      responses:
+        '204':
+          description: 'Export was set as failed'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Salary does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/salaries/{id}/setExportSuccess:
+    post:
+      tags:
+        - salaries
+      summary: 'Set salary export status as successful'
+      security:
+        - visma_connect: [ "transpaapi:salaries:write" ]
+      description: >
+        Required scope transpaapi:salaries:write
+      operationId: post-setExportSuccess
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '204':
+          description: 'Export was set as successful'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Salary does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/subscribe/salaries:
+    post:
+      tags:
+        - salaries
+      operationId: create-subscription-salaries
+      summary: Subscribe to a WebHook for the active tenant
+      description: >
+        Start subscribing on the provided url for updates regarding the salaries resource. Custom headers can be used for, e.g., authorization.
+        <br/>
+        Required scope transpaapi:salaries:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/webHook'
+      callbacks: # Callback definition
+        newResource: # Event name
+          '{$request.body#/createCallbackUrl}': # The callback URL, refers to the URL passed in the request body
+            post:
+              requestBody: # Contents of the callback message
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      $ref: '#/components/schemas/salaryCreated'
+              responses: # Expected responses to the callback message
+                '204':
+                  description: Your server returns this code if it accepts the callback
+      responses:
+        '201':
+          description: WebHook created
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/unsubscribe/salaries:
+    post:
+      summary: Unsubscribe the WebHook for the active tenant
+      description: >
+        Required scope transpaapi:salaries:read
+      tags:
+        - salaries
+      operationId: create-unsubscription-salaries
+      responses:
+        '204':
+          description: WebHook removed
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: No WebHook
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/shifts/:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Return a list of Shifts'
+      security:
+        - visma_connect: [ "transpaapi:shifts:read" ]
+      description: >
+        Required scope transpaapi:shifts:read
+      operationId: get-shifts
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: startDateTimeAfter
+          description: 'Starting point for the queried list'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-01T12:00Z'
+        - name: startDateTimeBefore
+          description: 'Needs to be within 31 days from the startDateTimeAfter'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-28T12:00Z'
+      responses:
+        '200':
+          description: 'Return a list of Shifts'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/shift'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - timereports and shifts
+      summary: 'Create a shift'
+      security:
+        - visma_connect: [ "transpaapi:shifts:write" ]
+      description: >
+        Required scope transpaapi:shifts:write
+      operationId: post-shift
+      parameters:
+        - $ref: '#/components/parameters/adjustedWorkTimeCheckSum'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/shift'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/shift'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/shifts/{id}:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Get a Shift'
+      security:
+        - visma_connect: [ "transpaapi:shifts:read" ]
+      description: >
+        Required scope transpaapi:shifts:read
+      operationId: get-shift
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/shift'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Shift does not exist.'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    put:
+      tags:
+        - timereports and shifts
+      summary: 'Update a shift'
+      security:
+        - visma_connect: [ "transpaapi:shifts:write" ]
+      description: >
+        Update a shift
+
+
+        Required scope transpaapi:shifts:write
+      operationId: put-shift
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+        - $ref: '#/components/parameters/adjustedWorkTimeCheckSum'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/shift'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/shift'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Shift does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    delete:
+      tags:
+        - timereports and shifts
+      summary: 'Delete a shift'
+      security:
+        - visma_connect: [ "transpaapi:shifts:delete" ]
+      description: >
+        Delete a shift
+
+
+        Required scope transpaapi:shifts:delete
+      operationId: delete-shift
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '204':
+          description: 'Removed'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Shift does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/employees/{id}/shifts/:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Return a list of Shifts for an employee'
+      security:
+        - visma_connect: [ "transpaapi:shifts:read" ]
+      description: >
+        Required scope transpaapi:shifts:read
+      operationId: get-employee-shifts
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+        - name: startDateTimeAfter
+          description: 'Starting point for the queried list'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-01T12:00Z'
+        - name: startDateTimeBefore
+          description: 'Needs to be within 31 days from the startDateTimeAfter'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-28T12:00Z'
+      responses:
+        '200':
+          description: 'Return a list of Shifts'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/shift'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+            description: 'Employee does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/stationPlaces:
+    get:
+      tags:
+        - stationPlaces
+      summary: 'Return a list of Station Places'
+      security:
+        - visma_connect: [ "transpaapi:stationplaces:read" ]
+      description: >
+        Required scope transpaapi:stationplaces:read
+      operationId: get-stationplaces
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/stationPlace'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/employees/{id}/timereports/:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Return a list of TimeReports for an employee'
+      security:
+        - visma_connect: [ "transpaapi:timereports:read" ]
+      description: >
+        Required scope transpaapi:timereports:read
+      operationId: get-employee-timereports
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+        - name: startDateTimeAfter
+          description: 'Starting point for the queried list'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-01T12:00Z'
+        - name: startDateTimeBefore
+          description: 'Needs to be within 31 days from the startDateTimeAfter'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-28T12:00Z'
+      responses:
+        '200':
+          description: 'Return a list of TimeReports'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/timeReport'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+            description: 'Employee does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/timeReports:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Return a list of TimeReports'
+      security:
+        - visma_connect: [ "transpaapi:timereports:read" ]
+      description: >
+        Required scope transpaapi:timereports:read
+      operationId: get-timereports
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: startDateTimeAfter
+          description: 'Starting point for the queried list'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-01T12:00Z'
+        - name: startDateTimeBefore
+          description: 'Needs to be within 31 days from the startDateTimeAfter'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+            example: '2024-02-28T12:00Z'
+      responses:
+        '200':
+          description: 'Return a list of TimeReports'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/timeReport'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - timereports and shifts
+      summary: 'Create a TimeReport'
+      security:
+        - visma_connect: [ "transpaapi:timereports:write" ]
+      description: >
+        Required scope transpaapi:timereports:write
+      operationId: post-timereport
+      parameters:
+        - $ref: '#/components/parameters/adjustedWorkTimeCheckSum'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/timeReport'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/timeReport'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+
+  /v1/timeReports/{id}:
+    get:
+      tags:
+        - timereports and shifts
+      summary: 'Get a TimeReport'
+      security:
+        - visma_connect: [ "transpaapi:timereports:read" ]
+      description: >
+        Required scope transpaapi:timereports:read
+      operationId: get-timereport
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: 'Returns a TimeReport'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/timeReport'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'TimeReport does not exist.'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    put:
+      tags:
+        - timereports and shifts
+      summary: 'Update a TimeReport'
+      security:
+        - visma_connect: [ "transpaapi:timereports:write" ]
+      description: >
+        Update a TimeReport
+
+
+        Required scope transpaapi:timereports:write
+      operationId: put-timereport
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+        - $ref: '#/components/parameters/adjustedWorkTimeCheckSum'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/timeReport'
+      responses:
+        '200':
+          description: 'Returns the updated TimeReport'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/timeReport'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'TimeReport does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    delete:
+      tags:
+        - timereports and shifts
+      summary: 'Delete a TimeReport'
+      security:
+        - visma_connect: [ "transpaapi:timereports:delete" ]
+      description: >
+        Delete a TimeReport
+
+
+        Required scope transpaapi:timereports:delete
+      operationId: delete-timereport
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '204':
+          description: 'Removed'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'TimeReport does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/trafficAreas:
+    get:
+      tags:
+        - trafficAreas
+      summary: 'Return a list of Traffic Areas'
+      security:
+        - visma_connect: [ "transpaapi:trafficareas:read" ]
+      description: >
+        Required scope transpaapi:trafficareas:read
+      operationId: get-trafficareas
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/trafficArea'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/trips:
+    get:
+      tags:
+        - trips
+      summary: 'Return a list of Trips'
+      security:
+        - visma_connect: [ "transpaapi:trips:read" ]
+      description: >
+        Required scope transpaapi:trips:read
+
+
+        Includes all types of trips, except trips of the type Utlandsavtal
+      operationId: get-trips
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: filter
+          description: >
+            Uses format field:comp:val:op:field:comp:val etc described on GitHub: <https://github.com/Visma-TransPa/TransPA-Public-API-Client/tree/main/examples/Postman>
+
+
+            Supported fields: employeeId, startDateTime, endDateTime, status
+
+
+            Supported comparators: $eq:, $ne:, $gt:, $lt:, $gte:, $lte:, $in:, $nin:
+
+
+            Supported operators: $and:, $or:
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 400
+            example: 'employeeId$eq:c4df9e4d-5075-4899-91df-d4231816beff$and:startDateTime$gt:2024-02-01$and:startDateTime$lt:2024-03-01'
+      responses:
+        '200':
+          description: 'Return a list of Trips'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/trip'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - trips
+      summary: 'Create a Trip'
+      security:
+        - visma_connect: [ "transpaapi:trips:write" ]
+      description: >
+        Required scope transpaapi:trips:write
+
+
+        Includes all types of trips, except trips of the type Utlandsavtal
+      operationId: post-trip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/trip'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/trip'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  /v1/trips/{id}:
+    get:
+      tags:
+        - trips
+      summary: 'Get a Trip'
+      security:
+        - visma_connect: [ "transpaapi:trips:read" ]
+      description: >
+        Required scope transpaapi:trips:read
+
+
+        Includes all types of trips, except trips of the type Utlandsavtal
+      operationId: get-trip
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: 'Returns a Trip'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/trip'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Trip does not exist.'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    put:
+      tags:
+        - trips
+      summary: 'Update a Trip'
+      security:
+        - visma_connect: [ "transpaapi:trips:write" ]
+      description: >
+        Update a Trip
+
+
+        Required scope transpaapi:trips:write
+
+
+        Includes all types of trips, except trips of the type Utlandsavtal
+      operationId: put-trip
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/trip'
+      responses:
+        '200':
+          description: 'Returns the updated Trip'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/trip'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Trip does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    delete:
+      tags:
+        - trips
+      summary: 'Delete a Trip'
+      security:
+        - visma_connect: [ "transpaapi:trips:delete" ]
+      description: >
+        Delete a Trip
+
+
+        Required scope transpaapi:trips:delete
+
+
+        Includes all types of trips, except trips of the type Utlandsavtal
+      operationId: delete-trip
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '204':
+          description: 'Removed'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Trip does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/vehicles:
+    get:
+      tags:
+        - vehicles
+      summary: 'Return a list of vehicles'
+      security:
+        - visma_connect: [ "transpaapi:vehicles:read" ]
+      description: >
+        Retrieves all vehicles the tenant have access to.
+
+
+        Required scope transpaapi:vehicles:read
+      operationId: get-vehicles
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: filter
+          description: >
+            Uses format field:comp:val:op:field:comp:val etc described on GitHub: <https://github.com/Visma-TransPa/TransPA-Public-API-Client/tree/main/examples/Postman>
+
+
+            Supported fields: isActive, vehicleType, trafficAreaId, stationPlaceId, vehicleGroupId
+
+
+            Supported comparators: $eq:, $ne:, $gt:, $lt:, $gte:, $lte:, $in:, $nin:
+
+
+            Supported operators: $and:, $or:
+
+
+            Cannot be used in combination with 'includeInactive' parameter.
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 400
+            example: 'isActive$eq:true$and:vehicleType$eq:trailer'
+        - name: includeInactive
+          description: 'Will include non active vehicles if set to true. Cannot be used in combination with "filter" parameter.'
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 'Return a list of available vehicles'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/vehicle'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - vehicles
+      summary: 'Create a vehicle'
+      security:
+        - visma_connect: [ "transpaapi:vehicles:write" ]
+      description: >
+        Create a Vehicle
+
+
+        Required scope transpaapi:vehicles:write
+      operationId: post-vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/vehicle'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/vehicle'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  /v1/vehicles/{id}:
+    get:
+      tags:
+        - vehicles
+      summary: 'Get a vehicle'
+      security:
+        - visma_connect: [ "transpaapi:vehicles:read" ]
+      description: >
+        Get a single vehicle by id
+
+
+        Required scope transpaapi:vehicles:read
+      operationId: get-vehicle
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/vehicle'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Vehicle does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    put:
+      tags:
+        - vehicles
+      summary: 'Update a vehicle'
+      security:
+        - visma_connect: [ "transpaapi:vehicles:write" ]
+      description: >
+        Update a vehicle
+
+
+        Required scope transpaapi:vehicles:write
+      operationId: put-vehicle
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/vehicle'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/vehicle'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Vehicle does not exist'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    delete:
+      tags:
+        - vehicles
+      summary: 'Delete a vehicle'
+      security:
+        - visma_connect: [ "transpaapi:vehicles:delete" ]
+      description: >
+        Delete a vehicle
+
+
+        Required scope transpaapi:vehicles:delete
+      operationId: delete-vehicle
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+      responses:
+        '204':
+          description: 'Removed'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Vehicle does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  /v1/vehicleGroups:
+    get:
+      tags:
+        - vehicleGroups
+      summary: 'Return a list of Vehicle Groups'
+      security:
+        - visma_connect: [ "transpaapi:vehiclegroups:read" ]
+      description: >
+        Required scope transpaapi:vehiclegroups:read
+      operationId: get-vehiclegroups
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/vehicleGroup'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/workGroups:
+    get:
+      tags:
+        - workGroups
+      summary: 'Return a list of work groups'
+      security:
+        - visma_connect: [ "transpaapi:workgroups:read" ]
+      description: >
+        Required scope transpaapi:workgroups:read
+      operationId: get-workgroups
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/workGroup'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+
+  # ----------------------------------------------------------------------
+  /v1/workTasks:
+    get:
+      tags:
+        - workTasks
+      summary: 'Return a list of Work Tasks'
+      security:
+        - visma_connect: [ "transpaapi:worktasks:read" ]
+      description: >
+        Required scope transpaapi:worktasks:read
+      operationId: get-worktasks
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/workTask'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/tachographData:
+    get:
+      tags:
+        - tachographData
+      summary: '[Not Ready] Return a list of Tachograph Data'
+      security:
+        - visma_connect: [ "transpaapi:tachographdata:read" ]
+      description: >
+        Required scope transpaapi:tachographdata:read
+      operationId: get-tachographData
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter200'
+        - name: filter
+          description: >
+            Uses format field:comp:val:op:field:comp:val etc described on GitHub: <https://github.com/Visma-TransPa/TransPA-Public-API-Client/tree/main/examples/Postman>
+
+
+            Supported fields: employeeId, startDateTime, endDateTime
+
+
+            Supported comparators: $eq:, $ne:, $gt:, $lt:, $gte:, $lte:, $in:, $nin:
+
+
+            Supported operators: $and:, $or:
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 400
+            example: 'employeeId$eq:e1a2f855-debb-4f17-b7c9-2626a2b9c819$and:startDateTime$gt:2024-02-01$and:endDateTime$lt:2024-03-01'
+        - name: sort
+          description: >
+            For ascending sorting, write the field name. For descending sorting, write - followed by the field name. Multiple fields can be sorted by separating them with a comma (we currently only support one field).
+
+
+            Supported fields: startDateTime
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 50
+            example: '-startDateTime'
+      responses:
+        '200':
+          description: 'Return a list of Tachograph Data'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/tachographData'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+    post:
+      tags:
+        - tachographData
+      summary: 'Create tachograph data'
+      security:
+        - visma_connect: [ "transpaapi:tachographdata:write" ]
+      description: >
+        Create tachograph data
+
+
+        Required scope transpaapi:tachographdata:write
+      operationId: post-tachographData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/tachographData'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/tachographData'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '409':
+          $ref: '#/components/responses/409ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+# ----------------------------------------------------------------------
+  /v1/employees/{id}/preliminaryTachographData/:
+    get:
+      tags:
+        - tachographData
+      summary: '[Not Ready] Return a list of preliminary tachograph data'
+      description: >
+        This resource is deprecated and will be abandoned in the future, only available for Visma internal use.
+
+
+        Required scope transpaapi:preliminarytachographdata:read
+      operationId: get-prel-tacho-data
+      parameters:
+        - $ref: '#/components/parameters/idPathParameter'
+        - name: startDateTimeAfter
+          description: 'Starting point for the queried list'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: startDateTimeBefore
+          description: 'Needs to be within 30 days from the startDateTimeAfter'
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 'Return a list of preliminary tachograph data'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/preliminaryTachographData'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '404':
+          description: 'Tachograph Card does not exist'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+  # ----------------------------------------------------------------------
+  /v1/tachographDataAbstractions:
+    get:
+      tags:
+        - tachographData
+      summary: 'Return a list of Tachograph Data Abstractions'
+      security:
+        - visma_connect: [ "transpaapi:tachographdata:read" ]
+      description: >
+        Required scope transpaapi:tachographdata:read
+
+
+        Tachograph Data Abstractions are representations of the tachograph data presented as timereport candidates.
+      operationId: get-tachographDataAbstractions
+      parameters:
+        - $ref: '#/components/parameters/cursorQueryParameter'
+        - $ref: '#/components/parameters/limitParameter'
+        - name: filter
+          description: >
+            Uses format field:comp:val:op:field:comp:val etc described on GitHub: <https://github.com/Visma-TransPa/TransPA-Public-API-Client/tree/main/examples/Postman>
+
+
+            Supported fields: employeeId, startDateTime, endDateTime (corresponds to last endDateTime in partsOfDay)
+
+
+            Supported comparators: $eq:, $ne:, $gt:, $lt:, $gte:, $lte:, $in:, $nin:
+
+
+            Supported operators: $and:, $or:
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 400
+            example: 'employeeId$eq:e1a2f855-debb-4f17-b7c9-2626a2b9c819$and:startDateTime$gt:2024-02-01$and:endDateTime$lt:2024-03-01'
+      responses:
+        '200':
+          description: 'Return a list of Tachograph Data Abstractions'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursor:
+                    $ref: '#/components/schemas/cursorDto'
+                  items:
+                    type: array
+                    nullable: false
+                    items:
+                      $ref: '#/components/schemas/tachographDataAbstraction'
+        '400':
+          $ref: '#/components/responses/400ProblemJson'
+        '403':
+          $ref: '#/components/responses/403ProblemJson'
+        '429':
+          $ref: '#/components/responses/429Throttling'
+# ----------------------------------------------------------------------
+components:
+  schemas:
+    address:
+      type: object
+      properties:
+        street:
+          description: |
+            the full street address including house number and street name
+          type: string
+          default: ''
+          maxLength: 50
+          pattern: ^([\p{L}0-9_\-']+([ ][\p{L}0-9_\-']+)*)?$
+          example: Tradenvägen 18
+        city:
+          description: |
+            name of the city / locality
+          type: string
+          default: ''
+          maxLength: 30
+          pattern: ^([\p{L}0-9_\-']+([ ][\p{L}0-9_\-']+)*)?$
+          example: Munkedal
+        postalCode:
+          description: |
+            zip code or postal code
+          type: string
+          default: ''
+          maxLength: 10
+          example: 455 91
+          pattern: ^([0-9_\-]+([ ][0-9_\-]+)*)?$
+    employee:
+      title: "employee"
+      type: object
+      additionalProperties: false
+      required:
+        - firstName
+        - lastName
+        - signature
+      properties:
+        id:
+          type: string
+          format: guid
+          example: 'b1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        firstName:
+          type: string
+          example: 'John'
+          minLength: 2
+          maxLength: 30
+          pattern: ^[\p{L}0-9\.'`\-:~!@#$^&*()_+][\p{L}0-9\s\.'`\-:~!@#$^&*()_+]*$
+          description: "Should contain only letters, numbers, space, and the following special characters: '-:~!@#$^&*()_+ but must not start with a space."
+        lastName:
+          type: string
+          example: 'Doe'
+          minLength: 2
+          maxLength: 30
+          pattern: ^[\p{L}0-9\.'`\-:~!@#$^&*()_+][\p{L}0-9\s\.'`\-:~!@#$^&*()_+]*$
+          description: "Should contain only letters, numbers, space, and the following special characters: '-:~!@#$^&*()_+ but must not start with a space."
+        employeeNumber:
+          nullable: true
+          type: integer
+          format: int64
+          example: 1337
+          minimum: 1
+        signature:
+          type: string
+          example: 'JODO'
+          minLength: 1
+          maxLength: 6
+          description: "Needs to be an alphanumeric value"
+        isActive:
+          type: boolean
+        loginEmail:
+          type: string
+          format: email
+          description: "Needs to be a valid email"
+          maxLength: 60
+        loginPhoneNumber:
+          type: string
+          description: "Phone used for multi factor authentication (MFA)"
+          maxLength: 20
+        nationalIdentityNumber:
+          type: string
+          description: 'Currently only supports Swedish personnummer on formats 198001022386 or 19800102-2386. If you require support for other countries please supply a feature request'
+          maxLength: 13
+          pattern: ^([0-9]{8}-?[0-9]{4})?$
+        tachographCards:
+          type: array
+          description: 'At present time the system only supports 1 tachograph card. If set, this array will contain that one value. If not set, the array will be empty'
+          maxItems: 1
+          items:
+            properties:
+              tachographCardNumber:
+                type: string
+                description: 'Tachograph Card Numbers can have a length of either 14 or 16'
+                example: '0000012345678901'
+                maxLength: 16
+                pattern: ^([0-9a-zA-Z]{14}([0-9a-zA-Z]{2})?)?$
+        address:
+          $ref: '#/components/schemas/address'
+        professionGroup:
+           type: string
+           description: 'The profession group the employee belongs to'
+           default: 'driver'
+           example:
+             - 'driver'
+             - 'terminal'
+             - 'garage'
+             - 'other'
+        grouping:
+          type: object
+          properties:
+            stationPlaceId:
+              type: string
+              format: guid
+              nullable: true
+              example: 'b1df383d-23f5-4aa3-118c-bbb551abfd9d'
+            trafficAreaId:
+              type: string
+              format: guid
+              nullable: true
+              example: 'c1df383d-23f5-4aa3-118c-bbb551abfd9d'
+            workGroupId:
+              type: string
+              format: guid
+              nullable: true
+              example: 'd1df383d-23f5-4aa3-118c-bbb551abfd9d'
+            supervisorId:
+              type: string
+              format: guid
+              nullable: true
+              description: 'Reference to a systemUser acting as supervisor for this employee'
+              example: 'e1df383d-23f5-4aa3-118c-bbb551abfd9d'
+            vacationGroupId:
+              type: string
+              format: guid
+              nullable: true
+              description: 'Reference to the vacation group this employee belongs to'
+              example: 'f1df383d-23f5-4aa3-118c-bbb551abfd9d'
+    # ----------------------------------------------------------------------
+    employeeContract:
+      title: "employeeContract"
+      type: object
+      additionalProperties: false
+      properties:
+        employeeId:
+          type: string
+          format: guid
+          example: 'b1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        collectiveAgreement:
+          type: string
+          description: 'The contracts collective agreement'
+          example:
+            - 'transport' # Transport Agreement
+            - 'bus' # Bus Agreement
+            - 'tma' # Civil Service Agreement (Tjänstemannaavtalet in Swedish)
+            - 'mfa' # Machine Drive Agreement (Maskinföraravtalet in Swedish)
+            - 'other'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+    # ----------------------------------------------------------------------
+    httpHeader:
+      title: "httpHeader"
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          example: "Authorization"
+        value:
+          type: string
+          maxLength: 255
+          example: "Bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjVENDcxQ"
+    # ----------------------------------------------------------------------
+    money:
+      type: object
+      additionalProperties: false
+      properties:
+        amount:
+          type: number
+          description: Amount expressed as a decimal number of major currency units
+          format: decimal
+          example: 99.95
+        currency:
+          type: string
+          description: 3 letter currency code as defined by ISO-4217
+          format: iso-4217
+          example: SEK
+      required:
+        - amount
+        - currency
+    # ----------------------------------------------------------------------
+    weekday:
+      type: string
+      enum:
+          - monday
+          - tuesday
+          - wednesday
+          - thursday
+          - friday
+          - saturday
+          - sunday
+    # ----------------------------------------------------------------------
+    adjustedWorkTime:
+      title: "adjustedWorkTime"
+      type: object
+      additionalProperties: false
+      required:
+        - startDateTime
+        - breaks
+        - partsOfDay
+      properties:
+        startDateTime:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        breaks:
+          type: array
+          maxItems: 4
+          minItems: 0
+          items:
+            type: object
+            required:
+              - startDateTime
+              - endDateTime
+            properties:
+              startDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:00Z"
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:45Z"
+        employeeId:
+          type: string
+          format: guid
+          nullable: true
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        partsOfDay:
+          type: array
+          title: 'adjustedWorkTimePartsOfDay'
+          minItems: 1
+          maxItems: 50
+          items:
+            required:
+              - endDateTime
+            type: object
+            properties:
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T16:00Z"
+                description: 'For the last part of the day, this value is also the time when the timereport/shift ends. And that needs to be after and within 24 hours of the startDateTime'
+              workTaskId:
+                nullable: true
+                type: string
+                format: guid
+                example: "bbb2f855-debb-4f17-b7c9-2626a2b9c819"
+        collectiveAgreement:
+          type: string
+          nullable: true
+          description: 'Can not be used in combination with employeeId'
+          example:
+            - 'transport' # Transport Agreement
+            - 'bus' # Bus Agreement
+            - 'tma' # Civil Service Agreement (Tjänstemannaavtalet in Swedish)
+            - 'mfa' # Machine Drive Agreement (Maskinföraravtalet in Swedish)
+            - 'other'
+        professionGroup:
+          type: string
+          nullable: true
+          description: 'Can only be used in combination with collectiveAgreement'
+          example:
+            - 'driver'
+            - 'terminal'
+            - 'garage'
+            - 'other'
+    # ----------------------------------------------------------------------
+    wageRow:
+      title: "wageRow"
+      type: object
+      properties:
+        payTypeCode:
+          type: string
+          example: '51101'
+        unitPrice:
+          $ref: '#/components/schemas/money'
+        quantity:
+          type: number
+          description: Number expressed as a decimal number
+          format: decimal
+          example: 99.95
+        details:
+          type: array
+          nullable: false
+          items:
+            type: object
+            properties:
+              fromDate:
+                type: string
+                format: date
+              toDate:
+                type: string
+                format: date
+              quantity:
+                type: number
+                description: Number expressed as a decimal number
+                format: decimal
+                example: 99.95
+              unitPrice:
+                $ref: '#/components/schemas/money'
+    # ----------------------------------------------------------------------
+    timeRow:
+      title: "timeRow"
+      type: object
+      properties:
+        payTypeCode:
+          type: string
+          example: '51000'
+        details:
+          type: array
+          nullable: false
+          items:
+            type: object
+            properties:
+              fromDate:
+                type: string
+                format: date
+              toDate:
+                type: string
+                format: date
+              quantity:
+                type: number
+                description: Number expressed as a decimal number
+                format: decimal
+                example: 99.95
+      # ----------------------------------------------------------------------
+    file:
+      title: "file"
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: guid
+          example: 'b1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-02-01T08:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-02-01T08:00Z"
+        fullFileName:
+          type: string
+          example: "Transpa AB Month 202604.wli"
+        fileType:
+          type: string
+          example:
+            - 'salaryExport'
+        subordinateFileType:
+          type: string
+          nullable: true
+          description: >
+            Some fileTypes have a subordinateFileType as listed in this table:
+
+            | File type | Subordinate type |
+
+            |--------|-----------------|
+
+            | salaryExport | salaryTransactions, employeeSchedules, employeeDetails |
+      # ----------------------------------------------------------------------
+    salary:
+      title: "salary"
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: guid
+          example: 'a1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        startDate:
+          type: string
+          format: date
+          description: 'The first date of the wage period'
+        endDate:
+          type: string
+          format: date
+          description: 'The last date of the wage period'
+        employeeId:
+          type: string
+          format: guid
+          example: 'b1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        wageRows:
+          type: array
+          nullable: false
+          items:
+            $ref: '#/components/schemas/wageRow'
+        timeRows:
+          type: array
+          nullable: false
+          items:
+            $ref: '#/components/schemas/timeRow'
+
+    salaryCreated:
+      title: "salaryCreated"
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          example: Resource created
+          description: 'Human readable string'
+        resourceUrl:
+          type: string
+          format: url
+          example: 'https://api.mytranspa.com/publicApi/v1/salaries/a1df383d-23f5-4aa3-118c-bbb551abfd9d'
+        tenantId:
+          type: string
+          format: guid
+          example: 'b1df383d-23f5-4aa3-118c-bbb551abaaaa'
+      required:
+        - title
+        - resourceUrl
+        - tenantId
+
+    salaryConfiguration:
+      title: "salaryConfiguration"
+      type: object
+      additionalProperties: false
+      properties:
+        vacationWagePerDay:
+          type: number
+          description: Vacation wage per day used in salary calculations
+          format: decimal
+          minimum: 0
+          example: 1024.01
+
+    salaryExportFailed:
+      title: "salaryExportFailed"
+      type: object
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: string
+          example:
+            - 'failedClientNotResponding'
+            - 'failedClientLackAccessToTenant'
+            - 'failedPayTypeCodeBadFormat'
+            - 'failedPayTypeCodeUnknown'
+            - 'failedEmployeeNumberBadFormat'
+            - 'failedEmployeeNumberUnknown'
+            - 'failedUnspecified'
+        customInfo:
+          type: string
+          example: 'You may write a custom info here that will be displayed to the user'
+          maxLength: 150
+      required:
+        - statusCode
+    # ----------------------------------------------------------------------
+    shift:
+      title: "shift"
+      type: object
+      additionalProperties: false
+      required:
+        - startDateTime
+        - breaks
+        - partsOfDay
+        - adjustedWorkTimeInMinutes
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "ffe8e591-e53b-4372-99f4-7bc162624b67"
+        startDateTime:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        breaks:
+          type: array
+          maxItems: 4
+          minItems: 0
+          items:
+            type: object
+            required:
+              - startDateTime
+              - endDateTime
+            properties:
+              startDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:00Z"
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:45Z"
+        employeeId:
+          type: string
+          format: guid
+          nullable: true
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        externalId:
+          type: string
+          minLength: 5
+          maxLength: 50
+          nullable: true
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 1000
+        partsOfDay:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            required:
+              - endDateTime
+            type: object
+            properties:
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T17:00Z"
+                description: 'For the last part of the day, this value is also the time when the shift ends. And that needs to be after and within 24 hours of the startDateTime'
+              vehicleId:
+                nullable: true
+                type: string
+                format: guid
+                example: "aaa2f855-debb-4f17-b7c9-2626a2b9c819"
+              workTaskId:
+                nullable: true
+                type: string
+                format: guid
+                example: "bbb2f855-debb-4f17-b7c9-2626a2b9c819"
+              customCounters:
+                type: object
+                description: 'By default the custom counters are meter readings when enabled. But they can also be used for other purposes like keeping track of differential changes of a custom counter.'
+                properties:
+                  customCounterOne:
+                    type: number
+                    format: double
+                    example: 80000.3
+                  customCounterTwo:
+                    type: number
+                    format: double
+                    example: 80150.4
+              trailerVehicleId:
+                nullable: true
+                type: string
+                format: guid
+                example: "ccc2f855-debb-4f17-b7c9-2626a2b9c819"
+              costDistributionCode:
+                type: string
+                minLength: 1
+                nullable: false
+                default: '0'
+                description: 'If omitted, default to either 0 or the value set on the vehicle (if configured). Must be a non-negative integer (int32).'
+                example: '1010'
+        isExtraShift:
+          type: boolean
+          default: false
+          description: 'Indicates if the shift is an extra shift outside of normal working hours'
+        adjustedWorkTimeInMinutes:
+          type: integer
+          description: This value is calculated in the calculateAdjustedWorkTime resource
+          example: 100
+          minimum: 1
+          maximum: 1440
+    stationPlace:
+      title: "stationPlace"
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "ffe8e591-e53b-4372-99f4-7bc162624b67"
+        name:
+          type: string
+    # ----------------------------------------------------------------------
+    tachographDataAbstraction:
+      title: "tachographDataAbstraction"
+      type: object
+      additionalProperties: false
+      required:
+        - startDateTime
+        - breaks
+        - partsOfDay
+        - employeeId
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        employeeId:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        startDateTime:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        breaks:
+          type: array
+          minItems: 0 # Compared to timereports, abstractions doesn't have a upper bound on the number of breaks. But if we create a POST/PUT we would need to add an upper bound here.
+          items:
+            type: object
+            required:
+              - startDateTime
+              - endDateTime
+            properties:
+              startDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:00Z"
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:45Z"
+        missingData:
+          type: array
+          minItems: 0
+          items:
+            type: object
+            required:
+              - startDateTime
+              - endDateTime
+            properties:
+              startDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:00Z"
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:45Z"
+        partsOfDay:
+          type: array
+          minItems: 1 # Compared to timereports, abstractions doesn't have a upper bound on the number of partsOfDay. But if we create a POST/PUT we would need to add an upper bound here.
+          items:
+            required:
+              - endDateTime
+            type: object
+            properties:
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T17:00Z"
+                description: 'For the last part of the day, this value is also the time when the abstraction ends.' # Compared to timereports, abstractions doesn't have a upper bound on the endDateTime. In odd edge cases abstraction can span over several days.'
+              vehicleRegistrationNumber:
+                nullable: true
+                type: string
+                minLength: 1
+                maxLength: 20
+                example: 'ABC-123'
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-02-01T12:50:12.345Z"
+        dataStability:
+          type: string
+          description: 'Indicates the reliability of the abstraction based on data volume. If data is insufficient, the state remains volatile.'
+          default: 'unverified'
+          example:
+            - 'unverified' # Not processed yet
+            - 'volatile'   # Has data, but may change as more data arrives
+            - 'stable'     # Enough data collected; no further changes expected
+    # ----------------------------------------------------------------------
+    timeReport:
+      title: "timeReport"
+      type: object
+      additionalProperties: false
+      required:
+        - startDateTime
+        - breaks
+        - partsOfDay
+        - employeeId
+        - adjustedWorkTimeInMinutes
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        startDateTime:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        breaks:
+          type: array
+          maxItems: 4
+          minItems: 0
+          items:
+            type: object
+            required:
+              - startDateTime
+              - endDateTime
+            properties:
+              startDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:00Z"
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T12:45Z"
+        employeeId:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        status:
+          type: string
+          default: 'submitted'
+          example:
+            - 'submitted'
+            - 'approved'
+        timeBalanceOption:
+          type: string
+          default: 'noTimeSubstitution'
+          example:
+           - 'noTimeSubstitution'
+           - 'useCompForOverAndUndertime'
+           - 'useFlexForOverAndUndertime'
+        note:
+          type: string
+          maxLength: 1000
+        partsOfDay:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            required:
+              - endDateTime
+            type: object
+            properties:
+              endDateTime:
+                type: string
+                format: date-time
+                example: "2024-02-01T17:00Z"
+                description: 'For the last part of the day, this value is also the time when the time report ends. And that needs to be after and within 24 hours of the startDateTime'
+              vehicleId:
+                nullable: true
+                type: string
+                format: guid
+                example: "aaa2f855-debb-4f17-b7c9-2626a2b9c819"
+              trailerVehicleId:
+                nullable: true
+                type: string
+                format: guid
+                example: "ccc2f855-debb-4f17-b7c9-2626a2b9c819"
+              workTaskId:
+                nullable: true
+                type: string
+                format: guid
+                example: "bbb2f855-debb-4f17-b7c9-2626a2b9c819"
+              customCounters:
+                type: object
+                description: 'By default the custom counters are meter readings when enabled. But they can also be used for other purposes like keeping track of differential changes of a custom counter.'
+                properties:
+                  customCounterOne:
+                    type: number
+                    format: double
+                    example: 80000.3
+                  customCounterTwo:
+                    type: number
+                    format: double
+                    example: 80150.4
+              costDistributionCode:
+                type: string
+                minLength: 1
+                nullable: false
+                default: '0'
+                description: 'If omitted, default to either 0 or the value set on the vehicle (if configured). Must be a non-negative integer (int32).'
+                example: '1010'
+        adjustedWorkTimeInMinutes:
+          type: integer
+          description: This value is calculated in the calculatedAdjustedWorkTime resource
+          example: 100
+          minimum: 1
+          maximum: 1440
+    # ----------------------------------------------------------------------
+    webHook:
+      type: object
+      required:
+        - createCallbackUrl
+        - customHeaders
+      properties:
+        createCallbackUrl:
+          type: string
+          description: Callback URL
+          format: uri,
+          example: https://myserver.com/send/callback/here
+        customHeaders:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/httpHeader'
+    # ----------------------------------------------------------------------
+    tachographData:
+      title: "tachographData"
+      type: object
+      required:
+        - employeeId
+        - startDateTime
+        - endDateTime
+        - activityType
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        employeeId:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        startDateTime:
+          type: string
+          format: date-time
+        endDateTime:
+          type: string
+          format: date-time
+        activityType: # Called mode trace https://en.wikipedia.org/wiki/Tachograph
+          type: string
+          example:
+            - 'drive'
+            - 'otherWork'
+            - 'rest'
+            - 'available'
+            - 'unknown'
+        vehicleRegistrationNumber:
+          type: string
+          nullable: true
+          description: 'Vehicle registration number'
+          pattern: ^([\p{L}0-9]+([ \-][\p{L}0-9]+)*)?$
+          minLength: 1
+          maxLength: 20
+          example: 'ABC-123'
+    # ----------------------------------------------------------------------
+    preliminaryTachographData:
+      title: "preliminaryTachographData"
+      type: object
+      properties:
+        tachographCardNumber:
+          type: string
+          description: 'Tachograph Card Numbers can have a length of either 14 or 16'
+          example: '0000012345678901'
+          maxLength: 16
+          pattern: ^([0-9a-zA-Z]{14}([0-9a-zA-Z]{2})?)?$
+        startDateTime:
+          type: string
+          format: date-time
+        endDateTime:
+          type: string
+          format: date-time
+        activityType: # Called mode trace https://en.wikipedia.org/wiki/Tachograph
+          type: string
+          example:
+            - 'drive'
+            - 'otherWork'
+            - 'rest'
+            - 'available'
+            - 'unknown'
+        vehicleRegistrationNumber:
+          type: string
+          nullable: true
+          description: 'Vehicle registration number (We are not the data owner of this field)'
+          minLength: 1
+          maxLength: 20
+          example: 'ABC-123'
+        integratorId:
+          type: string
+          example:
+            - 'api' # Data originating from our Public API
+            - 'other'
+    # ----------------------------------------------------------------------
+    timereportConfiguration:
+      title: "timereportConfiguration"
+      type: object
+      additionalProperties: false
+      required:
+        - vehicleIsMandatory
+        - balances
+        - timeLimitInTheFutureInMinutes
+      properties:
+        customCounters:
+          type: object
+          properties:
+            customCounterOne:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: false
+                name:
+                  type: string
+                  maxLength: 30
+            customCounterTwo:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: false
+                name:
+                  type: string
+                  maxLength: 30
+        useTrailer:
+          type: boolean
+          default: false
+          description: 'If true, the trailerVehicleId in the partsOfDay can be used'
+        timeLimitInTheFutureInMinutes:
+          type: integer
+          example: 101
+          minimum: 0
+          maximum: 1440
+          default: 15
+          description: 'States the number of minutes the timereport can be reported before-hand.'
+        vehicleIsMandatory:
+          type: boolean
+        balances:
+          type: object
+          nullable: false
+          properties:
+            allowUseComp:
+              type: boolean
+              default: true
+        securityChecks:
+          type: object
+          description: 'Settings that control when and for who security checks are done'
+          properties:
+            vehicleAndDriver:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                weekdays:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/weekday'
+                  example:
+                    - monday
+                    - thursday
+                professionGroups:
+                  type: array
+                  items:
+                    type: string
+                    example:
+                      - 'driver'
+                      - 'terminal'
+                      - 'garage'
+                      - 'other'
+            trailer:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                weekdays:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/weekday'
+                  example:
+                    - monday
+                    - thursday
+                professionGroups:
+                  type: array
+                  items:
+                    type: string
+                    example:
+                      - 'driver'
+                      - 'terminal'
+                      - 'garage'
+                      - 'other'
+        worktimeRegulations:
+          type: object
+          description: 'For rules to be applied, the status need to be either informAboutViolation or informAndPreventViolation'
+          properties:
+            status:
+              type: string
+              default: 'disabled'
+              example:
+                - 'disabled'
+                - 'informAboutViolation'
+                - 'informAndPreventViolation'
+            rules:
+              type: object
+              properties:
+                exceeds6HoursWithoutBreakViolation:
+                  type: boolean
+                  default: true
+                missing30MinutesBreakViolation:
+                  type: boolean
+                  default: true
+                missing45MinutesBreakViolation:
+                  type: boolean
+                  default: true
+                exceeds10HoursNightlyViolation:
+                  type: boolean
+                  default: true
+        costDistribution:
+          type: object
+          additionalProperties: false
+          properties:
+            vehicleRegisterAsDefault:
+              type: boolean
+              default: false
+            useCostDistribution:
+              type: boolean
+              default: false
+        changesByEmployeeRequiresDocumentation:
+          type: string
+          description: 'Controls whether documentation is required when an employee changes a timereport.'
+          default: 'always'
+          example:
+            - 'always'
+            - 'never'
+            - 'optional'
+        changesBySystemUserRequiresDocumentation:
+          type: string
+          description: 'Controls whether documentation is required when a system user changes a timereport.'
+          default: 'always'
+          example:
+            - 'always'
+            - 'never'
+            - 'optional'
+    trafficArea:
+      title: "trafficArea"
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        name:
+          type: string
+    # ----------------------------------------------------------------------
+    trip:
+      title: "trip"
+      type: object
+      additionalProperties: false
+      required:
+        - employeeId
+        - startDateTime
+        - endDateTime
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "e1a2f855-debb-4f17-b7c9-2626a2b9c819"
+        employeeId:
+          type: string
+          format: guid
+          example: "b1df383d-23f5-4aa3-118c-bbb551abfd9d"
+        startDateTime:
+          type: string
+          format: date-time
+          example: "2024-02-01T08:00Z"
+        endDateTime:
+          type: string
+          format: date-time
+          example: "2025-01-05T17:00:00Z"
+          description: 'This value needs to be after and within 31 days of the startDateTime.'
+        status:
+          type: string
+          default: 'submitted'
+          example:
+            - 'submitted'
+            - 'approved'
+        borderCrossings:
+          type: array
+          nullable: false
+          maxItems: 20
+          items:
+            type: object
+            required:
+              - country
+              - crossingDateTime
+            properties:
+              country:
+                  type: string
+                  example: 'SE'
+                  description: ISO 3166-1 alpha-2 country code'
+              crossingDateTime:
+                  type: string
+                  format: date-time
+                  example: "2024-02-01T12:00Z"
+        allowanceReductions:
+          type: array
+          items:
+            type: object
+            required:
+              - reductionDate
+              - type
+            properties:
+              reductionDate:
+                type: string
+                format: date
+              freeAccommodation:
+                type: boolean
+                description: Available in Transport, Bus, MFA and TMA agreements
+                default: false
+              freeBreakfast:
+                type: boolean
+                description: Available in Bus and TMA agreements
+                default: false
+              freeLunch:
+                type: boolean
+                description: Available in Bus and TMA agreements
+                default: false
+              freeDinner:
+                type: boolean
+                description: Available in Bus and TMA agreements
+                default: false
+
+    # ----------------------------------------------------------------------
+    vehicle:
+      title: "vehicle"
+      type: object
+      additionalProperties: false
+      required:
+        - registrationNumber
+        - externalId
+        - isActive
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "31621ed5-7514-4c25-b2d1-faf7f149eb1b"
+        registrationNumber:
+          type: string
+          description: 'The registrationNumber cannot be null or empty'
+          minLength: 1
+          maxLength: 20
+          example: 'ABC-123'
+        externalId:
+          type: string
+          description: 'Currently only allows int64 as string (Was previously named VehicleNumber)'
+          example: '100'
+        vehicleType:
+          type: string
+          description: 'The type of vehicle'
+          default: 'other'
+          example:
+            - 'other'
+            - 'trailer'
+        isActive:
+          type: boolean
+        costDistributionCode:
+          type: string
+          minLength: 1
+          nullable: false
+          default: '0'
+          description: 'Must be a non-negative integer (int32).'
+        trafficAreaId:
+          type: string
+          format: guid
+          nullable: true
+          example: "4fe0b8eb-5464-4a19-b848-ed1510a442b3"
+        stationPlaceId:
+          type: string
+          format: guid
+          nullable: true
+          example: "57b96bc7-2c97-49eb-8899-3bf2f330b789"
+        vehicleGroupId:
+          type: string
+          format: guid
+          nullable: true
+          example: "6a278d10-95b1-4fd8-926f-eba387cdfd04"
+    # ----------------------------------------------------------------------
+    vehicleGroup:
+      title: "vehicleGroup"
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "ad26385e-67dc-48f6-8a3a-4c2c21be9a5c"
+        name:
+          type: string
+        isActive:
+          type: boolean
+          default: true
+    # ----------------------------------------------------------------------
+    workGroup:
+      title: "workGroup"
+      additionalProperties: false
+      description: "A work group is a way to group employees for various purposes. One example is to use work groups to represent different departments in the company."
+      type: object
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "ad26385e-67dc-48f6-8a3a-4c2c21be9a5c"
+        name:
+          type: string
+          maxLength: 20
+        isActive:
+          type: boolean
+    # ----------------------------------------------------------------------
+    workTask:
+      title: "workTask"
+      type: object
+      properties:
+        id:
+          type: string
+          format: guid
+          example: "ad26385e-67dc-48f6-8a3a-4c2c21be9a5c"
+        description:
+          type: string
+    # ----------------------------------------------------------------------
+    cursorDto:
+      title: cursor
+      description: >
+        If there are too many elements to return the entire list a cursor is provided. The cursor is used for querying for more data
+        by using the 'cursor=nextToken' query parameter.
+      type: object
+      additionalProperties: false
+      nullable: true
+      properties:
+        nextToken:
+          type: string
+          format: guid
+          nullable: true
+          description: >
+            Token that can be used with the 'cursor=nextToken' query parameter to retrieve the next elements in the list.
+            If no value is returned it means that there is no more data available.
+          example: "b1df383d-23f5-4aa3-118c-bbb551abfd9d"
+    # ----------------------------------------------------------------------
+    problem:
+      title: problem
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            An absolute URI that identifies the problem type.  When dereferenced,
+            it SHOULD provide human-readable documentation for the problem type
+            (e.g., using HTML).
+          default: 'about:blank'
+          example: 'https://zalando.github.io/problem/constraint-violation'
+        title:
+          type: string
+          description: |
+            A short, summary of the problem type. Written in english and readable
+            for engineers (usually not suited for non technical stakeholders and
+            not localized); example: Service Unavailable
+        status:
+          type: integer
+          format: int32
+          description: |
+            The HTTP status code generated by the origin server for this occurrence
+            of the problem.
+          minimum: 100
+          maximum: 600
+          exclusiveMaximum: true
+          example: 503
+        detail:
+          type: string
+          description: |
+            A human readable explanation specific to this occurrence of the
+            problem.
+          example: Connection to database timed out
+        instance:
+          type: string
+          format: uri
+          nullable: true
+          description: |
+            An absolute URI that identifies the specific occurrence of the problem.
+            It may or may not yield further information if dereferenced.
+  # ----------------------------------------------------------------------
+  parameters:
+    cursorQueryParameter:
+      name: cursor
+      description: Pagination token used to query for the next part of a list. Empty string gives the same behavior as not providing the query parameter.
+      in: query
+      required: false
+      schema:
+        type: string
+        format: guid
+    limitParameter:
+      name: limit
+      description: Limits the number of resources returned. Default and maximum is 100.
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 100
+        maximum: 100
+    limitParameter200:
+      name: limit
+      description: Limits the number of resources returned. Default is 100 and maximum is 200.
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 100
+        maximum: 200
+    idPathParameter:
+      name: id
+      description: Resource ID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: guid
+    adjustedWorkTimeCheckSum:
+      name: checkSum
+      description: Checksum retrieved from calculateAdjustedWorkTime resource
+      in: query
+      required: true
+      schema:
+        type: string
+        format: guid
+  responses:
+    400ProblemJson:
+      description: 'Bad request. Invalid request made by the client'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+          example:
+            title: 'Bad Request'
+            status: 400
+            detail: 'Requests contains an invalid field'
+    403ProblemJson:
+      description: 'Insufficient access'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+          example:
+            title: 'Forbidden'
+            status: 403
+            detail: 'Missing required scope'
+    409ProblemJson:
+      description: 'Resource attribute conflict'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+          example:
+            title: 'Conflict'
+            status: 409
+            detail: 'An attribute needs to be unique'
+    429Throttling:
+      description: 'Throttling has occurred. Either your clients limit is reached or the global limit has been reached'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/problem'
+          example:
+            title: 'Too Many Requests'
+            status: 429
+            detail: 'Global throttling limit reached'
+    # ----------------------------------------------------------------------
+  securitySchemes:
+    visma_connect:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://connect.identity.stagaws.visma.com/connect/token
+          scopes:
+            "transpaapi:api": Grants access to the API
+            "transpaapi:employees:read": Grants access to read employees and it's related resources
+            "transpaapi:employees:write": Grants access to write employees and it's related resources
+            "transpaapi:employees:delete": Grants access to delete employees and it's related resources
+            "transpaapi:employeecontracts:read": Grants access to read employee contracts
+            "transpaapi:salaries:read": Grants access to read salaries
+            "transpaapi:salaries:write": Grants access to write salaries
+            "transpaapi:employeesalaryconfigurations:read": Grant access to read salary configuration
+            "transpaapi:employeesalaryconfigurations:write": Grant access to write salary configuration
+            "transpaapi:preliminarytachographdata:read": (Visma internal) Grants access to read preliminary tachograph data
+            "transpaapi:shifts:read": Grants access to read shifts
+            "transpaapi:shifts:write": Grants access to write shifts
+            "transpaapi:shifts:delete": Grants access to delete shifts
+            "transpaapi:stationplaces:read": Grants access to read stationPlaces
+            "transpaapi:tachographdata:read": Grants access to read tachograph data
+            "transpaapi:tachographdata:write": Grants access to write tachograph data
+            "transpaapi:timereports:read": Grants access to read time reports
+            "transpaapi:timereports:write": Grants access to write time reports
+            "transpaapi:timereports:delete": Grants access to detele time reports
+            "transpaapi:timereportconfigurations:read": Grants access to read time report settings
+            "transpaapi:trafficareas:read": Grants access to read trafficAreas
+            "transpaapi:trips:read": Grants access to read trips
+            "transpaapi:trips:write": Grants access to write trips
+            "transpaapi:trips:delete": Grants access to delete trips
+            "transpaapi:vehicles:read": Grants access to read from vehicle resource and it's related resources
+            "transpaapi:vehicles:write": Grants access to write to the vehicle resource and it's related resources
+            "transpaapi:vehicles:delete": Grants access to delete from vehicle resource and it's related resources
+            "transpaapi:vehiclegroups:read": Grants access to read vehicleGroups
+            "transpaapi:workgroups:read": Grants access to read workGroups
+            "transpaapi:worktasks:read": Grants access to read workTasks
+security:
+  - visma_connect: [ "transpaapi:api" ]

@@ -22,6 +22,7 @@ import {
 } from "@/lib/transpa/shift-move";
 import {
   AdjustedWorkTimeError,
+  buildAdjustedWorkTimePayload,
   CALCULATE_PATH,
   readAdjustedWorkTime,
 } from "@/lib/transpa/adjusted-work-time";
@@ -181,7 +182,9 @@ export async function sendShiftMove(
     spår.push(`POST ${CALCULATE_PATH}`);
     const beräknad = await steg("räkna om arbetstiden", async () =>
       readAdjustedWorkTime(
-        await client.post<unknown>(CALCULATE_PATH, body, { scopes: SHIFT_WRITE_SCOPES }),
+        await client.post<unknown>(CALCULATE_PATH, buildAdjustedWorkTimePayload(body), {
+          scopes: SHIFT_WRITE_SCOPES,
+        }),
       ),
     );
 

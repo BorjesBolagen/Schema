@@ -25,6 +25,50 @@ export class AdjustedWorkTimeError extends Error {
   }
 }
 
+/**
+ * Kroppen till calculateAdjustedWorkTime.
+ *
+ * Ett *annat* schema än passets, och snävare. `adjustedWorkTime` har
+ * `additionalProperties: false` och tillåter bara startDateTime, breaks,
+ * partsOfDay och employeeId — och i partsOfDay bara endDateTime och
+ * workTaskId. Passets vehicleId, customCounters, trailerVehicleId,
+ * costDistributionCode, name, description, externalId, isExtraShift och
+ * id hör inte hemma här.
+ *
+ * Vi skickade hela passet och kom igenom ändå: deras validering är
+ * uppenbarligen tillåtande i dag. Men det är odefinierat beteende vi
+ * lutar oss mot, och dagen de skärper valideringen slutar varje flytt
+ * att fungera. Kroppen byggs därför efter schemat i stället för efter
+ * vad som råkar accepteras.
+ */
+export function buildAdjustedWorkTimePayload(shift: {
+  startDateTime?: string;
+  employeeId?: string | null;
+  breaks?: unknown;
+  partsOfDay?: Array<Record<string, unknown>>;
+}): Record<string, unknown> {
+  const rast = (b: unknown) => {
+    const r = (b ?? {}) as Record<string, unknown>;
+    return { startDateTime: r.startDateTime, endDateTime: r.endDateTime };
+  };
+
+  return {
+    startDateTime: shift.startDateTime,
+    breaks: (Array.isArray(shift.breaks) ? shift.breaks : []).map(rast),
+    partsOfDay: (shift.partsOfDay ?? []).map((del) => ({
+      endDateTime: del.endDateTime,
+      /* Bara när det finns. undefined försvinner i JSON.stringify, men
+         null är ett värde och kan betyda något annat för dem än "inte
+         angivet". */
+      ...(del.workTaskId != null ? { workTaskId: del.workTaskId } : {}),
+    })),
+    /* Utelämnas när passet saknar person. Schemat tillåter null, men
+       employeeId får inte kombineras med collectiveAgreement, och att
+       skicka fältet tomt är att påstå något vi inte vet. */
+    ...(shift.employeeId != null ? { employeeId: shift.employeeId } : {}),
+  };
+}
+
 export interface AdjustedWorkTime {
   checkSum: string;
   /** Värdet TransPA räknade fram. Deras siffra gäller, inte vår. */

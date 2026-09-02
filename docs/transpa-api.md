@@ -1,10 +1,14 @@
 # TransPA Public API — vad det faktiskt har
 
-Nedtecknat ur Vismas egen Swagger-UI, utskriven 2026-09-02
-(`api.mytranspa.com/doc/openapi/swaggerui/`). Finns här för att den
-adressen inte går att nå från utvecklingsmiljön — nätverkspolicyn
-blockerar `api.mytranspa.com` — och för att varje anrop mot API:t
-belastar en anropskvot som redan tagit slut en gång.
+Sammanfattning av `transpa-openapi.yaml` bredvid, som är Vismas egen
+spec (0.1.138, hämtad 2026-09-02). Båda ligger här för att adressen inte
+går att nå från utvecklingsmiljön — nätverkspolicyn blockerar
+`api.mytranspa.com` — och för att varje anrop mot API:t belastar en
+anropskvot som redan tagit slut en gång.
+
+Specen är dessutom inte bara läsning: `adjusted-work-time.test.ts` läser
+de tillåtna fältnamnen ur den i stället för ur en avskriven lista. En
+avskriven lista är sann den dag den skrivs och tyst fel därefter.
 
 Vismas genererade C#-klient (`TransPA-Public-API-Client`, 0.1.21) duger
 inte som facit: den saknar `/v1/trips`, som deras egna Postman-exempel
@@ -50,11 +54,24 @@ tidrapportinställningar. En klient får därför inte hitta på värdet: man
 skickar passet till `POST /v1/calculateAdjustedWorkTime`, får tillbaka
 minuterna och en summa som kvitterar dem, och skickar båda vidare.
 
-Kroppen ersätter hela passet. Ett utelämnat fält är ett raderat fält.
+**De två stegen har olika scheman, och uträkningens är snävare.**
+`adjustedWorkTime` har `additionalProperties: false` och tillåter bara
+`startDateTime`, `breaks`, `partsOfDay` och `employeeId` — och i
+partsOfDay bara `endDateTime` och `workTaskId`. Passets `vehicleId`,
+`customCounters`, `trailerVehicleId`, `costDistributionCode`, `name`,
+`description`, `externalId`, `isExtraShift` och `id` hör inte hemma där.
+
+Vi skickade först hela passet till uträkningen och kom igenom ändå —
+deras validering är tillåtande i dag. Men det är odefinierat beteende,
+och den dagen de skärper den slutar varje flytt att fungera. Kroppen
+byggs därför efter schemat.
+
+`PUT /v1/shifts/{id}` tar däremot hela `shift`-schemat, och där ersätter
+kroppen hela passet: ett utelämnat fält är ett raderat fält.
 
 ```
 startDateTime*              date-time
-breaks*                     [{ startDateTime, endDateTime }]
+breaks*                     [{ startDateTime, endDateTime }], max 4
 partsOfDay*                 [{ endDateTime, vehicleId, workTaskId,
                                customCounters, trailerVehicleId,
                                costDistributionCode }]
@@ -73,7 +90,7 @@ Läsning om inget annat sägs.
 
 | Område | Vägar |
 |---|---|
-| Personal | `/v1/employees`, `/v1/employees/{id}`, `/v1/employees/{id}/salaryConfiguration` (GET, PUT) |
+| Personal | `/v1/employees` (GET, POST), `/v1/employees/{id}`, `/v1/employee/{id}/employeeContracts`, `/v1/employees/{id}/salaryConfiguration` (GET, PUT) |
 | Pass | `/v1/shifts/` (GET, POST), `/v1/shifts/{id}` (GET, PUT, DELETE), `/v1/employees/{id}/shifts/` |
 | Tidrapporter | `/v1/timeReports` (GET, POST), `/v1/timeReports/{id}` (GET, PUT, DELETE), `/v1/employees/{id}/timereports/`, `/v1/timereportConfiguration/` |
 | Arbetstid | `/v1/calculateAdjustedWorkTime` (POST) |
@@ -83,6 +100,18 @@ Läsning om inget annat sägs.
 | Löner | `/v1/salaries/{id}`, `/v1/salaries/{id}/setExportFailed`, `/v1/salaries/{id}/setExportSuccess`, `/v1/subscribe/salaries`, `/v1/unsubscribe/salaries` |
 | Färdskrivare | `/v1/tachographData` (POST; GET ej klar), `/v1/tachographDataAbstractions`, `/v1/employees/{id}/preliminaryTachographData/` (ej klar) |
 | Filer | `/v1/files`, `/v1/files/{id}` — båda märkta *Not Ready* |
+
+## Stationsort finns på personen
+
+`employee.grouping` bär `stationPlaceId`, `trafficAreaId`, `workGroupId`,
+`supervisorId` och `vacationGroupId`. Den föråldrade C#-klienten saknade
+dem helt, och den bristen var skälet till att stationsorten sattes
+lokalt. Fältet finns alltså — värt att veta om synken någon gång ska
+hämta den i stället.
+
+`employee` bär också `nationalIdentityNumber`, `address`,
+`tachographCards`, `loginEmail` och `loginPhoneNumber`. Inget av det
+hämtas, och två tester ser till att det förblir så.
 
 ## Frånvaro och semester finns inte
 
