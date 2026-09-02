@@ -36,6 +36,45 @@ export function shiftDays(move: { from: string; to: string }): number {
 const flytta = (iso: string, dagar: number) =>
   new Date(new Date(iso).getTime() + dagar * DAY_MS).toISOString();
 
+/**
+ * En ISO-tidpunkt, sträng för sträng.
+ *
+ * Strikt med flit: ett datum utan klockslag, ett fritextfält som råkar
+ * börja med siffror eller ett id ska inte flyttas. Bara det som har
+ * formen av en tidpunkt räknas som en.
+ */
+const ÄR_TIDPUNKT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * Skjuter varje tidpunkt i ett värde, hur djupt den än ligger.
+ *
+ * Finns för rasterna. De skickas tillbaka som de kom, och Vismas schema
+ * säger bara `breaks*  [...]` — formen står inte utskriven, men en rast
+ * i ett pass har rimligen tider. Lämnades de orörda hamnade rasten kvar
+ * på det gamla dygnet medan resten av passet flyttades: ett pass med en
+ * rast som ligger utanför sig självt. TransPA hade antingen nekat det
+ * eller, värre, sparat det.
+ *
+ * Regeln är densamma som för resten av flytten — allt skjuts lika
+ * mycket — och den tillämpas här på det vi inte känner formen av, i
+ * stället för att gissa fältnamn.
+ */
+export function flyttaTidpunkter(värde: unknown, dagar: number): unknown {
+  if (typeof värde === "string") {
+    return ÄR_TIDPUNKT.test(värde) ? flytta(värde, dagar) : värde;
+  }
+  if (Array.isArray(värde)) return värde.map((x) => flyttaTidpunkter(x, dagar));
+  if (värde && typeof värde === "object") {
+    return Object.fromEntries(
+      Object.entries(värde as Record<string, unknown>).map(([k, v]) => [
+        k,
+        flyttaTidpunkter(v, dagar),
+      ]),
+    );
+  }
+  return värde;
+}
+
 export class ShiftMoveError extends Error {}
 
 /**
@@ -70,7 +109,7 @@ export function buildMovePayload(shift: TranspaShift, dagar: number): Record<str
     employeeId: shift.employeeId,
     startDateTime: flytta(shift.startDateTime, dagar),
     partsOfDay: delar,
-    breaks: shift.breaks ?? [],
+    breaks: flyttaTidpunkter(shift.breaks ?? [], dagar),
     adjustedWorkTimeInMinutes: shift.adjustedWorkTimeInMinutes,
     isExtraShift: shift.isExtraShift ?? false,
     ...(shift.name != null ? { name: shift.name } : {}),

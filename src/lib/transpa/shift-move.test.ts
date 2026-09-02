@@ -64,7 +64,10 @@ describe("buildMovePayload", () => {
     expect(body.id).toBe("s1");
     expect(body.employeeId).toBe("e1");
     expect(body.name).toBe("16.00-03.00, Vmo-Sto ner");
-    expect(body.breaks).toEqual(natten.breaks);
+    /* Rasten följer med dygnet, den står inte kvar. Testet krävde
+       tidigare att den var oförändrad — alltså att en flyttad natt
+       hade sin rast kvar på den gamla dagen. */
+    expect(body.breaks).toEqual([{ start: "2026-08-18T18:00:00.000Z" }]);
     expect(body.isExtraShift).toBe(false);
   });
 
@@ -93,5 +96,89 @@ describe("buildMovePayload", () => {
     expect(() => buildMovePayload({ ...natten, partsOfDay: [{ vehicleId: "v1" }] }, 1)).toThrow(
       ShiftMoveError,
     );
+  });
+});
+
+/**
+ * Rasterna.
+ *
+ * Vismas schema säger `breaks*  [...]` — obligatoriskt, men formen står
+ * inte utskriven. De skickades tillbaka som de kom, vilket betydde att
+ * en flytt lämnade rasten kvar på det gamla dygnet medan resten av
+ * passet flyttade sig. Ett pass med en rast utanför sig självt är
+ * antingen nekat eller, värre, sparat.
+ */
+describe("rasterna följer med", () => {
+  const pass = (breaks: unknown[]) => ({
+    id: "s1",
+    employeeId: "e1",
+    startDateTime: "2026-09-04T05:00:00.000Z",
+    partsOfDay: [{ endDateTime: "2026-09-04T15:00:00.000Z" }],
+    breaks,
+    adjustedWorkTimeInMinutes: 540,
+  });
+
+  it("skjuter rastens tider lika mycket som passets", () => {
+    const body = buildMovePayload(
+      pass([{ startDateTime: "2026-09-04T10:00:00.000Z", endDateTime: "2026-09-04T10:30:00.000Z" }]),
+      -2,
+    );
+    expect(body.breaks).toEqual([
+      { startDateTime: "2026-09-02T10:00:00.000Z", endDateTime: "2026-09-02T10:30:00.000Z" },
+    ]);
+  });
+
+  /* Fältnamnen gissas inte — vi vet inte vad en rast heter. Det som har
+     formen av en tidpunkt flyttas, resten står orört. */
+  it("rör inte längder, id:n eller fritext", () => {
+    const body = buildMovePayload(
+      pass([
+        {
+          id: "b1",
+          minutes: 30,
+          note: "Rast 2026-09-04",
+          paid: false,
+          startDateTime: "2026-09-04T10:00:00.000Z",
+        },
+      ]),
+      1,
+    );
+    expect(body.breaks).toEqual([
+      {
+        id: "b1",
+        minutes: 30,
+        note: "Rast 2026-09-04",
+        paid: false,
+        startDateTime: "2026-09-05T10:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("klarar en rast som ligger efter midnatt i ett nattpass", () => {
+    const body = buildMovePayload(
+      {
+        id: "s1",
+        startDateTime: "2026-09-04T17:00:00.000Z",
+        partsOfDay: [{ endDateTime: "2026-09-05T02:00:00.000Z" }],
+        breaks: [{ startDateTime: "2026-09-05T00:30:00.000Z" }],
+        adjustedWorkTimeInMinutes: 480,
+      },
+      1,
+    );
+    /* Rasten ska fortfarande ligga dygnet efter starten. */
+    expect(body.breaks).toEqual([{ startDateTime: "2026-09-06T00:30:00.000Z" }]);
+    expect(body.startDateTime).toBe("2026-09-05T17:00:00.000Z");
+  });
+
+  it("skickar en tom lista när passet saknar raster", () => {
+    expect(buildMovePayload(pass([]), 1).breaks).toEqual([]);
+  });
+
+  it("går ned i nästlade fält", () => {
+    const body = buildMovePayload(
+      pass([{ window: { from: "2026-09-04T10:00:00.000Z" } }]),
+      1,
+    );
+    expect(body.breaks).toEqual([{ window: { from: "2026-09-05T10:00:00.000Z" } }]);
   });
 });
