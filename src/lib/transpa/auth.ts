@@ -49,6 +49,15 @@ export const READ_SCOPES = [
 ];
 
 /**
+ * Scope för att läsa ett enskilt pass.
+ *
+ * Skilt från READ_SCOPES, som begär allt appen läser någonstans. En
+ * flytt behöver bara passet, och en token ska inte bära mer än anropet
+ * använder.
+ */
+export const SHIFT_READ_SCOPES = [BASE_SCOPE, "transpaapi:shifts:read"];
+
+/**
  * Scope för att skriva pass.
  *
  * Begärs bara av de anrop som faktiskt skriver, aldrig som en del av
@@ -56,6 +65,13 @@ export const READ_SCOPES = [
  * och användas av något som bara skulle läsa. Att de hämtas per anrop
  * kostar en tokenhämtning första gången och inget därefter — cachen
  * nycklas på scope.
+ *
+ * Läs-scopet ingår *inte*, och det är hela poängen — men det betyder
+ * också att den som läser med den här listan får 403. Precis det hände:
+ * flytten hämtar passet färskt innan den skriver, och den hämtningen
+ * begärde skriv-scopen. TransPA svarade "Claim value mismatch:
+ * scope=transpaapi:shifts:read" på en GET, vilket lät som att läsning
+ * vore nekad när det i själva verket var vi som bett om fel token.
  */
 export const SHIFT_WRITE_SCOPES = [BASE_SCOPE, "transpaapi:shifts:write"];
 

@@ -162,16 +162,34 @@ describe("flytten", () => {
     expect(calls[0].url).toContain("/v1/shifts/s1");
   });
 
-  it("begär skriv-scope", async () => {
-    let scope = "";
+  /**
+   * Rätt scope till rätt anrop.
+   *
+   * En flytt är två anrop: läs tillbaka passet, skriv det. De behöver
+   * olika scope, och skriv-scopet bär inte läsrätt. Skickades
+   * skriv-scopen till hämtningen svarade TransPA 403 med "Claim value
+   * mismatch: scope=transpaapi:shifts:read" — ett fel som lät som att
+   * läsning vore nekad när det var vår tokenbegäran som var fel.
+   *
+   * Det gamla testet såg bara den *sista* tokenbegäran och var därför
+   * grönt hela tiden. Nu paras varje begäran ihop med anropet den
+   * gjordes för.
+   */
+  it("begär läs-scope till hämtningen och skriv-scope till skrivningen", async () => {
+    const scopes: string[] = [];
+    const anrop: Array<{ method: string; scope: string }> = [];
+
     const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("connect/token")) {
-        scope = String(init?.body ?? "");
+        const body = new URLSearchParams(String(init?.body ?? ""));
+        scopes.push(body.get("scope") ?? "");
         return new Response(
           JSON.stringify({ access_token: "tok", expires_in: 3600, token_type: "Bearer" }),
         );
       }
+      /* Tokenhämtningen sker direkt före det anrop som behövde den. */
+      anrop.push({ method: init?.method ?? "GET", scope: scopes[scopes.length - 1] ?? "" });
       if ((init?.method ?? "GET") === "GET") {
         return new Response(
           JSON.stringify({
@@ -186,8 +204,14 @@ describe("flytten", () => {
       return new Response("{}");
     }) as unknown as typeof fetch;
 
-    await sendShiftMove(flytt(prov), impl, db);
-    expect(decodeURIComponent(scope)).toContain("transpaapi:shifts:write");
+    const result = await sendShiftMove(flytt(prov), impl, db);
+    expect(result.ok).toBe(true);
+
+    const get = anrop.find((a) => a.method === "GET")!;
+    const put = anrop.find((a) => a.method === "PUT")!;
+    expect(get.scope).toContain("transpaapi:shifts:read");
+    expect(get.scope).not.toContain("transpaapi:shifts:write");
+    expect(put.scope).toContain("transpaapi:shifts:write");
   });
 
   it("sparar kroppen som skickades", async () => {

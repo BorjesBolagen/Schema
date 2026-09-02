@@ -6,7 +6,11 @@ import {
   TranspaApiError,
   TranspaQuotaError,
 } from "@/lib/transpa/client";
-import { credentialsForTenant, SHIFT_WRITE_SCOPES } from "@/lib/transpa/auth";
+import {
+  credentialsForTenant,
+  SHIFT_READ_SCOPES,
+  SHIFT_WRITE_SCOPES,
+} from "@/lib/transpa/auth";
 import {
   assertMayWriteTo,
   WriteNotAllowedError,
@@ -145,8 +149,12 @@ export async function sendShiftMove(
     /* Vilket av de två anropen som föll är halva svaret på varför.
        Utan steget i meddelandet är "TransPA svarade 404" lika förenligt
        med "passet finns inte" som med "vi får inte skriva". */
+    /* Läs-scope till läsningen. Skriv-scopet bär inte läsrätt, så den
+       här hämtningen fick 403 med "Claim value mismatch:
+       scope=transpaapi:shifts:read" — ett fel som pekade på läsning
+       fast det var tokenbegäran som var fel. */
     const current = await steg("läsa tillbaka passet", () =>
-      client.request<TranspaShift>(path, { scopes: SHIFT_WRITE_SCOPES }),
+      client.request<TranspaShift>(path, { scopes: SHIFT_READ_SCOPES }),
     );
     const body = buildMovePayload(current, shiftDays(input));
 
