@@ -77,7 +77,13 @@ export function PersonGrid({ data }: { data: BoardWeek }) {
                       ⚠ ej utlagd
                     </span>
                   ) : (
-                    <span className="text-(--color-muted)">▢</span>
+                    /* Ledig dag. Punkten är samma tecken som
+                       sidopanelen använder för en dag utan pass — en ▢
+                       läser man som en tom ruta att fylla, vilket den
+                       inte är här. */
+                    <span className="text-(--color-line)" aria-label="ledig">
+                      ·
+                    </span>
                   )}
                 </td>
               ))}

@@ -18,9 +18,19 @@ async function drag(from: { x: number; y: number }, to: { x: number; y: number }
   }
   const dragging = await page.locator('[role="status"], .cursor-grabbing').count();
   const overlay = await page.locator("body").innerText().then((t) => t.includes("Max Kellgren"));
-  console.log(`   (mitt i dragningen: overlay-element=${dragging}, text-syns=${overlay})`);
+  /* Tomma celler är tysta tills något dras. Förut stod en ▢ i var och
+     en av dem, hela tiden — fyrtio tecken som inte betydde något var
+     för sig. Nu ska släppzonerna framträda just nu, och bara nu. */
+  const zoner = await page.locator("[data-cell] .border-dashed").count();
+  console.log(
+    `   (mitt i dragningen: overlay-element=${dragging}, text-syns=${overlay}, släppzoner=${zoner})`,
+  );
+  if (zoner === 0) console.log("   ✗ inga släppzoner syns under dragningen");
   await page.mouse.up();
   await page.waitForTimeout(1800);
+
+  const kvar = await page.locator("[data-cell] .border-dashed").count();
+  if (kvar > 0) console.log(`   ✗ ${kvar} släppzoner står kvar efter släppet`);
 }
 
 const centre = async (p: Page, selector: string, nth = 0) => {

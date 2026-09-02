@@ -180,12 +180,24 @@ function ShiftCell({
   const problem = active ? dropCheck({ boardRowId: row.id, date, shift }) : null;
   const vehicle = cells[0]?.vehicleName ?? row.defaultVehicleName;
 
+  /* Bilnumret under varje namn stod tjugo gånger på en vecka och sa
+     samma sak varje gång. Det bär bara upplysning när det *avviker*
+     från radens vanliga bil — "BT13/14 körs i dag med BT24" är värt en
+     rad, "BT13/14 körs med BT13" är det inte.
+
+     Det som inte avviker tas ändå inte bort: det finns kvar och kommer
+     fram när man för musen över cellen, för den som vill se vilken av
+     paret som gäller. */
+  const avvikandeBil = Boolean(
+    vehicle && row.defaultVehicleName && vehicle !== row.defaultVehicleName,
+  );
+
   return (
     <div
       ref={setNodeRef}
       data-cell={`${row.id}|${date}|${shift}`}
       data-shift={shift}
-      className={`px-2 ${compact ? "min-h-6 py-0.5" : "min-h-9 py-1.5"} ${
+      className={`group/cell px-2 ${compact ? "min-h-6 py-0.5" : "min-h-9 py-1.5"} ${
         isOver ? (problem ? "bg-red-100 outline outline-(--color-danger)" : "bg-blue-100") : ""
       }`}
     >
@@ -193,16 +205,36 @@ function ShiftCell({
           rad blir en klump att läsa i stället för en lista, och de slutar
           dessutom stå i linje med grannkolumnen. */}
       <div className="flex flex-col items-start gap-1">
-        {cells.length === 0 ? (
-          <span className={`text-(--color-muted) ${compact ? "text-[10px]" : "text-xs"}`}>▢</span>
-        ) : (
-          cells.map((c) => (
-            <Pass key={c.id} cell={c} vehicleKind={row.vehicleKind} onOpen={onOpen} />
-          ))
-        )}
+        {cells.length === 0
+          ? /* Tomt är tomt. En ▢ i varje ledig cell blev fyrtio tecken
+               som inte betyder något var för sig — de talade om att man
+               kan släppa här, men bara medan ingen drar. Nu syns
+               släppzonen när den är aktuell: en streckad ram så snart
+               något faktiskt dras. */
+            active && (
+              <span
+                aria-hidden
+                className="block w-full rounded border border-dashed border-(--color-line) py-1"
+              />
+            )
+          : cells.map((c) => (
+              <Pass key={c.id} cell={c} vehicleKind={row.vehicleKind} onOpen={onOpen} />
+            ))}
       </div>
       {showVehicle && vehicle && cells.length > 0 && (
-        <div className="mt-0.5 text-xs text-(--color-muted)">{vehicle}</div>
+        <div
+          className={`mt-0.5 text-xs ${
+            avvikandeBil
+              ? "font-medium text-(--color-warn)"
+              : /* Dolt på skärmen, men bara där. Utskriften är samma vy,
+                   och den som slagit på bilnummer och sedan skriver ut
+                   ska få dem med — ett papper har ingen musmarkör att
+                   föra över cellen med. */
+                "text-(--color-muted) opacity-0 group-hover/cell:opacity-100 print:opacity-100"
+          }`}
+        >
+          {vehicle}
+        </div>
       )}
       {isOver && problem && (
         <div className="mt-0.5 text-[11px] font-medium text-(--color-danger)">{problem}</div>
