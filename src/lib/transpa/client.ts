@@ -218,14 +218,23 @@ export class TranspaClient {
       } catch {
         /* svaret var inte problem+json */
       }
-      /* Råsvaret med när det inte är problem+json. Utan det blev
-         meddelandet "404 från /v1/shifts/…" och sa ingenting om
-         varför — och eftersom felet fångas och sparas finns det ingen
-         serverlogg att gå till i stället. */
+      /* Adressen som den faktiskt skickades, frågeparametrarna
+         inräknade — och alltid, även när svaret är problem+json.
+
+         Utan dem gick det inte att se om ett obligatoriskt argument
+         följde med. Det kostade en felsökningsrunda: PUT /v1/shifts/
+         {id} kräver checkSum, och loggen visade bara "/v1/shifts/{id}",
+         alltså exakt lika för en begäran med parametern och en utan.
+         Origin utelämnas — den är alltid densamma och gör raden lång. */
+      const visad = url.pathname.replace(/^\/publicApi/, "") + url.search;
+      /* Råsvaret med när det inte är problem+json. Ett 404 som svarar
+         {"statusCode":404,"message":"Resource not found"} säger något
+         annat än ett som svarar problem+json — den skillnaden ska inte
+         gå förlorad. */
+      const beskrivning =
+        problem?.detail ?? problem?.title ?? (text ? text.slice(0, 300) : "(tomt svar)");
       throw new TranspaApiError(
-        problem?.detail ??
-          problem?.title ??
-          `${response.status} från ${path}${text ? `: ${text.slice(0, 300)}` : " (tomt svar)"}`,
+        `${visad}: ${beskrivning}`,
         response.status,
         path,
         problem,

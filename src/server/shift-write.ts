@@ -103,6 +103,13 @@ export async function sendShiftMove(
   const namn = person
     ? `${person.firstName} ${person.lastName}`.trim()
     : "okänd person";
+
+  /* Vad som faktiskt anropades, i tur och ordning.
+     En flytt är tre anrop, och när ett faller säger felet bara något om
+     det sista. Utan de andra gick det inte att se om uträkningen ens
+     hade körts — precis den frågan blev obesvarbar när PUT:en svarade
+     404 och loggen bara visade PUT-raden. */
+  const spår: string[] = [];
   const summary = `Flyttade pass för ${namn}: ${input.from} → ${input.to}`;
   const path = `/v1/shifts/${input.transpaShiftId}`;
 
@@ -125,7 +132,11 @@ export async function sendShiftMove(
           : JSON.stringify(requestBody).slice(0, MAX_RESPONSE),
       status,
       responseStatus,
-      responseBody: responseBody?.slice(0, MAX_RESPONSE) ?? null,
+      responseBody:
+        [responseBody, spår.length ? `Anrop:\n${spår.join("\n")}` : null]
+          .filter(Boolean)
+          .join("\n\n")
+          .slice(0, MAX_RESPONSE) || null,
     });
   };
 
@@ -156,6 +167,7 @@ export async function sendShiftMove(
        det begärt svarade TransPA 403 med "Claim value mismatch:
        scope=transpaapi:shifts:read" — ett fel som pekade på läsning
        fast det var tokenbegäran som var fel. */
+    spår.push(`GET ${path}`);
     const current = await steg("läsa tillbaka passet", () =>
       client.request<TranspaShift>(path, { scopes: SHIFT_READ_SCOPES }),
     );
@@ -166,6 +178,7 @@ export async function sendShiftMove(
        — "Resource not found" på ett pass som just hämtats utan problem.
        Värdet fås genom att skicka passet till calculateAdjustedWorkTime,
        som räknar fram arbetstiden och kvitterar den med en summa. */
+    spår.push(`POST ${CALCULATE_PATH}`);
     const beräknad = await steg("räkna om arbetstiden", async () =>
       readAdjustedWorkTime(
         await client.post<unknown>(CALCULATE_PATH, body, { scopes: SHIFT_WRITE_SCOPES }),
@@ -180,6 +193,10 @@ export async function sendShiftMove(
         ? body
         : { ...body, adjustedWorkTimeInMinutes: beräknad.adjustedWorkTimeInMinutes };
 
+    spår.push(
+      `  → checkSum ${beräknad.checkSum}, minuter ${beräknad.adjustedWorkTimeInMinutes ?? "—"}`,
+    );
+    spår.push(`PUT ${path}?checkSum=${beräknad.checkSum}`);
     const response = await steg("skriva passet", () =>
       client.put<unknown>(path, skickas, {
         scopes: SHIFT_WRITE_SCOPES,

@@ -294,6 +294,42 @@ describe("flytten", () => {
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
 
+  /**
+   * Spåret i utkorgen.
+   *
+   * PUT:en svarade 404, och loggen visade bara PUT-raden — alltså gick
+   * det inte att se om uträkningen hade körts eller om checkSum följt
+   * med. Två helt olika fel såg likadana ut, och en felsökningsrunda
+   * gick åt till att inte kunna svara på frågan.
+   */
+  it("skriver ned varje anrop flytten gjorde", async () => {
+    const { impl } = fakeApi({ putStatus: 404 });
+    await sendShiftMove(flytt(prov), impl, db);
+
+    const [rad] = await recentWrites(1, db);
+    expect(rad.responseBody).toContain("GET /v1/shifts/s1");
+    expect(rad.responseBody).toContain("POST /v1/calculateAdjustedWorkTime");
+    expect(rad.responseBody).toContain("checkSum sum-1");
+    expect(rad.responseBody).toContain("PUT /v1/shifts/s1?checkSum=sum-1");
+  });
+
+  /* Adressen i felet ska bära frågeparametrarna. Utan dem är en begäran
+     med checkSum och en utan omöjliga att skilja åt i efterhand. */
+  it("visar den anropade adressen med sina parametrar", async () => {
+    const { impl } = fakeApi({ putStatus: 404 });
+    const result = await sendShiftMove(flytt(prov), impl, db);
+    expect(result.message).toContain("checkSum=sum-1");
+  });
+
+  it("slutar spåret vid det steg som föll", async () => {
+    const { impl } = fakeApi({ getStatus: 404 });
+    await sendShiftMove(flytt(prov), impl, db);
+
+    const [rad] = await recentWrites(1, db);
+    expect(rad.responseBody).toContain("GET /v1/shifts/s1");
+    expect(rad.responseBody).not.toContain("calculateAdjustedWorkTime");
+  });
+
   it("säger att det var uträkningen som föll", async () => {
     const { impl } = fakeApi({ calcStatus: 403, calcBody: '{"detail":"Missing required scope"}' });
     const result = await sendShiftMove(flytt(prov), impl, db);
