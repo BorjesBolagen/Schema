@@ -20,6 +20,11 @@ import {
   shiftDays,
   ShiftMoveError,
 } from "@/lib/transpa/shift-move";
+import {
+  AdjustedWorkTimeError,
+  CALCULATE_PATH,
+  readAdjustedWorkTime,
+} from "@/lib/transpa/adjusted-work-time";
 import type { TranspaShift } from "@/lib/transpa/shifts";
 
 /**
@@ -145,12 +150,10 @@ export async function sendShiftMove(
 
     /* Färskt pass, inte vår kopia: PUT ersätter hela passet, så ett
        fält som hunnit ändras i TransPA skulle annars skrivas tillbaka
-       till sitt gamla värde. */
-    /* Vilket av de två anropen som föll är halva svaret på varför.
-       Utan steget i meddelandet är "TransPA svarade 404" lika förenligt
-       med "passet finns inte" som med "vi får inte skriva". */
-    /* Läs-scope till läsningen. Skriv-scopet bär inte läsrätt, så den
-       här hämtningen fick 403 med "Claim value mismatch:
+       till sitt gamla värde.
+
+       Läs-scope till läsningen. Skriv-scopet bär inte läsrätt, och med
+       det begärt svarade TransPA 403 med "Claim value mismatch:
        scope=transpaapi:shifts:read" — ett fel som pekade på läsning
        fast det var tokenbegäran som var fel. */
     const current = await steg("läsa tillbaka passet", () =>
@@ -158,14 +161,36 @@ export async function sendShiftMove(
     );
     const body = buildMovePayload(current, shiftDays(input));
 
+    /* Checksumman innan skrivningen. PUT /v1/shifts/{id} har checkSum
+       som obligatorisk frågeparameter, och utan den svarar TransPA 404
+       — "Resource not found" på ett pass som just hämtats utan problem.
+       Värdet fås genom att skicka passet till calculateAdjustedWorkTime,
+       som räknar fram arbetstiden och kvitterar den med en summa. */
+    const beräknad = await steg("räkna om arbetstiden", async () =>
+      readAdjustedWorkTime(
+        await client.post<unknown>(CALCULATE_PATH, body, { scopes: SHIFT_WRITE_SCOPES }),
+      ),
+    );
+
+    /* Deras siffra, inte vår. adjustedWorkTimeInMinutes är arbetad tid,
+       och hur rasterna räknas av beror på tenantens
+       tidrapportinställningar. */
+    const skickas =
+      beräknad.adjustedWorkTimeInMinutes === undefined
+        ? body
+        : { ...body, adjustedWorkTimeInMinutes: beräknad.adjustedWorkTimeInMinutes };
+
     const response = await steg("skriva passet", () =>
-      client.put<unknown>(path, body, { scopes: SHIFT_WRITE_SCOPES }),
+      client.put<unknown>(path, skickas, {
+        scopes: SHIFT_WRITE_SCOPES,
+        query: { checkSum: beräknad.checkSum },
+      }),
     );
     await spara(
       "ok",
       200,
       response === null ? null : JSON.stringify(response),
-      body,
+      skickas,
     );
     return { ok: true, message: `${summary}. Skickat till TransPA.` };
   } catch (error) {

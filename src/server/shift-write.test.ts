@@ -69,7 +69,15 @@ afterAll(async () => {
 });
 
 /** Fejkar token, GET av passet och PUT:en — och räknar vad som anropades. */
-function fakeApi(over: { putStatus?: number; getStatus?: number; getBody?: string } = {}) {
+function fakeApi(
+  over: {
+    putStatus?: number;
+    getStatus?: number;
+    getBody?: string;
+    calcStatus?: number;
+    calcBody?: string;
+  } = {},
+) {
   const calls: Array<{ method: string; url: string; body?: unknown }> = [];
   const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -83,6 +91,15 @@ function fakeApi(over: { putStatus?: number; getStatus?: number; getBody?: strin
       url,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    if (url.includes("calculateAdjustedWorkTime")) {
+      if (over.calcStatus && over.calcStatus !== 200) {
+        return new Response(over.calcBody ?? "", { status: over.calcStatus });
+      }
+      return new Response(
+        over.calcBody ??
+          JSON.stringify({ checkSum: "sum-1", adjustedWorkTimeInMinutes: 600 }),
+      );
+    }
     if ((init?.method ?? "GET") === "GET") {
       if (over.getStatus && over.getStatus !== 200) {
         return new Response(over.getBody ?? "", { status: over.getStatus });
@@ -139,7 +156,7 @@ describe("spärren", () => {
     const result = await sendShiftMove(flytt(prov), impl, db);
 
     expect(result.ok).toBe(true);
-    expect(calls.map((c) => c.method)).toEqual(["GET", "PUT"]);
+    expect(calls.map((c) => c.method)).toEqual(["GET", "POST", "PUT"]);
   });
 });
 
@@ -190,6 +207,11 @@ describe("flytten", () => {
       }
       /* Tokenhämtningen sker direkt före det anrop som behövde den. */
       anrop.push({ method: init?.method ?? "GET", scope: scopes[scopes.length - 1] ?? "" });
+      if (url.includes("calculateAdjustedWorkTime")) {
+        return new Response(
+          JSON.stringify({ checkSum: "sum-1", adjustedWorkTimeInMinutes: 600 }),
+        );
+      }
       if ((init?.method ?? "GET") === "GET") {
         return new Response(
           JSON.stringify({
@@ -212,6 +234,70 @@ describe("flytten", () => {
     expect(get.scope).toContain("transpaapi:shifts:read");
     expect(get.scope).not.toContain("transpaapi:shifts:write");
     expect(put.scope).toContain("transpaapi:shifts:write");
+  });
+
+  /**
+   * Checksumman.
+   *
+   * PUT /v1/shifts/{id} har checkSum som obligatorisk frågeparameter.
+   * Utan den svarade TransPA 404 "Resource not found" på ett pass som
+   * hämtats utan problem sekunden innan — samma mönster som listvägen,
+   * som svarade 404 tills datumparametrarna kom med.
+   */
+  it("hämtar en checksumma och skickar den med skrivningen", async () => {
+    const { impl, calls } = fakeApi();
+    const result = await sendShiftMove(flytt(prov), impl, db);
+
+    expect(result.ok).toBe(true);
+    expect(calls.map((c) => c.method)).toEqual(["GET", "POST", "PUT"]);
+    expect(calls[1].url).toContain("/v1/calculateAdjustedWorkTime");
+    expect(calls[2].url).toContain("checkSum=sum-1");
+  });
+
+  /* Passet skickas till uträkningen som det ska se ut *efter* flytten.
+     Räknades den gamla tiden om vore summan kvitto på fel pass. */
+  it("räknar om på det flyttade passet, inte det gamla", async () => {
+    const { impl, calls } = fakeApi();
+    await sendShiftMove(flytt(prov), impl, db);
+    const calc = calls.find((c) => c.url.includes("calculateAdjustedWorkTime"))!;
+    expect((calc.body as { startDateTime: string }).startDateTime).toBe(
+      "2026-08-20T14:00:00.000Z",
+    );
+  });
+
+  /* adjustedWorkTimeInMinutes är arbetad tid, och hur rasterna räknas
+     av beror på tenantens inställningar. Deras siffra gäller. */
+  it("skriver med minuterna TransPA räknade fram", async () => {
+    const { impl, calls } = fakeApi({
+      calcBody: JSON.stringify({ checkSum: "sum-2", adjustedWorkTimeInMinutes: 465 }),
+    });
+    await sendShiftMove(flytt(prov), impl, db);
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect((put.body as { adjustedWorkTimeInMinutes: number }).adjustedWorkTimeInMinutes).toBe(465);
+  });
+
+  it("behåller vårt värde när svaret saknar minuter", async () => {
+    const { impl, calls } = fakeApi({ calcBody: JSON.stringify({ checkSum: "sum-3" }) });
+    await sendShiftMove(flytt(prov), impl, db);
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect((put.body as { adjustedWorkTimeInMinutes: number }).adjustedWorkTimeInMinutes).toBe(600);
+  });
+
+  /* Utan checksumma finns ingen skrivning att göra — och passet ska
+     inte skrivas med en gissad summa. */
+  it("skriver inte alls när checksumman uteblir", async () => {
+    const { impl, calls } = fakeApi({ calcBody: JSON.stringify({ minutes: 600 }) });
+    const result = await sendShiftMove(flytt(prov), impl, db);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("checkSum");
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
+  it("säger att det var uträkningen som föll", async () => {
+    const { impl } = fakeApi({ calcStatus: 403, calcBody: '{"detail":"Missing required scope"}' });
+    const result = await sendShiftMove(flytt(prov), impl, db);
+    expect(result.message).toContain("räkna om arbetstiden");
   });
 
   it("sparar kroppen som skickades", async () => {
