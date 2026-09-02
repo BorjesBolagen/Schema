@@ -122,7 +122,8 @@ await page.waitForTimeout(600);
    det med namn i stället för att se ut som en tom vecka. */
 await page.getByRole("button", { name: /Hämta schema/ }).click();
 await page.waitForTimeout(4000);
-const fetchNote = await page.locator("div.mb-3").innerText();
+// Beskeden ligger under knappraden, med en egen krok — inte i raden.
+const fetchNote = await page.locator("[data-notiser]").innerText();
 check(
   "hämtningen säger att ingen är kopplad till TransPA",
   fetchNote.includes("utan TransPA-koppling") || fetchNote.includes("Ingen är kopplad"),

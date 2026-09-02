@@ -40,7 +40,10 @@ await page.goto(`${base}/tavla/fjarr-nybro${veckan}`, { waitUntil: "networkidle"
 /* ---- Bekräftelsen ---- */
 await page.getByRole("button", { name: "Rensa veckan" }).click();
 await page.waitForTimeout(1200);
-const text = await page.locator("div.mb-3").innerText();
+/* Kroken sitter på verktygsraden, inte på en layoutklass. Skripten
+   hakade förut i "div.mb-3" och gick sönder när marginalen ändrades —
+   ett rött som inte betydde att något var trasigt. */
+const text = await page.locator("[data-verktygsrad]").innerText();
 check("bekräftelsen räknar passen", /Tar bort \d+ pass/.test(text));
 /* Spannet nämner två datum och ett årtal. Månaden skrivs bara en gång
    när veckan ligger inom en månad ("17–23 aug 2026") och två gånger när
@@ -60,7 +63,7 @@ await page.locator("button.bg-\\(--color-danger\\)", { hasText: "Rensa veckan" }
 await page.waitForTimeout(2500);
 
 check("veckan är tom efteråt", (await passIRutnatet()) === 0);
-const kvitto = await page.locator("div.mb-3").innerText();
+const kvitto = await page.locator("[data-verktygsrad]").innerText();
 check("kvittot säger hur många som togs bort", /\d+ pass borttagna/.test(kvitto));
 console.log("  kvitto:", kvitto.split("\n").find((l) => l.includes("borttagna")) ?? "(saknas)");
 
@@ -88,7 +91,7 @@ await page.getByRole("button", { name: "Rensa veckan" }).click();
 await page.waitForTimeout(1200);
 check(
   "tom vecka bekräftas inte, den säger bara ifrån",
-  (await page.locator("div.mb-3").innerText()).includes("redan tom"),
+  (await page.locator("[data-verktygsrad]").innerText()).includes("redan tom"),
 );
 
 await browser.close();

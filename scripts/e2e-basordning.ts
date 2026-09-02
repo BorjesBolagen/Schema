@@ -73,7 +73,8 @@ check("samma bil båda gångerna", forsta === andra && forsta !== "(ingen)");
    personens ordning, så de två har olika prioritet från början. Varningen
    gäller kopplingar som ligger på samma prioritet — data som fanns innan
    ordningen gick att sätta. Det fallet täcks av enhetstesterna. */
-const rapport = await page.locator("div.mb-3").innerText();
+// Beskeden ligger under knappraden, med en egen krok — inte i raden.
+const rapport = await page.locator("[data-notiser]").innerText();
 check("ingen tvetydighet när ordningen är satt", !rapport.includes("kopplad till flera bilar"));
 console.log("  rapport:", rapport.split("\n").find((l) => l.includes("pass utlagda")) ?? "(saknas)");
 

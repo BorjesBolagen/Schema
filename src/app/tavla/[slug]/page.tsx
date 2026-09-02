@@ -9,6 +9,7 @@ import { fullDisplayName } from "@/lib/name";
 import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
 import { BoardWorkspace } from "@/components/BoardWorkspace";
 import { PersonGrid } from "@/components/PersonGrid";
+import { antal } from "@/lib/plural";
 import { PrintButton } from "@/components/PrintButton";
 import { SchemaOutOfDate } from "@/components/SchemaOutOfDate";
 import { schemaStatusFor } from "@/server/schema-guard";
@@ -78,6 +79,21 @@ export default async function BoardPage({ params, searchParams }: Props) {
     data.crew.filter((c) => c.unplaced.length > 0).map((c) => c.employeeId),
   ).size;
 
+  /* Bara det som faktiskt är fel. Antalet tomma pass hörde inte hit:
+     det säger hur långt veckan kommit, inte att något gått sönder. */
+  const problem = [
+    doubleBooked > 0 && `${antal(doubleBooked, "dubbelbokning", "dubbelbokningar")}.`,
+    absentPlanned > 0 && `${absentPlanned} inplanerad under frånvaro.`,
+    /* Fel skift är ingen krock — passet finns, det står bara på fel
+       rad. Men det är den vanligaste feltypen när ett schema förs över
+       för hand. */
+    wrongShift > 0 &&
+      `${wrongShift} står på fel skift mot TransPA` +
+        (wrongShift === 1 ? " (utlagd dag, planerad natt eller tvärtom)." : "."),
+    unplacedPeople > 0 &&
+      `${antal(unplacedPeople, "person", "personer")} jobbar men saknar bil.`,
+  ].filter((x): x is string => typeof x === "string");
+
   return (
     <main className="mx-auto max-w-[1600px] px-6 py-8">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
@@ -130,26 +146,30 @@ export default async function BoardPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      {(doubleBooked > 0 || absentPlanned > 0 || unplacedPeople > 0 || wrongShift > 0) && (
-        <p className="mt-4 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-(--color-warn)">
-          {doubleBooked > 0 && <>⚠ {doubleBooked} dubbelbokning{doubleBooked === 1 ? "" : "ar"}. </>}
-          {absentPlanned > 0 && <>⚠ {absentPlanned} inplanerad under frånvaro. </>}
-          {/* Fel skift är ingen krock — passet finns, det står bara på
-              fel rad. Men det är den vanligaste feltypen när ett schema
-              förs över för hand. */}
-          {wrongShift > 0 && (
-            <>
-              ⚠ {wrongShift} står på fel skift mot TransPA{" "}
-              {wrongShift === 1 ? "(utlagd dag, planerad natt eller tvärtom). " : ". "}
-            </>
-          )}
-          {unplacedPeople > 0 && (
-            <>
-              ⚠ {unplacedPeople} {unplacedPeople === 1 ? "person jobbar" : "personer jobbar"} men
-              saknar bil.{" "}
-            </>
-          )}
-          <span className="text-(--color-muted)">{unmanned} tomma pass.</span>
+      {/* Ett problem per punkt, och varningstecknet en gång.
+          Allt låg tidigare i en enda mening med ett ⚠ framför varje
+          led, och sist i samma gula ruta stod antalet tomma pass — som
+          inte är ett problem alls utan hur långt veckan kommit. Räknat
+          med bland varningarna såg en halvfylld vecka ut som en trasig. */}
+      {problem.length > 0 && (
+        <div className="mt-4 flex w-fit max-w-full items-start gap-2 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-(--color-warn)">
+          <span aria-hidden className="select-none leading-5">
+            ⚠
+          </span>
+          <ul className="space-y-0.5">
+            {problem.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Hur långt veckan kommit, inte ett fel. Egen rad, utan ruta och
+          utan varningsfärg — den som ser den ska läsa den som en
+          mätare, inte som något att åtgärda. */}
+      {unmanned > 0 && (
+        <p className="mt-2 text-xs text-(--color-muted)">
+          {antal(unmanned, "tomt pass", "tomma pass")} kvar den här veckan.
         </p>
       )}
 

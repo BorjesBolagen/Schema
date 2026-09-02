@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import type { ReactNode } from "react";
+import { antal } from "@/lib/plural";
 import {
   DndContext,
   DragOverlay,
@@ -210,6 +212,90 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
     return data.crew.find((c) => c.employeeId === employeeId)?.name ?? "Pass";
   })();
 
+  /* Besked om vad knapparna gjorde — samlade, inte utspridda.
+     De låg tidigare inne i knappraden, mellan stegen, så raden bytte
+     form varje gång något hände: tryck på 2 och steg 3 och 4 flyttade
+     sig i sidled. En rad man ska lära sig ordningen i får inte röra
+     sig medan man använder den. */
+  type Ton = "info" | "varning" | "fel";
+  const notiser: Array<{ ton: Ton; text: ReactNode }> = [];
+
+  if (shiftFetch) {
+    notiser.push({
+      ton: shiftFetch.ok ? "info" : "fel",
+      text:
+        shiftFetch.error && !shiftFetch.ok
+          ? `Kunde inte hämta: ${shiftFetch.error}`
+          : `${antal(shiftFetch.shifts, "pass", "pass")} för ${shiftFetch.withShifts} av ${antal(
+              shiftFetch.asked,
+              "person",
+              "personer",
+            )}` +
+            (shiftFetch.unlinked > 0 ? `, ${shiftFetch.unlinked} utan TransPA-koppling` : "") +
+            (shiftFetch.failed > 0 && shiftFetch.ok ? `, ${shiftFetch.failed} misslyckades` : ""),
+    });
+  }
+
+  if (fillReport) {
+    notiser.push({
+      ton: "info",
+      text:
+        `${antal(fillReport.created, "pass", "pass")} utlagda` +
+        (fillReport.unplaced.length > 0
+          ? `, ${antal(
+              new Set(fillReport.unplaced.map((u) => u.employeeId)).size,
+              "person",
+              "personer",
+            )} utan bil`
+          : "") +
+        (fillReport.hiddenShift > 0
+          ? `, ${fillReport.hiddenShift} pass på skift tavlan inte visar`
+          : ""),
+    });
+  }
+
+  /* En person kopplad till flera bilar lika starkt: valet står, men det
+     är en gissning som någon behöver reda ut. Tyst vore värre — då
+     byter personen bil av sig själv nästa gång. */
+  if (fillReport && fillReport.ambiguous.length > 0) {
+    notiser.push({
+      ton: "varning",
+      text: `${fillReport.ambiguous.map((a) => a.name).join(", ")} ${
+        fillReport.ambiguous.length === 1 ? "är kopplad" : "är kopplade"
+      } till flera bilar samma skift — sätt ordning i Bas-schema.`,
+    });
+  }
+
+  if (weekPlacement) {
+    notiser.push(
+      weekPlacement.missingSchedule
+        ? {
+            ton: "varning",
+            text: `${weekPlacement.name} har inget hämtat schema den här veckan — inget lades ut. Tryck 2 · Hämta schema först.`,
+          }
+        : {
+            ton: "info",
+            text:
+              `${weekPlacement.name}: ${antal(weekPlacement.placed, "pass", "pass")} utlagda` +
+              (weekPlacement.skipped.some((x) => x.reason === "frånvaro")
+                ? `, ${antal(
+                    weekPlacement.skipped.filter((x) => x.reason === "frånvaro").length,
+                    "dag",
+                    "dagar",
+                  )} frånvaro`
+                : "") +
+              /* Noll utlagda när allt redan står där är inte samma sak
+                 som noll för att inget gick att lägga ut. */
+              (weekPlacement.skipped.some((x) => x.reason === "redan utlagd")
+                ? `, ${
+                    weekPlacement.skipped.filter((x) => x.reason === "redan utlagd").length
+                  } dagar stod redan på raden`
+                : "") +
+              (weekPlacement.addedToCrew ? ", tillagd i bemanningen" : ""),
+          },
+    );
+  }
+
   return (
     <DndContext
       // Fast id så serverns och klientens aria-attribut blir lika.
@@ -224,7 +310,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           bas-schema, hämta, fyll, skicka. Stegen låg tidigare i annan
           ordning — ettan längst till höger — och det sista steget stod
           utanför numreringen och såg ut som vilken knapp som helst. */}
-      <div className="mb-3 flex flex-wrap items-center gap-3 no-print">
+      <div data-verktygsrad className="mb-2 flex flex-wrap items-center gap-3 no-print">
         <button
           type="button"
           onClick={() => setPanel("base")}
@@ -242,20 +328,6 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         >
           {pending ? "Hämtar …" : "2 · Hämta schema"}
         </button>
-
-        {shiftFetch && (
-          <span
-            className={`text-xs ${
-              shiftFetch.ok ? "text-(--color-muted)" : "text-(--color-danger)"
-            }`}
-          >
-            {shiftFetch.error && !shiftFetch.ok
-              ? `Kunde inte hämta: ${shiftFetch.error}`
-              : `${shiftFetch.shifts} pass för ${shiftFetch.withShifts} av ${shiftFetch.asked} personer`}
-            {shiftFetch.unlinked > 0 && `, ${shiftFetch.unlinked} utan TransPA-koppling`}
-            {shiftFetch.failed > 0 && shiftFetch.ok && `, ${shiftFetch.failed} misslyckades`}
-          </span>
-        )}
 
         <button
           type="button"
@@ -276,58 +348,6 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
         >
           3 · Fyll veckan
         </button>
-        <span className="text-xs text-(--color-muted)">
-          Arbetsdagar från: {data.workDaySource}
-        </span>
-        {fillReport && (
-          <span className="text-xs text-(--color-muted)">
-            {fillReport.created} pass utlagda
-            {fillReport.unplaced.length > 0 &&
-              `, ${new Set(fillReport.unplaced.map((u) => u.employeeId)).size} personer utan bil`}
-            {fillReport.hiddenShift > 0 &&
-              `, ${fillReport.hiddenShift} pass på skift tavlan inte visar`}
-          </span>
-        )}
-
-        {/* En person kopplad till flera bilar lika starkt: valet står,
-            men det är en gissning som någon behöver reda ut. Tyst vore
-            värre — då byter personen bil av sig själv nästa gång. */}
-        {fillReport && fillReport.ambiguous.length > 0 && (
-          <span className="text-xs text-(--color-warn)">
-            {fillReport.ambiguous.map((a) => a.name).join(", ")}{" "}
-            {fillReport.ambiguous.length === 1 ? "är kopplad" : "är kopplade"} till flera bilar
-            samma skift — sätt ordning i Bas-schema.
-          </span>
-        )}
-
-        {weekPlacement && (
-          <span
-            className={`text-xs ${
-              weekPlacement.missingSchedule ? "text-(--color-warn)" : "text-(--color-muted)"
-            }`}
-          >
-            {weekPlacement.missingSchedule ? (
-              <>
-                {weekPlacement.name} har inget hämtat schema den här veckan — inget lades ut.
-                Tryck 2 · Hämta schema först.
-              </>
-            ) : (
-              <>
-                {weekPlacement.name}: {weekPlacement.placed} pass utlagda
-                {weekPlacement.skipped.some((x) => x.reason === "frånvaro") &&
-                  `, ${weekPlacement.skipped.filter((x) => x.reason === "frånvaro").length} dagar frånvaro`}
-                {/* Noll utlagda när allt redan står där är inte samma
-                    sak som noll för att inget gick att lägga ut. */}
-                {weekPlacement.skipped.some((x) => x.reason === "redan utlagd") &&
-                  `, ${
-                    weekPlacement.skipped.filter((x) => x.reason === "redan utlagd").length
-                  } dagar stod redan på raden`}
-                {weekPlacement.addedToCrew && ", tillagd i bemanningen"}
-              </>
-            )}
-          </span>
-        )}
-
         {/* Sista steget i kedjan: hämta, fyll, justera — och skicka
             tillbaka det som justerats. */}
         <SendChangesButton boardSlug={data.board.slug} year={data.year} week={data.week} />
@@ -345,6 +365,36 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           </button>
         </span>
       </div>
+
+      {/* Beskeden, samlade under raden i stället för inne i den.
+          Källan står alltid sist och tystast: den är inte ett besked om
+          något som hänt utan en upplysning om varifrån arbetsdagarna
+          kommer, och den ska inte se ut som ett svar på ett knapptryck. */}
+      <ul data-notiser className="mb-3 space-y-1 text-xs no-print">
+        {notiser.map((n, i) => (
+          <li
+            key={i}
+            className={`flex gap-2 ${
+              n.ton === "fel"
+                ? "text-(--color-danger)"
+                : n.ton === "varning"
+                  ? "text-(--color-warn)"
+                  : "text-(--color-muted)"
+            }`}
+          >
+            <span aria-hidden className="select-none">
+              {n.ton === "info" ? "·" : "⚠"}
+            </span>
+            <span>{n.text}</span>
+          </li>
+        ))}
+        <li className="flex gap-2 text-(--color-muted)">
+          <span aria-hidden className="select-none">
+            ·
+          </span>
+          <span>Arbetsdagar från: {data.workDaySource}</span>
+        </li>
+      </ul>
 
       <div className="flex gap-4">
         <div className="min-w-0 flex-1">
