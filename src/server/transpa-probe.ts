@@ -221,6 +221,26 @@ export interface SpecProbe {
     location?: string;
     required: boolean;
   }>;
+  /**
+   * Varje passväg i specen, metod för metod, med sina parametrar.
+   *
+   * Finns för att en skrivning kan falla på något helt annat än
+   * behörighet. PUT /v1/shifts/{id} svarade 404 med kroppen
+   * {"statusCode":404,"message":"Resource not found"} direkt efter att
+   * en GET mot *samma* adress lyckats — alltså inte en väg som saknas
+   * utan en begäran som inte uppfyller vad handlaren kräver. Samma sak
+   * gällde listvägen: den svarade 404 tills startDateTimeAfter och
+   * startDateTimeBefore skickades med.
+   *
+   * Att gissa vidare kostar anrop ur en kvot som redan tagit slut en
+   * gång. Specen kostar inga, och säger vad vägen faktiskt vill ha.
+   */
+  shiftOperations?: Array<{
+    path: string;
+    method: string;
+    summary?: string;
+    parameters: Array<{ name: string; location?: string; required: boolean }>;
+  }>;
 }
 
 export interface TenantReport {
@@ -802,6 +822,19 @@ async function readSpec(
               entry.path === "/v1/shifts/" || entry.path === "/v1/shifts",
           )
           ?.operations.find((op) => op.method === "GET")?.parameters,
+        shiftOperations: parsed.paths
+          .filter((entry) => entry.path.toLowerCase().includes("shift"))
+          .flatMap((entry) =>
+            entry.operations.map((op) => ({
+              path: entry.path,
+              method: op.method,
+              summary: op.summary,
+              parameters: op.parameters,
+            })),
+          )
+          .sort(
+            (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
+          ),
       };
     }
 

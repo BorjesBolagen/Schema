@@ -79,6 +79,13 @@ export const CHECKS: Check[] = [
     selection: { ...INGET, spec: true },
   },
   {
+    id: "skrivpass",
+    label: "Hur skriver man ett pass?",
+    what: "Varje passväg i specen, metod för metod, med sina parametrar. Läser bara dokumentet — svarar på varför PUT ger 404 när GET mot samma adress lyckas.",
+    calls: 0,
+    selection: { ...INGET, spec: true },
+  },
+  {
     id: "allt",
     label: "Hela svepningen",
     what: "Varje väg, turfönstret, grupperingen och passvarianterna. Den fullständiga bilden — och den dyra.",

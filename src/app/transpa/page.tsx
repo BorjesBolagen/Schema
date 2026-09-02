@@ -260,6 +260,22 @@ export default async function TranspaPage({
           .join("\n")
       : null,
     "",
+    report.spec?.shiftOperations?.length
+      ? "passvägarna i specen:\n" +
+        report.spec.shiftOperations
+          .map(
+            (op) =>
+              `    ${op.method} ${op.path}` +
+              `${op.summary ? ` — ${op.summary}` : ""}` +
+              `\n      parametrar: ${
+                op.parameters
+                  .map((x) => `${x.name}${x.required ? " (krävs)" : ""}`)
+                  .join(", ") || "inga"
+              }`,
+          )
+          .join("\n")
+      : null,
+    "",
     report.spec?.outcome === "ok"
       ? `spec: ${report.spec.url} (v${report.spec.version ?? "?"})` +
         `${report.spec.servers?.length ? ` · bas: ${report.spec.servers.join(", ")}` : ""}` +
@@ -816,6 +832,54 @@ export default async function TranspaPage({
           <SyncButton disabled={missing} />
         </div>
       </section>
+
+      {/* Passvägarna ur specen, metod för metod.
+          PUT /v1/shifts/{id} svarade 404 med en kropp som säger
+          {"statusCode":404,"message":"Resource not found"} direkt efter
+          att GET mot samma adress lyckats. Det är inte en väg som
+          saknas — det är en begäran som inte uppfyller vad handlaren
+          kräver, precis som listvägen svarade 404 tills datumen
+          skickades med. Här står vad vägen faktiskt vill ha. */}
+      {report.spec?.shiftOperations && report.spec.shiftOperations.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold">Passvägarna i specen</h2>
+          <p className="mt-1 mb-3 max-w-[68ch] text-xs text-(--color-muted)">
+            Metod för metod, med parametrar. Krävda står i fetstil. Läst ur dokumentet — inga
+            anrop mot API:t.
+          </p>
+          <ul className="space-y-2">
+            {report.spec.shiftOperations.map((op) => (
+              <li
+                key={`${op.method} ${op.path}`}
+                className={`rounded border p-3 text-xs ${
+                  op.method === "GET"
+                    ? "border-(--color-line) bg-white"
+                    : "border-(--color-accent) bg-amber-50"
+                }`}
+              >
+                <div className="font-mono break-all">
+                  <strong>{op.method}</strong> {op.path}
+                </div>
+                {op.summary && <div className="mt-1 text-(--color-muted)">{op.summary}</div>}
+                <div className="mt-1">
+                  {op.parameters.length === 0 ? (
+                    <span className="text-(--color-muted)">inga parametrar i specen</span>
+                  ) : (
+                    op.parameters.map((prm) => (
+                      <span key={prm.name} className="mr-3 font-mono">
+                        {prm.required ? <strong>{prm.name}</strong> : prm.name}
+                        <span className="text-(--color-muted)">
+                          {prm.location ? ` (${prm.location})` : ""}
+                        </span>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Menyn igen längst ned. Nästa fråga ställs oftast direkt efter
           den förra, och att behöva gå tillbaka först inbjuder till att

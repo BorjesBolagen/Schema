@@ -690,3 +690,103 @@ describe("urvalet av kontroller", () => {
     }
   });
 });
+
+/**
+ * Passvägarna ur specen.
+ *
+ * PUT /v1/shifts/{id} svarade 404 direkt efter att GET mot samma adress
+ * lyckats, med kroppen {"statusCode":404,"message":"Resource not
+ * found"} — en handlare som kört, inte en väg som saknas. Samma sak
+ * gällde listvägen tills datumparametrarna skickades med. Specen kostar
+ * inga anrop och säger vad vägen vill ha; att prova sig fram kostar ur
+ * en kvot som redan tagit slut en gång.
+ */
+describe("passvägarna i specen", () => {
+  const yaml = `
+openapi: 3.0.1
+info:
+  title: TransPA Public API
+  version: 0.1.138
+servers:
+  - url: https://api.mytranspa.com/publicApi
+paths:
+  /v1/shifts/:
+    get:
+      summary: List shifts
+      parameters:
+        - name: startDateTimeAfter
+          in: query
+          required: true
+        - name: startDateTimeBefore
+          in: query
+          required: true
+    put:
+      summary: Update a shift
+      parameters:
+        - name: shiftId
+          in: query
+          required: true
+  /v1/shifts/{id}:
+    get:
+      summary: Get a shift
+      parameters:
+        - name: id
+          in: path
+          required: true
+  /v1/employees:
+    get:
+      summary: List employees
+`;
+
+  const medSpec = () =>
+    fakeFetch((url) => {
+      if (url.includes("swaggerui")) {
+        return new Response('<script>url: "/doc/openapi/openapi.yaml"</script>', {
+          headers: { "content-type": "text/html", "x-handled": "1" },
+        });
+      }
+      if (url.includes(".yaml")) {
+        return new Response(yaml, { headers: { "x-handled": "1" } });
+      }
+      return new Response(JSON.stringify({ items: [], cursor: { nextToken: null } }));
+    });
+
+  it("redovisar varje passväg per metod", async () => {
+    const report = await probeTenant(medSpec(), checkById("skrivpass")!.selection);
+    const ops = report.spec?.shiftOperations ?? [];
+    expect(ops.map((o) => `${o.method} ${o.path}`)).toEqual([
+      "GET /v1/shifts/",
+      "PUT /v1/shifts/",
+      "GET /v1/shifts/{id}",
+    ]);
+  });
+
+  it("tar med parametrarna och vilka som krävs", async () => {
+    const report = await probeTenant(medSpec(), checkById("skrivpass")!.selection);
+    const put = report.spec?.shiftOperations?.find((o) => o.method === "PUT");
+    expect(put?.parameters.map((x) => x.name)).toEqual(["shiftId"]);
+    expect(put?.parameters[0].required).toBe(true);
+  });
+
+  it("tar inte med vägar som inte rör pass", async () => {
+    const report = await probeTenant(medSpec(), checkById("skrivpass")!.selection);
+    expect(report.spec?.shiftOperations?.some((o) => o.path.includes("employees"))).toBe(false);
+  });
+
+  /* Kontrollen finns just för att den inte kostar något. */
+  it("gör inga API-anrop", async () => {
+    const urls: string[] = [];
+    const impl = fakeFetch((url) => {
+      if (url.includes("api.mytranspa.com/publicApi")) urls.push(url);
+      if (url.includes("swaggerui")) {
+        return new Response('<script>url: "/doc/openapi/openapi.yaml"</script>', {
+          headers: { "content-type": "text/html", "x-handled": "1" },
+        });
+      }
+      if (url.includes(".yaml")) return new Response(yaml, { headers: { "x-handled": "1" } });
+      return new Response(JSON.stringify({ items: [], cursor: { nextToken: null } }));
+    });
+    await probeTenant(impl, checkById("skrivpass")!.selection);
+    expect(urls).toEqual([]);
+  });
+});
