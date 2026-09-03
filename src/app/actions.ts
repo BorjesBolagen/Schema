@@ -8,7 +8,14 @@ import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
 import { MAX_CYCLE_WEEKS } from "@/lib/rotation";
 import { requireUser } from "@/server/auth";
-import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
+import { boardForAction, requireBoardBySlug } from "@/server/access";
+import {
+  assignmentOnBoard,
+  employeeOnBoard,
+  groupOnBoard,
+  rowOnBoard,
+  rowsOnBoard,
+} from "@/server/board-scope";
 import { getWorkDayProvider } from "@/server/work-days";
 import { planWeek, type ExistingAssignment } from "@/server/fill-week";
 import { fetchWeekShifts, type ShiftFetchResult } from "@/server/shift-fetch";
@@ -26,6 +33,24 @@ export type { ShiftFetchResult };
 const refresh = (slug: string) => revalidatePath(`/tavla/${slug}`);
 
 /** Lägger ut en person i en cell. */
+/**
+ * Plockar ut kända fält ur ett anrop.
+ *
+ * Uppdateringarna byggde sin patch med `...rest` och skickade den rakt
+ * in i set(). Typen står i TypeScript, men på andra sidan nätet är
+ * anropet bara JSON: en klient kan skicka med vilka nycklar som helst,
+ * och `slug` eller `ownerId` hade följt med in i update-satsen. Att
+ * räkna upp fälten är tråkigare och kan inte råka släppa igenom något.
+ */
+function plocka<T extends object, K extends keyof T>(
+  källa: T,
+  fält: readonly K[],
+): { [P in K]?: T[P] } {
+  const ut: { [P in K]?: T[P] } = {};
+  for (const f of fält) if (källa[f] !== undefined) ut[f] = källa[f];
+  return ut;
+}
+
 export async function assignEmployee(input: {
   boardRowId: string;
   date: string;
@@ -34,7 +59,8 @@ export async function assignEmployee(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await boardForAction(user, input.boardSlug);
+  await rowOnBoard(board.id, input.boardRowId);
   const db = getDb();
   const existing = await db
     .select()
@@ -216,7 +242,12 @@ export async function moveAssignment(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  /* Båda ändarna av flytten prövas: passet man tar och raden man
+     släpper på. Bara den ena räckte inte — ett pass från en annan tavla
+     gick att flytta in, och ett eget gick att flytta ut. */
+  const board = await boardForAction(user, input.boardSlug);
+  await assignmentOnBoard(board.id, input.assignmentId);
+  await rowOnBoard(board.id, input.boardRowId);
   const db = getDb();
   const [source] = await db
     .select()
@@ -277,9 +308,11 @@ export async function moveAssignment(input: {
 
 export async function removeAssignment(assignmentId: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
-  await db.delete(schema.assignment).where(eq(schema.assignment.id, assignmentId));
+  await db
+    .delete(schema.assignment)
+    .where(eq(schema.assignment.id, await assignmentOnBoard(board.id, assignmentId)));
   refresh(boardSlug);
 }
 
@@ -289,12 +322,12 @@ export async function setAssignmentNote(
   boardSlug: string,
 ): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
   await db
     .update(schema.assignment)
     .set({ note: note?.trim() || null, source: "manual", updatedAt: new Date() })
-    .where(eq(schema.assignment.id, assignmentId));
+    .where(eq(schema.assignment.id, await assignmentOnBoard(board.id, assignmentId)));
   refresh(boardSlug);
 }
 
@@ -322,10 +355,11 @@ export async function fillWeek(input: {
   week: number;
 }): Promise<FillResult> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  /* Tavlan hämtas genom behörighetskontrollen, inte genom det boardId
+     klienten skickade med. Slugen kontrollerades och id:t användes —
+     två olika saker som ingenting band ihop. */
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
-  const [board] = await db.select().from(schema.board).where(eq(schema.board.id, input.boardId));
-  if (!board) return { created: 0, removed: 0, unplaced: [], ambiguous: [], hiddenShift: 0 };
 
   const dates = weekDates(input.year, input.week, board.weekStartsOn, board.visibleWeekdays);
   const first = dates[0];
@@ -506,7 +540,7 @@ export async function crewRemovalPreview(input: {
 }): Promise<CrewRemovalFacts> {
   const user = await requireUser();
   const board = await requireBoardBySlug(user, input.boardSlug);
-  return crewRemovalFacts(board.id, input.employeeId);
+  return crewRemovalFacts(board.id, await employeeOnBoard(board.id, input.employeeId));
 }
 
 /**
@@ -521,7 +555,7 @@ export async function detachFromBoard(input: {
 }): Promise<void> {
   const user = await requireUser();
   const board = await requireBoardBySlug(user, input.boardSlug);
-  await removeFromCrew(board.id, input.employeeId);
+  await removeFromCrew(board.id, await employeeOnBoard(board.id, input.employeeId));
   refresh(input.boardSlug);
 }
 
@@ -532,13 +566,13 @@ export async function setCrew(
   boardSlug: string,
 ): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
-  await db.delete(schema.boardCrew).where(eq(schema.boardCrew.boardId, boardId));
+  await db.delete(schema.boardCrew).where(eq(schema.boardCrew.boardId, board.id));
   if (employeeIds.length) {
-    await db
-      .insert(schema.boardCrew)
-      .values(employeeIds.map((employeeId, i) => ({ boardId, employeeId, sortOrder: i })));
+    await db.insert(schema.boardCrew).values(
+      employeeIds.map((employeeId, i) => ({ boardId: board.id, employeeId, sortOrder: i })),
+    );
   }
   refresh(boardSlug);
 }
@@ -694,10 +728,17 @@ export async function updateBoard(input: {
   cellFields?: string[];
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
-  const { boardId, boardSlug, ...rest } = input;
-  const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+
+  // Uppräknade fält i stället för spread — se plocka() ovan.
+  const patch = plocka(input, [
+    "name",
+    "weekStartsOn",
+    "visibleWeekdays",
+    "visibleShifts",
+    "cellFields",
+  ]);
   if (Object.keys(patch).length === 0) return;
 
   // En tavla utan veckodagar eller skift skulle visa ingenting alls.
@@ -707,8 +748,8 @@ export async function updateBoard(input: {
   await db
     .update(schema.board)
     .set({ ...patch, updatedAt: new Date() })
-    .where(eq(schema.board.id, boardId));
-  refresh(boardSlug);
+    .where(eq(schema.board.id, board.id));
+  refresh(input.boardSlug);
 }
 
 export async function addBoardRow(input: {
@@ -720,16 +761,17 @@ export async function addBoardRow(input: {
   defaultVehicleId?: string | null;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await boardForAction(user, input.boardSlug);
+  if (input.groupId) await groupOnBoard(board.id, input.groupId);
   const db = getDb();
   const rows = await db
     .select({ sortOrder: schema.boardRow.sortOrder })
     .from(schema.boardRow)
-    .where(eq(schema.boardRow.boardId, input.boardId));
+    .where(eq(schema.boardRow.boardId, board.id));
   const next = rows.reduce((max, r) => Math.max(max, r.sortOrder), -1) + 1;
 
   await db.insert(schema.boardRow).values({
-    boardId: input.boardId,
+    boardId: board.id,
     label: input.label.trim() || "Ny rad",
     sublabel: input.sublabel?.trim() || null,
     groupId: input.groupId ?? null,
@@ -752,17 +794,28 @@ export async function updateBoardRow(input: {
   validTo?: string | null;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await boardForAction(user, input.boardSlug);
+  const rowId = await rowOnBoard(board.id, input.rowId);
+  if (input.groupId) await groupOnBoard(board.id, input.groupId);
   const db = getDb();
-  const { rowId, boardSlug, ...rest } = input;
-  const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+
+  const patch = plocka(input, [
+    "label",
+    "sublabel",
+    "groupId",
+    "color",
+    "defaultVehicleId",
+    "vehicleKind",
+    "validFrom",
+    "validTo",
+  ]);
   if (Object.keys(patch).length === 0) return;
 
   await db
     .update(schema.boardRow)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(schema.boardRow.id, rowId));
-  refresh(boardSlug);
+  refresh(input.boardSlug);
 }
 
 /**
@@ -773,29 +826,29 @@ export async function updateBoardRow(input: {
  */
 export async function endBoardRow(rowId: string, lastDate: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
   await db
     .update(schema.boardRow)
     .set({ validTo: lastDate, updatedAt: new Date() })
-    .where(eq(schema.boardRow.id, rowId));
+    .where(eq(schema.boardRow.id, await rowOnBoard(board.id, rowId)));
   refresh(boardSlug);
 }
 
 export async function deleteBoardRow(rowId: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
-  await db.delete(schema.boardRow).where(eq(schema.boardRow.id, rowId));
+  await db.delete(schema.boardRow).where(eq(schema.boardRow.id, await rowOnBoard(board.id, rowId)));
   refresh(boardSlug);
 }
 
 /** Sätter radernas ordning efter att de dragits om. */
 export async function reorderBoardRows(rowIds: string[], boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
-  for (const [i, id] of rowIds.entries()) {
+  for (const [i, id] of (await rowsOnBoard(board.id, rowIds)).entries()) {
     await db.update(schema.boardRow).set({ sortOrder: i }).where(eq(schema.boardRow.id, id));
   }
   refresh(boardSlug);
@@ -807,17 +860,19 @@ export async function addBoardGroup(
   boardSlug: string,
 ): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  /* boardId kommer från klienten men används inte: tavlan är den vi
+     kontrollerat, och dess id är det enda som skrivs. */
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
   const groups = await db
     .select({ sortOrder: schema.boardGroup.sortOrder })
     .from(schema.boardGroup)
-    .where(eq(schema.boardGroup.boardId, boardId));
+    .where(eq(schema.boardGroup.boardId, board.id));
   const next = groups.reduce((max, g) => Math.max(max, g.sortOrder), -1) + 1;
 
   await db
     .insert(schema.boardGroup)
-    .values({ boardId, label: label.trim() || "Ny grupp", sortOrder: next });
+    .values({ boardId: board.id, label: label.trim() || "Ny grupp", sortOrder: next });
   refresh(boardSlug);
 }
 
@@ -827,21 +882,23 @@ export async function renameBoardGroup(
   boardSlug: string,
 ): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
   await db
     .update(schema.boardGroup)
     .set({ label: label.trim() || "Ny grupp" })
-    .where(eq(schema.boardGroup.id, groupId));
+    .where(eq(schema.boardGroup.id, await groupOnBoard(board.id, groupId)));
   refresh(boardSlug);
 }
 
 /** Tar bort en grupprubrik. Raderna blir kvar, utan gruppering. */
 export async function deleteBoardGroup(groupId: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
-  await db.delete(schema.boardGroup).where(eq(schema.boardGroup.id, groupId));
+  await db
+    .delete(schema.boardGroup)
+    .where(eq(schema.boardGroup.id, await groupOnBoard(board.id, groupId)));
   refresh(boardSlug);
 }
 
@@ -909,7 +966,11 @@ export async function setAbsenceWeeks(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  /* Frånvaro hör till personen och inte till tavlan, men den som bara
+     har en tavla ska ändå inte kunna sjukskriva vem som helst i
+     bolaget. Bemanningen är den koppling som finns. */
+  const board = await boardForAction(user, input.boardSlug);
+  await employeeOnBoard(board.id, input.employeeId);
   if (input.weeks.length === 0) return;
   const db = getDb();
 
@@ -964,7 +1025,8 @@ export async function clearAbsenceWeek(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: input.boardSlug });
+  const board = await boardForAction(user, input.boardSlug);
+  await employeeOnBoard(board.id, input.employeeId);
   const db = getDb();
   const start = mondayOfWeek(input.year, input.week);
   const end = addDays(start, 6);
@@ -1021,8 +1083,18 @@ export async function setAbsenceStatus(
   boardSlug: string,
 ): Promise<void> {
   const user = await requireUser();
-  await assertBoardAccess(user, { slug: boardSlug });
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
+
+  /* Frånvaron nås via personen: bara den som står i tavlans bemanning
+     får sin status ändrad härifrån. */
+  const [rad] = await db
+    .select({ employeeId: schema.absence.employeeId })
+    .from(schema.absence)
+    .where(eq(schema.absence.id, absenceId));
+  if (!rad) return;
+  await employeeOnBoard(board.id, rad.employeeId);
+
   await db
     .update(schema.absence)
     .set({ status, updatedAt: new Date() })

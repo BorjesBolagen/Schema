@@ -71,21 +71,25 @@ export async function canAccessBoardBySlug(user: CurrentUser, slug: string): Pro
 }
 
 /**
- * Behörighetskontroll för server-actions.
+ * Hämtar tavlan efter behörighetskontroll på dess slug.
+ *
+ * Här låg assertBoardAccess, som tog emot antingen en slug eller ett id
+ * och svarade ja eller nej — men lämnade anroparen att skriva till
+ * vilket id som helst efteråt. Det glappet gjorde nitton actions
+ * åtkomliga från fel tavla.
+ *
+ * Den här returnerar tavlan man faktiskt fick tillgång till, så
+ * skrivningen använder dess id och inte klientens. Då finns ingenting
+ * att gå isär.
  *
  * Kastar i stället för att omdirigera — en action har ingen sida att
  * skicka någon vidare till.
  */
-export async function assertBoardAccess(
-  user: CurrentUser,
-  board: { slug?: string; id?: string },
-): Promise<void> {
-  const db = getDb();
-  const [row] = board.id
-    ? await db.select().from(schema.board).where(eq(schema.board.id, board.id))
-    : await db.select().from(schema.board).where(eq(schema.board.slug, board.slug!));
-
-  if (!row || !(await canAccessBoard(user, row.id))) {
+export async function boardForAction(user: CurrentUser, slug: string) {
+  const [board] = await getDb().select().from(schema.board).where(eq(schema.board.slug, slug));
+  if (!board || !(await canAccessBoard(user, board.id))) {
     throw new Error("Du har inte tillgång till den här tavlan.");
   }
+  return board;
 }
+
