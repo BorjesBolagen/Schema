@@ -65,10 +65,13 @@ export function BaseDataAdmin({ stations, employees, vehicles }: Props) {
               setTab(t.id);
               setError(null);
             }}
+            /* Vald flik i märkessvart med gul understrykning, samma
+               språk som listen överst — inte blått, som är länkarnas
+               färg och inte lägesfärg. */
             className={`-mb-px border-b-2 px-4 py-2 text-sm ${
               tab === t.id
-                ? "border-(--color-accent) font-medium text-(--color-accent)"
-                : "border-transparent text-(--color-muted)"
+                ? "border-(--color-brand) font-medium text-(--color-ink)"
+                : "border-transparent text-(--color-muted) hover:text-(--color-ink)"
             }`}
           >
             {t.label}

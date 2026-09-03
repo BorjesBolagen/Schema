@@ -24,42 +24,64 @@ export default async function VacationPage({ params, searchParams }: Props) {
   const data = await getVacationYear(slug, year);
   if (!data) notFound();
 
+  /* Vägen tillbaka till innevarande år, av samma skäl som "Denna vecka"
+     på tavlan: fem steg framåt hade ingen återresa utom fem klick. */
+  const nuvarandeÅr = new Date().getFullYear();
+
   return (
     <main className="mx-auto max-w-[1700px] px-6 py-8">
-      <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <div>
-          <Link
-            href={`/tavla/${slug}`}
-            className="text-xs text-(--color-muted) hover:underline no-print"
-          >
-            ← {data.board.name}
-          </Link>
-          <h1 className="mt-1 text-xl font-semibold">Semesterplanering {year}</h1>
-        </div>
+      {/* Samma ordning som tavlans sidhuvud: namnet först, det man rör
+          oftast intill det, och uttagen tyst till höger bakom ett streck.
+          Året och Excel såg tidigare lika viktiga ut, fast man byter år
+          för att titta och exporterar sällan. */}
+      <header className="no-print">
+        <Link href={`/tavla/${slug}`} className="text-xs text-(--color-muted) hover:underline">
+          ← {data.board.name}
+        </Link>
 
-        <div className="flex items-center gap-3 no-print">
-          <Link
-            href={`/tavla/${slug}/semester?ar=${year - 1}`}
-            className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm"
-          >
-            ◀
-          </Link>
-          <span className="text-sm font-medium">{year}</span>
-          <Link
-            href={`/tavla/${slug}/semester?ar=${year + 1}`}
-            className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm"
-          >
-            ▶
-          </Link>
-          <a
-            href={`/tavla/${slug}/export?ar=${year}&vy=semester`}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-          >
-            Excel
-          </a>
-          <PrintButton />
+        <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <h1 className="text-xl font-semibold">Semesterplanering</h1>
+
+          <div className="flex items-center gap-1">
+            <Link
+              href={`/tavla/${slug}/semester?ar=${year - 1}`}
+              aria-label="Föregående år"
+              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
+            >
+              ◀
+            </Link>
+            <span className="px-2 text-sm font-medium">{year}</span>
+            <Link
+              href={`/tavla/${slug}/semester?ar=${year + 1}`}
+              aria-label="Nästa år"
+              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
+            >
+              ▶
+            </Link>
+            {year !== nuvarandeÅr && (
+              <Link
+                href={`/tavla/${slug}/semester?ar=${nuvarandeÅr}`}
+                className="ml-2 text-xs text-(--color-accent) hover:underline"
+              >
+                I år
+              </Link>
+            )}
+          </div>
+
+          <div className="ml-auto flex items-center gap-4 border-l border-(--color-line) pl-4 text-sm">
+            <a
+              href={`/tavla/${slug}/export?ar=${year}&vy=semester`}
+              className="text-(--color-muted) hover:text-(--color-ink) hover:underline"
+            >
+              Excel
+            </a>
+            <PrintButton
+              label="Skriv ut"
+              className="cursor-pointer text-(--color-muted) hover:text-(--color-ink) hover:underline"
+            />
+          </div>
         </div>
-      </div>
+      </header>
 
       {data.rows.length === 0 ? (
         <p className="mt-6 rounded border border-(--color-line) bg-white p-6 text-sm text-(--color-muted)">
