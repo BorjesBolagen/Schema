@@ -25,7 +25,12 @@ const staffing = async (week: number) =>
 
 const person = "Peter Mauritzson";
 const before = await marked(person);
-console.log(`${person}: ${before} markerade veckor, bemanning v.20 = ${await staffing(20)}`);
+/* Utgångsläget läses, det skrivs inte in. Skriptet väntade sig siffrorna
+   6 och 7, hämtade ur ett seed som sedan ändrats — och blev rött utan
+   att något var trasigt. Det som betyder något är att bemanningen
+   minskar med en när någon markeras ledig, och är tillbaka efteråt. */
+const utgång = Number(await staffing(20));
+console.log(`${person}: ${before} markerade veckor, bemanning v.20 = ${utgång}`);
 
 /* Dra över vecka 20–22. */
 const tds = await (await cellsOf(person)).all();
@@ -46,7 +51,7 @@ await page.waitForTimeout(1800);
 const after = await marked(person);
 console.log("\nEfter dragning:");
 check("tre veckor tillkom", after === before + 3);
-check("bemanningen minskade v.20", (await staffing(20)) === "6");
+check("bemanningen minskade v.20", Number(await staffing(20)) === utgång - 1);
 
 /* Dra över samma veckor igen för att ta bort dem. */
 await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
@@ -57,7 +62,7 @@ await page.waitForTimeout(2500);
 
 console.log("\nEfter andra dragningen:");
 check("veckorna borttagna igen", (await marked(person)) === before);
-check("bemanningen återställd", (await staffing(20)) === "7");
+check("bemanningen återställd", Number(await staffing(20)) === utgång);
 
 await page.screenshot({ path: "/tmp/semester3.png" });
 console.log("\nJS-fel:", errors.length ? errors.slice(0, 3) : "inga");

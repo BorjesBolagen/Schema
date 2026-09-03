@@ -71,6 +71,12 @@ export default async function BoardPage({ params, searchParams }: Props) {
   const href = (o: { year: number; week: number; view?: string }) =>
     `/tavla/${slug}?ar=${o.year}&vecka=${o.week}&vy=${o.view ?? view}`;
 
+  /* Veckan som pågår nu, för vägen tillbaka. Räknas i serverns tid,
+     vilket duger: gränsen går vid midnatt mellan söndag och måndag, och
+     ingen planerar då. */
+  const nu = isoWeek(toIso(new Date()));
+  const ärDennaVecka = nu.year === year && nu.week === week;
+
   const doubleBooked = data.conflicts.filter((c) => c.kind === "double-booked").length;
   const absentPlanned = data.conflicts.filter((c) => c.kind === "absent").length;
   const unmanned = data.conflicts.filter((c) => c.kind === "unmanned").length;
@@ -96,55 +102,97 @@ export default async function BoardPage({ params, searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-[1600px] px-6 py-8">
-      <div className="flex flex-wrap items-baseline justify-between gap-4">
-        <div>
-          <Link href="/" className="text-xs text-(--color-muted) hover:underline no-print">
-            ← Alla tavlor
-          </Link>
-          <h1 className="mt-1 text-xl font-semibold">{data.board.name}</h1>
-        </div>
+      {/*
+        Sidhuvudet, ordnat efter hur ofta man rör sakerna.
 
-        <div className="flex items-center gap-3 no-print">
-          <Link href={href(prev)} className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm">
-            ◀
-          </Link>
-          <span className="text-sm font-medium">
-            Vecka {week} · {dateRangeLabel(data.dates)}
-          </span>
-          <Link href={href(next)} className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm">
-            ▶
-          </Link>
+        Allt låg förut i en rad med samma vikt: veckoväxlingen,
+        vyvalet, semestervyn och två exporter, alla som lika stora
+        vita knappar. Excel såg lika viktig ut som att byta vecka,
+        fast man byter vecka varje gång och exporterar sällan. Och det
+        var fyra olika sorters sak — flytta i tiden, byta vy, gå till en
+        annan sida, ladda ned en fil — utan något som skilde dem åt.
 
-          <div className="ml-4 flex rounded border border-(--color-line) bg-white text-sm">
+        Nu: identiteten först, veckan som det tydligaste reglaget intill
+        namnet, och det som görs sällan tyst och samlat till höger.
+      */}
+      <header className="no-print">
+        <Link href="/" className="text-xs text-(--color-muted) hover:underline">
+          ← Alla tavlor
+        </Link>
+
+        <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <h1 className="text-xl font-semibold">{data.board.name}</h1>
+
+          {/* Veckan. Det man rör oftast, närmast namnet. */}
+          <div className="flex items-center gap-1">
+            <Link
+              href={href(prev)}
+              aria-label="Föregående vecka"
+              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
+            >
+              ◀
+            </Link>
+            <span className="px-2 text-sm font-medium whitespace-nowrap">
+              Vecka {week} <span className="text-(--color-muted)">· {dateRangeLabel(data.dates)}</span>
+            </span>
+            <Link
+              href={href(next)}
+              aria-label="Nästa vecka"
+              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
+            >
+              ▶
+            </Link>
+            {/* Vägen tillbaka. Fem steg framåt hade ingen återresa utom
+                fem klick bakåt — och visas den alltid säger den
+                ingenting, för då är man oftast redan där. */}
+            {!ärDennaVecka && (
+              <Link
+                href={href({ ...nu, view })}
+                className="ml-2 text-xs text-(--color-accent) hover:underline"
+              >
+                Denna vecka
+              </Link>
+            )}
+          </div>
+
+          <div className="flex overflow-hidden rounded border border-(--color-line) bg-white text-sm">
             <Link
               href={href({ year, week, view: "resource" })}
-              className={`px-3 py-1 ${view === "resource" ? "bg-(--color-accent) text-white" : ""}`}
+              className={`px-3 py-1 ${view === "resource" ? "bg-(--color-accent) text-white" : "hover:bg-gray-50"}`}
             >
               Bilar
             </Link>
             <Link
               href={href({ year, week, view: "person" })}
-              className={`px-3 py-1 ${view === "person" ? "bg-(--color-accent) text-white" : ""}`}
+              className={`px-3 py-1 ${view === "person" ? "bg-(--color-accent) text-white" : "hover:bg-gray-50"}`}
             >
               Personer
             </Link>
           </div>
 
-          <Link
-            href={`/tavla/${slug}/semester?ar=${year}`}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-          >
-            Semester
-          </Link>
-          <a
-            href={`/tavla/${slug}/export?ar=${year}&vecka=${week}&vy=${view}`}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-          >
-            Excel
-          </a>
-          <PrintButton />
+          {/* Det som görs sällan: en annan vy och två uttag. Tyst, och
+              skilt från reglagen med ett streck i stället för att stå
+              som ännu tre likadana knappar. */}
+          <div className="ml-auto flex items-center gap-4 border-l border-(--color-line) pl-4 text-sm">
+            <Link
+              href={`/tavla/${slug}/semester?ar=${year}`}
+              className="text-(--color-accent) hover:underline"
+            >
+              Semester
+            </Link>
+            <a
+              href={`/tavla/${slug}/export?ar=${year}&vecka=${week}&vy=${view}`}
+              className="text-(--color-muted) hover:text-(--color-ink) hover:underline"
+            >
+              Excel
+            </a>
+            <PrintButton
+              label="Skriv ut"
+              className="cursor-pointer text-(--color-muted) hover:text-(--color-ink) hover:underline"
+            />
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* Ett problem per punkt, och varningstecknet en gång.
           Allt låg tidigare i en enda mening med ett ⚠ framför varje
