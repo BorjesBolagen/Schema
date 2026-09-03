@@ -2,7 +2,6 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import type { BoardWeek } from "@/server/board-week";
-import type { Shift } from "@/lib/work-days";
 import {
   addBaseScheduleEntry,
   removeBaseScheduleEntry,
@@ -10,7 +9,6 @@ import {
   setBaseScheduleRule,
 } from "@/app/actions";
 import { cyclePosition, describeRule, kommandeVeckor, MAX_CYCLE_WEEKS } from "@/lib/rotation";
-import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
 /**
  * Bas-schemat: den stående kopplingen person ↔ bil.
@@ -214,7 +212,6 @@ export function BaseScheduleEditor({
 }) {
   const [rowId, setRowId] = useState(data.rows[0]?.id ?? "");
   const [employeeId, setEmployeeId] = useState(data.crew[0]?.employeeId ?? "");
-  const [shift, setShift] = useState<Shift>(data.shifts[0] ?? "day");
   const [pending, startTransition] = useTransition();
   /** Vilken kopplings regel som redigeras. Null = ingen. */
   const [oppen, setOppen] = useState<string | null>(null);
@@ -282,7 +279,6 @@ export function BaseScheduleEditor({
           <thead>
             <tr className="bg-gray-50 text-left text-xs text-(--color-muted)">
               <th className="px-5 py-2 font-medium">Person</th>
-              <th className="px-3 py-2 font-medium">Skift</th>
               <th className="px-3 py-2 font-medium">Rad</th>
               <th className="px-3 py-2 font-medium">Gäller</th>
               <th className="px-3 py-2 font-medium">Ordning</th>
@@ -292,7 +288,7 @@ export function BaseScheduleEditor({
           <tbody>
             {data.baseSchedule.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-6 text-sm text-(--color-muted)">
+                <td colSpan={5} className="px-5 py-6 text-sm text-(--color-muted)">
                   Inget bas-schema ännu. Koppla en person till en bil nedan.
                 </td>
               </tr>
@@ -366,7 +362,7 @@ export function BaseScheduleEditor({
               </tr>
               {oppen === entry.id && (
                 <tr className="bg-gray-50">
-                  <td colSpan={6} className="px-5 py-3">
+                  <td colSpan={5} className="px-5 py-3">
                     <RuleEditor
                       entry={entry}
                       year={data.year}

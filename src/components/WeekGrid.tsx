@@ -10,7 +10,7 @@ import { showsDirection } from "@/lib/vehicle-kind";
 import type { VehicleKind } from "@/lib/vehicle-kind";
 import { personColor } from "@/lib/person-color";
 import { ConflictMark } from "./ConflictBadge";
-import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
+import { SHIFT_COLOR, SHIFT_LABEL } from "./shift";
 import { dragId } from "./dnd";
 
 export interface DropCheck {
@@ -337,8 +337,14 @@ export function WeekGrid({
                         i === data.shifts.length - 1 ? "border-b" : ""
                       } ${shift === "night" ? "bg-gray-50" : ""}`}
                     >
-                      <span aria-hidden>{SHIFT_ICON[shift]}</span>{" "}
-                      {data.shifts.length > 1 ? SHIFT_LABEL[shift] : ""}
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          aria-hidden
+                          className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                          style={{ background: SHIFT_COLOR[shift] }}
+                        />
+                        {data.shifts.length > 1 ? SHIFT_LABEL[shift] : ""}
+                      </span>
                     </td>
                     {data.dates.map((date) => {
                       const inactive = row.inactiveDates.includes(date);

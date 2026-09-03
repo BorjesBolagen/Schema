@@ -13,6 +13,14 @@
      nog för vit text ovanpå — upp mot Stockholm, ner mot hemmaorten. */
   --color-dir-up: #1f5fa9;
   --color-dir-down: #7a3ea3;
+
+  /* Veckans form i sidopanelen, en ruta per dag.
+     Tolv personer gånger fem dagar blev sextio emoji i en smal kolumn —
+     avläsbart var för sig, en julgran tillsammans. Två dova kulörer och
+     en tom ruta säger samma sak utan att ropa, och mönstret går att
+     jämföra mellan personer på en blick. */
+  --color-shift-day: #e8b356;
+  --color-shift-night: #5b6b8a;
 }
 
 html {

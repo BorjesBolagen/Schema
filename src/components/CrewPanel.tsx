@@ -5,7 +5,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CrewMember } from "@/server/board-week";
 import { ROLE_LABEL, type PickerEmployee } from "./CrewPicker";
 import { shortDayLabel } from "@/lib/week";
-import { ABSENCE_ICON, SHIFT_ICON } from "./shift";
+import { ABSENCE_ICON } from "./shift";
 import { dragId } from "./dnd";
 import {
   crewRemovalPreview,
@@ -85,14 +85,56 @@ function CrewCard({
         isDragging ? "opacity-40" : ""
       }`}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-medium">{member.name}</span>
-        <span className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-medium" title={member.name}>
+          {member.name}
+        </span>
+
+        <span className="flex shrink-0 items-center gap-1.5">
           {member.absence && (
             <span title={member.absence.type} className="text-xs">
               {ABSENCE_ICON[member.absence.type] ?? "•"}
             </span>
           )}
+
+          {/* Veckans form: en ruta per dag, fylld för dag eller natt och
+              tom för ledig. Stod förut som ☀️ och 🌙 på en egen rad under
+              namnet — läsbart var för sig, men tolv personer gånger fem
+              dagar blev sextio emoji i en smal kolumn, och kortet blev
+              dubbelt så högt som det behövde vara. Rutorna ryms bredvid
+              namnet, säger samma sak tystare, och mönstren går att
+              jämföra mellan personer på en blick. */}
+          <span className="flex gap-0.5">
+            {dates.map((d) => {
+              const shift = byDate.get(d);
+              return (
+                <span
+                  key={d}
+                  title={`${shortDayLabel(d)} · ${
+                    shift ? (shift === "night" ? "natt" : "dag") : "ledig"
+                  }${unplaced.has(d) ? ", ej utlagd" : ""}`}
+                  className={`h-3 w-1.5 rounded-[1px] ${
+                    shift
+                      ? unplaced.has(d)
+                        ? "ring-1 ring-(--color-warn)"
+                        : ""
+                      : "border border-(--color-line)"
+                  }`}
+                  style={
+                    shift
+                      ? {
+                          background:
+                            shift === "night"
+                              ? "var(--color-shift-night)"
+                              : "var(--color-shift-day)",
+                        }
+                      : undefined
+                  }
+                />
+              );
+            })}
+          </span>
+
           {/* Hela kortet är dragyta — det är så personer läggs ut, och
               den ytan ska inte krympa för en knapps skull. Knappen
               stoppar därför pekaren innan dragsensorn hinner starta. */}
@@ -112,26 +154,6 @@ function CrewCard({
             ✕
           </button>
         </span>
-      </div>
-      <div className="mt-0.5 flex gap-1 text-[11px]">
-        {dates.map((d) => {
-          const shift = byDate.get(d);
-          return (
-            <span
-              key={d}
-              title={shortDayLabel(d)}
-              className={
-                !shift
-                  ? "text-gray-300"
-                  : unplaced.has(d)
-                    ? "font-semibold text-(--color-warn)"
-                    : "text-(--color-muted)"
-              }
-            >
-              {shift ? SHIFT_ICON[shift] : "·"}
-            </span>
-          );
-        })}
       </div>
     </li>
   );
