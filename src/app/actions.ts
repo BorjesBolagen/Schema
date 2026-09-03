@@ -125,7 +125,7 @@ export async function assignEmployeeWeek(input: {
   boardSlug: string;
 }): Promise<WeekPlacement> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
 
   const [row] = await db
@@ -526,7 +526,7 @@ export async function clearWeek(input: {
   week: number;
 }): Promise<{ removed: number }> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   const { from, to } = weekSpan(input.year, input.week, board.weekStartsOn);
   const removed = await clearWeekAssignments(board.id, from, to);
   refresh(input.boardSlug);
@@ -554,7 +554,7 @@ export async function detachFromBoard(input: {
   employeeId: string;
 }): Promise<void> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   await removeFromCrew(board.id, await employeeOnBoard(board.id, input.employeeId));
   refresh(input.boardSlug);
 }
@@ -584,7 +584,7 @@ export async function addBaseScheduleEntry(input: {
   boardSlug: string;
 }): Promise<void> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
 
   /* Raden måste tillhöra tavlan. Ett radid som kommer från klienten är
@@ -636,7 +636,7 @@ export async function setBaseScheduleRule(input: {
   cycleOffset: number;
 }): Promise<void> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
 
   await db
@@ -672,7 +672,7 @@ export async function reorderBaseSchedule(input: {
   ids: string[];
 }): Promise<void> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
 
   const egna = await db
@@ -699,7 +699,7 @@ export async function reorderBaseSchedule(input: {
 
 export async function removeBaseScheduleEntry(id: string, boardSlug: string): Promise<void> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, boardSlug);
+  const board = await boardForAction(user, boardSlug);
   const db = getDb();
   // Avgränsat till tavlan: id:t kommer från klienten och är inte bundet.
   await db
@@ -924,7 +924,11 @@ export async function fetchShiftsForWeek(input: {
   week: number;
 }): Promise<ShiftFetchResult> {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, input.boardSlug);
+  /* Kräver ändringsrätt trots att ingen taveldata ändras: hämtningen
+     kostar av TransPA:s anropskvot, och den är knapp nog att ha tagit
+     slut en gång. Den som bara ska titta ska inte kunna göra av med
+     den. */
+  const board = await boardForAction(user, input.boardSlug);
 
   const crew = await getDb()
     .select({ employeeId: schema.boardCrew.employeeId })

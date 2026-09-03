@@ -179,9 +179,14 @@ const absenceRows = await db
     // Den vecka som testas i veckovyn.
     { employeeId: byName.Johan.id, fromDate: "2026-08-20", toDate: "2026-08-21", type: "semester", status: "approved" },
     /* En frånvaro i den vecka demot öppnar på, så förstasidans
-       frånvarosiffra och tavlans varningar har något att visa. Roger kör
-       bara onsdagar, så veckan blir inte urholkad av det. */
-    { employeeId: byName.Roger.id, ...week(today.week), type: "vab", status: "approved" },
+       frånvarosiffra och tavlans varningar har något att visa.
+
+       Henrik och ingen annan: han är den ende i bemanningen som inget
+       e2e-skript hänger på. Först stod Roger här, och då föll
+       e2e-kopplabort — det kontrollerar att hans utlagda pass överlever
+       en bortkoppling, och med frånvaron lade Fyll veckan aldrig ut
+       några. Ett rött som inte betydde att något var trasigt. */
+    { employeeId: byName.Henrik.id, ...week(today.week), type: "vab", status: "approved" },
   ])
   .returning();
 

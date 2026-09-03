@@ -3,6 +3,9 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb, schema, readWithTimeout } from "@/db";
 import type { CurrentUser } from "./auth";
+import { canAccessBoard, canEditBoard } from "./board-scope";
+
+export { canAccessBoard, canEditBoard };
 
 /**
  * Vilka tavlor en användare når.
@@ -35,13 +38,7 @@ export async function visibleBoards(user: CurrentUser) {
   });
 }
 
-export async function canAccessBoard(user: CurrentUser, boardId: string): Promise<boolean> {
-  if (user.role === "admin") return true;
-  const rows = await readWithTimeout(() =>
-    getDb().select().from(schema.boardMember).where(eq(schema.boardMember.userId, user.id)),
-  );
-  return rows.some((m) => m.boardId === boardId);
-}
+
 
 /**
  * Kräver åtkomst till en tavla via dess slug.
@@ -89,6 +86,11 @@ export async function boardForAction(user: CurrentUser, slug: string) {
   const [board] = await getDb().select().from(schema.board).where(eq(schema.board.slug, slug));
   if (!board || !(await canAccessBoard(user, board.id))) {
     throw new Error("Du har inte tillgång till den här tavlan.");
+  }
+  /* Skrivvägen går genom den här funktionen, så läsrätten prövas mot
+     ändringsrätt just här — en gång, i stället för i tjugo actions. */
+  if (!(await canEditBoard(user, board.id))) {
+    throw new Error("Du har bara läsbehörighet till den här tavlan.");
   }
   return board;
 }

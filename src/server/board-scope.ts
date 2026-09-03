@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
-import { getDb, schema, type Db } from "@/db";
+import { getDb, schema, readWithTimeout, type Db } from "@/db";
+import type { CurrentUser } from "./auth";
 
 /**
  * Att kontrollera samma sak som man skriver.
@@ -119,4 +120,46 @@ export async function employeeOnBoard(
     );
   if (!c) throw new NotOnBoardError("Personen");
   return c.employeeId;
+}
+
+export async function canAccessBoard(
+  user: CurrentUser,
+  boardId: string,
+  dbOverride?: Db,
+): Promise<boolean> {
+  if (user.role === "admin") return true;
+  const rows = await readWithTimeout(() =>
+    (dbOverride ?? getDb())
+      .select()
+      .from(schema.boardMember)
+      .where(eq(schema.boardMember.userId, user.id)),
+  );
+  return rows.some((m) => m.boardId === boardId);
+}
+
+/**
+ * Får användaren *ändra* tavlan, inte bara se den?
+ *
+ * board_member.role har funnits sedan första migrationen med värdena
+ * editor och viewer, men ingenting läste den: alla med tillgång kunde
+ * ändra allt. Det var inget hål så länge ingen kunde bli viewer — men
+ * fältet såg ut som en spärr, och den som en dag satt role='viewer' i
+ * databasen hade fått fulla rättigheter i tro att hen gett läsrätt.
+ *
+ * Ett fält som finns, tar emot ett värde och inte gör något är värre än
+ * ett som saknas. Nu betyder det något.
+ */
+export async function canEditBoard(
+  user: CurrentUser,
+  boardId: string,
+  dbOverride?: Db,
+): Promise<boolean> {
+  if (user.role === "admin") return true;
+  const rows = await readWithTimeout(() =>
+    (dbOverride ?? getDb())
+      .select()
+      .from(schema.boardMember)
+      .where(eq(schema.boardMember.userId, user.id)),
+  );
+  return rows.some((m) => m.boardId === boardId && m.role === "editor");
 }
