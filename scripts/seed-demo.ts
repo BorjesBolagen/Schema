@@ -138,19 +138,20 @@ await db
   .insert(schema.boardCrew)
   .values(crew.map((name, i) => ({ boardId: board.id, employeeId: byName[name].id, sortOrder: i })));
 
-/* Bas-schemat: person ↔ bil. Inga dagar — de kommer från mönstren. */
+/* Bas-schemat: person ↔ bil. Inga dagar och inget skift — dagarna
+   kommer från arbetsdagarna och skiftet ur passets tider. */
 const baseEntries = await db
   .insert(schema.baseSchedule)
   .values([
-    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Elin.id, shift: "day" },
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Elin.id },
     /* Linjebilen körs av två som möts på vägen: Peter går upp de nätter
        Henrik går ner, och tvärtom nästa natt. */
-    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Peter.id, shift: "night" },
-    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Henrik.id, shift: "night" },
-    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName["Björn"].id, shift: "day" },
-    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName.Roger.id, shift: "day" },
-    { boardId: board.id, boardRowId: row["BT24/26"], employeeId: byName.Johan.id, shift: "day" },
-    { boardId: board.id, boardRowId: row.HF03, employeeId: byName.Alma.id, shift: "day" },
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Peter.id },
+    { boardId: board.id, boardRowId: row["BT08/09"], employeeId: byName.Henrik.id },
+    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName["Björn"].id },
+    { boardId: board.id, boardRowId: row["BT13/14"], employeeId: byName.Roger.id },
+    { boardId: board.id, boardRowId: row["BT24/26"], employeeId: byName.Johan.id },
+    { boardId: board.id, boardRowId: row.HF03, employeeId: byName.Alma.id },
   ])
   .returning();
 

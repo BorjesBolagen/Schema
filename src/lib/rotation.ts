@@ -7,10 +7,12 @@
  * mappar veckonummer till passnummer, och den tabellen är en cykel med
  * en förskjutning — inget mer.
  *
- * Cykeln hör till tavlan, inte till personen. I Värnamo delar hela
- * tavlan samma vecka→pass-tabell, precis som i Excel, och det vore fel
- * att låta varje person bära sin egen ankarpunkt när de i praktiken
- * alltid följs åt.
+ * Cykeln hör till *kopplingen*, inte till tavlan. Det var fel förut: en
+ * längd per tavla gick inte att skriva ned verkligheten i. Samma person
+ * kan gå varannan vecka på en bil och var fjärde på en annan, och två
+ * personer på samma tavla kan ha helt olika cykler. Att fältet fanns på
+ * tavlan och tog emot ett värde gjorde dessutom att begränsningen inte
+ * syntes förrän någon försökte.
  */
 
 export const MAX_CYCLE_WEEKS = 8;
@@ -87,4 +89,38 @@ export function describeRule(
     );
   }
   return delar.length ? delar.join(" · ") : "alltid";
+}
+
+/**
+ * Vilka riktiga veckor en regel träffar härnäst.
+ *
+ * Ett cykelnummer säger ingenting i sig. "Vecka 2 av 4" är sant men
+ * obekräftbart; "v. 36, 40, 44" går att hålla mot schemat planeraren
+ * redan har. Det är skillnaden mellan en inställning man litar på och
+ * en man hoppas på.
+ *
+ * Räknar framåt från och med den vecka som visas, och stannar när
+ * antalet är fyllt eller sökningen gått ett par cykler utan träff.
+ */
+export function kommandeVeckor(input: {
+  year: number;
+  week: number;
+  cycleLength: number;
+  cycleOffset: number;
+  cycleWeeks: number[];
+  antal?: number;
+}): number[] {
+  const längd = Math.max(1, Math.floor(input.cycleLength));
+  const valda = input.cycleWeeks.length > 0 ? input.cycleWeeks : null;
+  const vill = input.antal ?? 4;
+
+  const ut: number[] = [];
+  /* Taket är två varv i cykeln plus lite: träffar regeln något gör den
+     det inom ett varv, och utan tak vore en tom lista en oändlig loop. */
+  for (let i = 0; i < längd * vill + längd && ut.length < vill; i++) {
+    const vecka = input.week + i;
+    const position = cyclePosition(vecka, längd, input.cycleOffset);
+    if (!valda || valda.includes(position)) ut.push(vecka);
+  }
+  return ut;
 }

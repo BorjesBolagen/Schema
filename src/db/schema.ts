@@ -394,16 +394,9 @@ export const board = pgTable("board", {
 
   sortOrder: integer("sort_order").notNull().default(0),
 
-  /**
-   * Rullande schema: cykelns längd i veckor och var i den vecka 1 hamnar.
-   *
-   * Värnamos fyra pass roterar över fyra veckor, och Excelbladet löser
-   * det med en tabell som mappar veckonummer till passnummer. Det är en
-   * cykel med en förskjutning, och den hör till tavlan eftersom hela
-   * tavlan delar samma tabell. Längd 1 betyder ingen rotation.
-   */
-  cycleLength: integer("cycle_length").notNull().default(1),
-  cycleOffset: integer("cycle_offset").notNull().default(0),
+  /* Cykeln låg här förut, en per tavla. Den flyttade till kopplingen i
+     bas-schemat: rotationer hör till personer, inte till tavlor, och
+     två personer på samma tavla kan gå i olika cykler. */
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -508,7 +501,6 @@ export const baseSchedule = pgTable(
     employeeId: uuid("employee_id")
       .notNull()
       .references(() => employee.id, { onDelete: "cascade" }),
-    shift: shift("shift").notNull().default("day"),
 
     /**
      * När kopplingen gäller. Tomt betyder alltid, inte aldrig.
@@ -517,9 +509,31 @@ export const baseSchedule = pgTable(
      * och det räcker för den som kör samma bil varje dag. Den som kör
      * olika bilar olika dagar, eller olika bilar olika veckor i en
      * rotation, behöver kunna skriva ned just det.
+     *
+     * Här står inget skift, och det är avsiktligt. Kopplingen bar
+     * tidigare dag eller natt, men den som kör fyra nattpass vecka 1
+     * och 2, ett nattpass och två dagpass vecka 3 och tre dagpass vecka
+     * 4 är kopplad till samma bil på båda skiften samma vecka. Vilket
+     * skift ett pass är vet TransPA redan av tiderna — kopplingen säger
+     * vilken bil, passet säger när.
      */
     cycleWeeks: integer("cycle_weeks").array(),
     weekdays: integer("weekdays").array(),
+
+    /**
+     * Rotationen, per koppling och inte per tavla.
+     *
+     * Rotationer hör till personer. En kan gå i en fyraveckorscykel på
+     * en bil och varannan vecka på en annan, medan kollegan på samma
+     * tavla kör varje vecka. Låg längden på tavlan gick det inte att
+     * skriva ned — och det var inte uppenbart att det inte gick,
+     * eftersom fältet fanns och tog emot ett värde.
+     *
+     * cycleOffset förskjuter vilken ISO-vecka som är cykelns första, så
+     * numreringen kan ställas mot den planeraren redan använder.
+     */
+    cycleLength: integer("cycle_length").notNull().default(1),
+    cycleOffset: integer("cycle_offset").notNull().default(0),
 
     validFrom: date("valid_from"),
     validTo: date("valid_to"),

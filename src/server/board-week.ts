@@ -109,13 +109,14 @@ export interface BoardWeek {
     id: string;
     boardRowId: string;
     employeeId: string;
-    shift: Shift;
     validFrom: string | null;
     validTo: string | null;
     /** Avgör vilken bil som vinner när flera kopplingar gäller samma dag. */
     sortOrder: number;
     cycleWeeks: number[] | null;
     weekdays: number[] | null;
+    cycleLength: number;
+    cycleOffset: number;
   }>;
 }
 
@@ -158,12 +159,13 @@ interface BoardWeekBundle {
     id: string;
     boardRowId: string;
     employeeId: string;
-    shift: Shift;
     validFrom: string | null;
     validTo: string | null;
     sortOrder: number;
     cycleWeeks: number[] | null;
     weekdays: number[] | null;
+    cycleLength: number;
+    cycleOffset: number;
   }>;
   all_boards: Array<{ id: string; name: string }>;
   assignments: Array<{
@@ -286,9 +288,10 @@ async function runGetBoardWeek(
 
       (select coalesce(json_agg(json_build_object(
         'id', b.id, 'boardRowId', b.board_row_id, 'employeeId', b.employee_id,
-        'shift', b.shift, 'validFrom', b.valid_from, 'validTo', b.valid_to,
+        'validFrom', b.valid_from, 'validTo', b.valid_to,
         'sortOrder', b.sort_order, 'cycleWeeks', b.cycle_weeks,
-        'weekdays', b.weekdays)), '[]'::json)
+        'weekdays', b.weekdays, 'cycleLength', b.cycle_length,
+        'cycleOffset', b.cycle_offset)), '[]'::json)
        from base_schedule b where b.board_id = ${board.id}) as base_schedule,
 
       (select coalesce(json_agg(json_build_object(
@@ -560,12 +563,13 @@ async function runGetBoardWeek(
       id: b.id,
       boardRowId: b.boardRowId,
       employeeId: b.employeeId,
-      shift: b.shift,
       validFrom: b.validFrom,
       validTo: b.validTo,
       sortOrder: b.sortOrder,
       cycleWeeks: b.cycleWeeks,
       weekdays: b.weekdays,
+      cycleLength: b.cycleLength,
+      cycleOffset: b.cycleOffset,
     })),
   };
 }

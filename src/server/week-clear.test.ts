@@ -157,7 +157,7 @@ describe("clearWeekAssignments", () => {
     await db.insert(schema.boardCrew).values({ boardId: board, employeeId: anna, sortOrder: 0 });
     await db
       .insert(schema.baseSchedule)
-      .values({ boardId: board, boardRowId: row, employeeId: anna, shift: "day" });
+      .values({ boardId: board, boardRowId: row, employeeId: anna });
     await db.insert(schema.transpaShift).values({
       transpaId: "t1",
       employeeId: anna,

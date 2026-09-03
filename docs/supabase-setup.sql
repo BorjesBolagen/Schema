@@ -8,7 +8,7 @@
 -- Vägrar köra i ett Supabase-projekt som tillhör något annat. Se
 -- vakten längst upp: har databasen tabeller men saknar Schemas
 -- märke avbryts allt, och ingenting skrivs.
--- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql, 0009_transpa_outbox.sql, 0010_app_identity.sql
+-- Migrationer: 0000_init.sql, 0001_legal_king_cobra.sql, 0002_rls.sql, 0003_profession_group.sql, 0004_transpa_shifts.sql, 0005_drop_work_patterns.sql, 0006_direction_and_vehicle_kind.sql, 0007_shift_ends_at.sql, 0008_rotation.sql, 0009_transpa_outbox.sql, 0010_app_identity.sql, 0011_person_rotation.sql
 
 BEGIN;
 
@@ -715,6 +715,48 @@ DO $$ BEGIN
 EXCEPTION WHEN undefined_table THEN NULL;
 END $$;
 
+-- 0011_person_rotation.sql
+-- Rotationen flyttar från tavlan till kopplingen, och skiftet försvinner
+-- ur bas-schemat.
+--
+-- Två fel som visade sig i verkligheten.
+--
+-- Kopplingen bar ett skift, dag eller natt. Men den som kör fyra
+-- nattpass vecka 1 och 2, ett nattpass och två dagpass vecka 3, och tre
+-- dagpass vecka 4 går inte att skriva så: vecka 3 är personen kopplad
+-- till samma bil på båda skiften. Skiftet ska inte stå i kopplingen
+-- alls — passets tider i TransPA vet redan om det är dag eller natt.
+--
+-- Cykellängden låg på tavlan. Men rotationer hör till personer: en kan
+-- gå i en fyraveckorscykel på en bil och varannan vecka på en annan,
+-- medan kollegan på samma tavla kör varje vecka. En längd per tavla
+-- gjorde det omöjligt att skriva ned.
+
+ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "cycle_length" integer DEFAULT 1 NOT NULL;
+ALTER TABLE "base_schedule" ADD COLUMN IF NOT EXISTS "cycle_offset" integer DEFAULT 0 NOT NULL;
+-- Ärv tavlans cykel, så befintliga kopplingar betyder samma sak efteråt.
+UPDATE "base_schedule" b
+   SET "cycle_length" = t."cycle_length",
+       "cycle_offset" = t."cycle_offset"
+  FROM "board" t
+ WHERE t."id" = b."board_id";
+-- Utan skiftet blir två kopplingar som bara skilde sig på dag/natt
+-- identiska. Den med lägst sortOrder får stå kvar.
+DELETE FROM "base_schedule" a
+ USING "base_schedule" b
+ WHERE a."board_row_id" = b."board_row_id"
+   AND a."employee_id" = b."employee_id"
+   AND a."cycle_weeks" IS NOT DISTINCT FROM b."cycle_weeks"
+   AND a."weekdays" IS NOT DISTINCT FROM b."weekdays"
+   AND a."valid_from" IS NOT DISTINCT FROM b."valid_from"
+   AND a."valid_to" IS NOT DISTINCT FROM b."valid_to"
+   AND (a."sort_order", a."id") > (b."sort_order", b."id");
+ALTER TABLE "base_schedule" DROP COLUMN IF EXISTS "shift";
+-- Tavlans cykel har inget kvar att styra. Två källor till samma sanning
+-- var det som gjorde felet möjligt.
+ALTER TABLE "board" DROP COLUMN IF EXISTS "cycle_length";
+ALTER TABLE "board" DROP COLUMN IF EXISTS "cycle_offset";
+
 -- Markera migrationerna som körda, så npm run db:migrate inte
 -- försöker köra dem igen mot samma databas.
 CREATE SCHEMA IF NOT EXISTS drizzle;
@@ -745,5 +787,7 @@ INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '82402054ff
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '82402054ffe4a2736e7b1d41335f1c2d047d67d14cf69123ed02399db44b7c28');
 INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT 'fbbfa4d767b742a96f3f6fc72f76681209b9fcef0dd66b44606ecde0f4958c78', 1787657717770
 WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = 'fbbfa4d767b742a96f3f6fc72f76681209b9fcef0dd66b44606ecde0f4958c78');
+INSERT INTO drizzle."__drizzle_migrations" (hash, created_at) SELECT '44cf7765be58e3de57958eef9d99c1c7aa0c9ca06934a5cd5fe247fa858dbf8a', 1787657718770
+WHERE NOT EXISTS (SELECT 1 FROM drizzle."__drizzle_migrations" WHERE hash = '44cf7765be58e3de57958eef9d99c1c7aa0c9ca06934a5cd5fe247fa858dbf8a');
 
 COMMIT;

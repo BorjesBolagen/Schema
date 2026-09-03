@@ -9,7 +9,7 @@ import {
   reorderBaseSchedule,
   setBaseScheduleRule,
 } from "@/app/actions";
-import { describeRule, MAX_CYCLE_WEEKS } from "@/lib/rotation";
+import { cyclePosition, describeRule, kommandeVeckor, MAX_CYCLE_WEEKS } from "@/lib/rotation";
 import { SHIFT_ICON, SHIFT_LABEL } from "./shift";
 
 /**
@@ -34,26 +34,50 @@ const VECKODAGAR: Array<[number, string]> = [
 /**
  * När en koppling gäller.
  *
- * Två rader kryssrutor och inget mer: veckodagar, och — bara när tavlan
- * har en rotation — vilka veckor i cykeln. Ingenting ikryssat betyder
- * alltid, vilket sägs rakt ut i stället för att lämnas åt gissning: det
- * är den vanligaste inställningen och den minst uppenbara.
+ * Veckodagar, hur ofta, och — när det är mer sällan än varje vecka —
+ * vilka veckor i cykeln. Ingenting ikryssat betyder alltid, vilket sägs
+ * rakt ut i stället för att lämnas åt gissning: det är den vanligaste
+ * inställningen och den minst uppenbara.
+ *
+ * Cykeln hör till kopplingen, inte till tavlan. Samma person kan gå
+ * varannan vecka på en bil och var fjärde på en annan, och två personer
+ * på samma tavla kan ha helt olika cykler. Låg längden på tavlan gick
+ * det inte att skriva ned.
+ *
+ * De veckor regeln faktiskt träffar räknas ut och visas. Ett cykelnummer
+ * säger ingenting i sig — "vecka 2 av 4" är sant men obekräftbart, medan
+ * "v. 36, 40, 44" går att hålla mot schemat man redan har.
  */
 function RuleEditor({
   entry,
-  cycleLength,
+  year,
+  week,
   pending,
   onSave,
   onClose,
 }: {
-  entry: { cycleWeeks: number[] | null; weekdays: number[] | null };
-  cycleLength: number;
+  entry: {
+    cycleWeeks: number[] | null;
+    weekdays: number[] | null;
+    cycleLength: number;
+    cycleOffset: number;
+  };
+  /** Veckan tavlan visar, för att kunna räkna ut vilka veckor regeln träffar. */
+  year: number;
+  week: number;
   pending: boolean;
-  onSave: (cycleWeeks: number[], weekdays: number[]) => void;
+  onSave: (v: {
+    cycleWeeks: number[];
+    weekdays: number[];
+    cycleLength: number;
+    cycleOffset: number;
+  }) => void;
   onClose: () => void;
 }) {
   const [weekdays, setWeekdays] = useState<number[]>(entry.weekdays ?? []);
   const [cycleWeeks, setCycleWeeks] = useState<number[]>(entry.cycleWeeks ?? []);
+  const [cycleLength, setCycleLength] = useState<number>(entry.cycleLength);
+  const [cycleOffset, setCycleOffset] = useState<number>(entry.cycleOffset);
 
   const toggle = (list: number[], set: (v: number[]) => void, value: number) =>
     set(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -97,6 +121,24 @@ function RuleEditor({
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="w-24 text-xs text-(--color-muted)">Hur ofta</span>
+        {[1, 2, 3, 4, 6, 8].map((n) => (
+          <Chip
+            key={n}
+            on={cycleLength === n}
+            label={n === 1 ? "varje vecka" : `var ${n}:e`}
+            onClick={() => {
+              setCycleLength(n);
+              /* Valda cykelveckor som inte ryms i den nya längden
+                 skulle bli en regel som aldrig träffar. */
+              setCycleWeeks((v) => v.filter((x) => x <= n));
+              setCycleOffset((v) => v % n);
+            }}
+          />
+        ))}
+      </div>
+
       {cycleLength > 1 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="w-24 text-xs text-(--color-muted)">Cykelvecka</span>
@@ -116,11 +158,36 @@ function RuleEditor({
         </div>
       )}
 
+      {cycleLength > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-24 text-xs text-(--color-muted)">Förskjutning</span>
+          {Array.from({ length: cycleLength }, (_, i) => i).map((o) => (
+            <Chip
+              key={o}
+              on={cycleOffset === o}
+              label={`v.${week} = ${cyclePosition(week, cycleLength, o)}`}
+              onClick={() => setCycleOffset(o)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Vilka veckor regeln faktiskt träffar. Ett cykelnummer är sant
+          men obekräftbart; veckonumren går att hålla mot det schema
+          planeraren redan har. */}
+      <p className="text-xs text-(--color-muted)">
+        {cycleLength === 1
+          ? "Gäller varje vecka."
+          : `Gäller v. ${kommandeVeckor({ year, week, cycleLength, cycleOffset, cycleWeeks }).join(
+              ", ",
+            )} …`}
+      </p>
+
       <div className="flex items-center gap-3 text-xs">
         <button
           type="button"
           disabled={pending}
-          onClick={() => onSave(cycleWeeks, weekdays)}
+          onClick={() => onSave({ cycleWeeks, weekdays, cycleLength, cycleOffset })}
           className="rounded bg-(--color-accent) px-3 py-1 text-white disabled:opacity-50"
         >
           {pending ? "Sparar …" : "Spara"}
@@ -130,8 +197,7 @@ function RuleEditor({
         </button>
         {cycleLength === 1 && (
           <span className="text-(--color-muted)">
-            Tavlan har ingen rotation — sätt cykellängd under ⚙ Tavla för att kunna välja
-            cykelvecka.
+            Välj hur ofta ovan för att kunna peka ut enskilda veckor i en cykel.
           </span>
         )}
       </div>
@@ -160,24 +226,25 @@ export function BaseScheduleEditor({
   const rowOf = (id: string) => data.rows.find((r) => r.id === id);
 
   /**
-   * Tabellen grupperas på person och skift, för det är där ordningen
-   * betyder något: den avgör vilken bil som vinner när flera kopplingar
-   * gäller samma dag. Sorterad på rad-etikett, som tidigare, gick det
-   * inte att se vilka som konkurrerade med varandra.
+   * Tabellen grupperas på person, för det är där ordningen betyder
+   * något: den avgör vilken bil som vinner när flera kopplingar gäller
+   * samma dag. Sorterad på rad-etikett, som tidigare, gick det inte att
+   * se vilka som konkurrerade med varandra.
+   *
+   * Grupperingen tog förut med skiftet i nyckeln. Kopplingen har inget
+   * skift längre — alla en persons kopplingar konkurrerar med varandra,
+   * oavsett om passet visar sig bli dag eller natt.
    */
   const ordnade = useMemo(() => {
     const grupper = new Map<string, typeof data.baseSchedule>();
     for (const e of data.baseSchedule) {
-      const key = `${e.employeeId}|${e.shift}`;
+      const key = e.employeeId;
       grupper.set(key, [...(grupper.get(key) ?? []), e]);
     }
     for (const [, g] of grupper) g.sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
 
     return [...grupper.values()]
-      .sort((a, b) =>
-        nameOf(a[0].employeeId).localeCompare(nameOf(b[0].employeeId), "sv") ||
-        a[0].shift.localeCompare(b[0].shift),
-      )
+      .sort((a, b) => nameOf(a[0].employeeId).localeCompare(nameOf(b[0].employeeId), "sv"))
       .flatMap((syskon) => syskon.map((entry, index) => ({ entry, syskon, index })));
     // nameOf läser data, som är hela beroendet.
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -193,7 +260,7 @@ export function BaseScheduleEditor({
     rowId &&
     employeeId &&
     !data.baseSchedule.some(
-      (b) => b.boardRowId === rowId && b.employeeId === employeeId && b.shift === shift,
+      (b) => b.boardRowId === rowId && b.employeeId === employeeId,
     );
 
   return (
@@ -234,22 +301,19 @@ export function BaseScheduleEditor({
               <Fragment key={entry.id}>
               <tr className="border-t border-(--color-line)">
                 <td className="px-5 py-1.5 font-medium">{nameOf(entry.employeeId)}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap">
-                  {SHIFT_ICON[entry.shift]} {SHIFT_LABEL[entry.shift]}
-                </td>
                 <td className="px-3 py-1.5">{rowOf(entry.boardRowId)?.label ?? "—"}</td>
                 <td className="px-3 py-1.5">
                   <button
                     type="button"
                     onClick={() => setOppen(oppen === entry.id ? null : entry.id)}
                     className={`rounded px-1.5 py-0.5 text-xs hover:bg-gray-100 ${
-                      describeRule(entry, data.board.cycleLength) === "alltid"
+                      describeRule(entry, entry.cycleLength) === "alltid"
                         ? "text-(--color-muted)"
                         : "font-medium text-(--color-accent)"
                     }`}
                     title="Ändra när kopplingen gäller"
                   >
-                    {describeRule(entry, data.board.cycleLength)} ▾
+                    {describeRule(entry, entry.cycleLength)} ▾
                   </button>
                 </td>
                 <td className="px-3 py-1.5">
@@ -305,15 +369,15 @@ export function BaseScheduleEditor({
                   <td colSpan={6} className="px-5 py-3">
                     <RuleEditor
                       entry={entry}
-                      cycleLength={data.board.cycleLength}
+                      year={data.year}
+                      week={data.week}
                       pending={pending}
-                      onSave={(cycleWeeks, weekdays) =>
+                      onSave={(v) =>
                         startTransition(async () => {
                           await setBaseScheduleRule({
                             boardSlug: data.board.slug,
                             id: entry.id,
-                            cycleWeeks,
-                            weekdays,
+                            ...v,
                           });
                           setOppen(null);
                         })
@@ -360,21 +424,6 @@ export function BaseScheduleEditor({
             </select>
           </label>
 
-          <label className="text-xs text-(--color-muted)">
-            Skift
-            <select
-              value={shift}
-              onChange={(e) => setShift(e.target.value as Shift)}
-              className="mt-1 block rounded border border-(--color-line) px-2 py-1.5 text-sm text-(--color-ink)"
-            >
-              {(["day", "night"] as Shift[]).map((s) => (
-                <option key={s} value={s}>
-                  {SHIFT_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <button
             type="button"
             disabled={!canAdd || pending}
@@ -383,7 +432,6 @@ export function BaseScheduleEditor({
                 addBaseScheduleEntry({
                   boardRowId: rowId,
                   employeeId,
-                  shift,
                   validFrom: null,
                   boardSlug: data.board.slug,
                 }),

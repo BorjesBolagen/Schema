@@ -1,5 +1,5 @@
 import type { Shift, WorkDay } from "@/lib/work-days";
-import { appliesTo, specificity } from "@/lib/rotation";
+import { appliesTo, cyclePosition, specificity } from "@/lib/rotation";
 import { weekdayOf } from "@/lib/week";
 
 export interface BaseScheduleEntry {
@@ -7,7 +7,6 @@ export interface BaseScheduleEntry {
   id: string;
   boardRowId: string;
   employeeId: string;
-  shift: Shift;
   validFrom: string | null;
   validTo: string | null;
   sortOrder: number;
@@ -15,6 +14,15 @@ export interface BaseScheduleEntry {
   cycleWeeks?: number[] | null;
   /** Veckodagar 0–6 kopplingen gäller. Tomt eller null betyder alla. */
   weekdays?: number[] | null;
+  /**
+   * Kopplingens egen rotation. 1 betyder varje vecka.
+   *
+   * Per koppling och inte per tavla: en person kan gå i en
+   * fyraveckorscykel på en bil och varannan vecka på en annan, medan
+   * kollegan på samma tavla kör varje vecka.
+   */
+  cycleLength?: number;
+  cycleOffset?: number;
 }
 
 export interface ExistingAssignment {
@@ -104,13 +112,16 @@ export function planWeek(input: {
   /** Skiften tavlan visar. Utelämnas de accepteras alla. */
   visibleShifts?: Shift[];
   /**
-   * Var i tavlans rotation veckan ligger, räknat från 1.
+   * Veckans ISO-nummer, som varje kopplings cykel räknas ur.
    *
-   * Räknas av anroparen ur veckans nummer, inte per datum: med söndag
-   * som veckostart hör den första dagen till föregående ISO-vecka, och
-   * då skulle en dag i veckan hamna på fel plats i cykeln.
+   * Numret och inte datumet: med söndag som veckostart hör den första
+   * dagen till föregående ISO-vecka, och då skulle en dag i veckan
+   * hamna på fel plats i cykeln.
+   *
+   * Positionen räknas nu per koppling i stället för en gång av
+   * anroparen, eftersom varje koppling har sin egen cykellängd.
    */
-  cyclePosition?: number;
+  isoWeek?: number;
   dates: string[];
 }): WeekPlan {
   const inWeek = new Set(input.dates);
@@ -169,15 +180,23 @@ export function planWeek(input: {
     );
     if (away) continue;
 
-    const nu = { position: input.cyclePosition ?? 1, weekday: weekdayOf(wd.date) };
+    const veckodag = weekdayOf(wd.date);
     const candidates = input.baseSchedule.filter(
       (e) =>
         e.employeeId === wd.employeeId &&
-        e.shift === wd.shift &&
+        /* Inget skiftvillkor. Kopplingen säger vilken bil personen kör,
+           passet säger när — och den som kör natt vecka 1 och 2 men dag
+           vecka 4 är kopplad till samma bil hela tiden. */
         covers(e, wd.date) &&
         /* Rotationen: gäller kopplingen den här veckodagen och den här
-           veckan i cykeln? Tomma listor betyder alla. */
-        appliesTo({ cycleWeeks: e.cycleWeeks ?? null, weekdays: e.weekdays ?? null }, nu) &&
+           veckan i sin egen cykel? Tomma listor betyder alla. */
+        appliesTo(
+          { cycleWeeks: e.cycleWeeks ?? null, weekdays: e.weekdays ?? null },
+          {
+            position: cyclePosition(input.isoWeek ?? 1, e.cycleLength ?? 1, e.cycleOffset ?? 0),
+            weekday: veckodag,
+          },
+        ) &&
         /* En inställd linje ska inte bemannas. Raden kan ha avslutats
            mitt i veckan, så giltigheten prövas per dag. */
         (!rowById.has(e.boardRowId) || covers(rowById.get(e.boardRowId)!, wd.date)),

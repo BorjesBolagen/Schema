@@ -6,7 +6,7 @@ import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
-import { cyclePosition } from "@/lib/rotation";
+import { MAX_CYCLE_WEEKS } from "@/lib/rotation";
 import { requireUser } from "@/server/auth";
 import { assertBoardAccess, requireBoardBySlug } from "@/server/access";
 import { getWorkDayProvider } from "@/server/work-days";
@@ -390,12 +390,13 @@ export async function fillWeek(input: {
       id: b.id,
       boardRowId: b.boardRowId,
       employeeId: b.employeeId,
-      shift: b.shift,
       validFrom: b.validFrom,
       validTo: b.validTo,
       sortOrder: b.sortOrder,
       cycleWeeks: b.cycleWeeks,
       weekdays: b.weekdays,
+      cycleLength: b.cycleLength,
+      cycleOffset: b.cycleOffset,
     })),
     existing,
     absences: absences.map((a) => ({
@@ -405,7 +406,7 @@ export async function fillWeek(input: {
     })),
     rows: rows.map((r) => ({ id: r.id, validFrom: r.validFrom, validTo: r.validTo })),
     visibleShifts: board.visibleShifts as Shift[],
-    cyclePosition: cyclePosition(input.week, board.cycleLength, board.cycleOffset),
+    isoWeek: input.week,
     dates,
   });
 
@@ -545,7 +546,6 @@ export async function setCrew(
 export async function addBaseScheduleEntry(input: {
   boardRowId: string;
   employeeId: string;
-  shift: Shift;
   validFrom: string | null;
   boardSlug: string;
 }): Promise<void> {
@@ -563,8 +563,8 @@ export async function addBaseScheduleEntry(input: {
     );
   if (!row) return;
 
-  /* Ny koppling hamnar sist bland personens befintliga på samma skift,
-     så den inte tar över en ordning någon redan satt. */
+  /* Ny koppling hamnar sist bland personens befintliga, så den inte
+     tar över en ordning någon redan satt. */
   const syskon = await db
     .select({ sortOrder: schema.baseSchedule.sortOrder })
     .from(schema.baseSchedule)
@@ -572,7 +572,6 @@ export async function addBaseScheduleEntry(input: {
       and(
         eq(schema.baseSchedule.boardId, board.id),
         eq(schema.baseSchedule.employeeId, input.employeeId),
-        eq(schema.baseSchedule.shift, input.shift),
       ),
     );
 
@@ -580,7 +579,6 @@ export async function addBaseScheduleEntry(input: {
     boardId: board.id,
     boardRowId: input.boardRowId,
     employeeId: input.employeeId,
-    shift: input.shift,
     validFrom: input.validFrom,
     sortOrder: syskon.length ? Math.max(...syskon.map((s) => s.sortOrder)) + 1 : 0,
   });
@@ -599,6 +597,9 @@ export async function setBaseScheduleRule(input: {
   id: string;
   cycleWeeks: number[];
   weekdays: number[];
+  /** Cykelns längd i veckor. 1 betyder varje vecka. */
+  cycleLength: number;
+  cycleOffset: number;
 }): Promise<void> {
   const user = await requireUser();
   const board = await requireBoardBySlug(user, input.boardSlug);
@@ -607,6 +608,14 @@ export async function setBaseScheduleRule(input: {
   await db
     .update(schema.baseSchedule)
     .set({
+      /* Längden klämd inom det modellen kan visa, och förskjutningen
+         inom längden — annars går det att spara en regel som aldrig
+         träffar någon vecka. */
+      cycleLength: Math.min(Math.max(1, Math.floor(input.cycleLength)), MAX_CYCLE_WEEKS),
+      cycleOffset:
+        ((Math.floor(input.cycleOffset) % Math.max(1, Math.floor(input.cycleLength))) +
+          Math.max(1, Math.floor(input.cycleLength))) %
+        Math.max(1, Math.floor(input.cycleLength)),
       cycleWeeks: input.cycleWeeks.length ? [...input.cycleWeeks].sort((a, b) => a - b) : null,
       weekdays: input.weekdays.length ? [...input.weekdays].sort((a, b) => a - b) : null,
     })

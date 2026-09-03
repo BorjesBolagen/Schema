@@ -13,7 +13,8 @@ function base(
 ): BaseScheduleEntry {
   return {
     id: `bs${++nextId}`,
-    shift: "day",
+    cycleLength: 1,
+    cycleOffset: 0,
     validFrom: null,
     validTo: null,
     sortOrder: 0,
@@ -56,8 +57,8 @@ describe("planWeek", () => {
     const plan = planWeek({
       workDays: [...work("elin", [MON], "day"), ...work("peter", [MON], "night")],
       baseSchedule: [
-        base({ boardRowId: "bt0809", employeeId: "elin", shift: "day" }),
-        base({ boardRowId: "bt0809", employeeId: "peter", shift: "night" }),
+        base({ boardRowId: "bt0809", employeeId: "elin" }),
+        base({ boardRowId: "bt0809", employeeId: "peter" }),
       ],
       existing: [],
       dates: WEEK,
@@ -304,8 +305,9 @@ describe("planWeek respekterar tavlan och raderna", () => {
     const plan = planWeek({
       workDays: [...work("e1", [MON]), ...work("e1", [TUE], "night")],
       baseSchedule: [
+        /* En koppling räcker för båda skiften — kopplingen säger
+           vilken bil, passet säger när. */
         base({ boardRowId: "BT13", employeeId: "e1" }),
-        base({ boardRowId: "BT13", employeeId: "e1", shift: "night" }),
       ],
       existing: [],
       visibleShifts: ["day"],
@@ -321,8 +323,9 @@ describe("planWeek respekterar tavlan och raderna", () => {
     const plan = planWeek({
       workDays: [...work("e1", [MON]), ...work("e1", [TUE], "night")],
       baseSchedule: [
+        /* En koppling räcker för båda skiften — kopplingen säger
+           vilken bil, passet säger när. */
         base({ boardRowId: "BT13", employeeId: "e1" }),
-        base({ boardRowId: "BT13", employeeId: "e1", shift: "night" }),
       ],
       existing: [],
       visibleShifts: ["day", "night"],
@@ -337,8 +340,8 @@ describe("planWeek respekterar tavlan och raderna", () => {
 /**
  * De tre rotationsformerna Johan beskrev.
  *
- * Alla tre ryms i samma modell: cykelns längd sitter på tavlan, och
- * varje koppling säger vilka veckodagar och vilka cykelveckor den
+ * Alla tre ryms i samma modell: varje koppling bär sin egen cykellängd,
+ * och säger vilka veckodagar och vilka cykelveckor den
  * gäller. Tomt betyder alla, så en stående koppling är oförändrad.
  */
 describe("planWeek med rotation", () => {
@@ -365,15 +368,15 @@ describe("planWeek med rotation", () => {
   /* 2. Olika bilar olika veckor. */
   it("byter bil mellan cykelveckor", () => {
     const schema = [
-      base({ boardRowId: "BT13", employeeId: "e1", cycleWeeks: [1, 2] }),
-      base({ boardRowId: "BT24", employeeId: "e1", cycleWeeks: [3, 4] }),
+      base({ boardRowId: "BT13", employeeId: "e1", cycleLength: 4, cycleWeeks: [1, 2] }),
+      base({ boardRowId: "BT24", employeeId: "e1", cycleLength: 4, cycleWeeks: [3, 4] }),
     ];
     const bilen = (position: number) =>
       planWeek({
         workDays: work("e1", [MON]),
         baseSchedule: schema,
         existing: [],
-        cyclePosition: position,
+        isoWeek: position,
         dates: WEEK,
       }).create[0]?.boardRowId;
 
@@ -383,16 +386,16 @@ describe("planWeek med rotation", () => {
   /* 3. Fyra veckors rotation med olika bilar olika dagar inom cykeln. */
   it("klarar olika bilar olika dagar inom en fyraveckorscykel", () => {
     const schema = [
-      base({ boardRowId: "BT13", employeeId: "e1", cycleWeeks: [1], weekdays: [1, 2] }),
-      base({ boardRowId: "BT24", employeeId: "e1", cycleWeeks: [1], weekdays: [3, 4] }),
-      base({ boardRowId: "BT50", employeeId: "e1", cycleWeeks: [2] }),
+      base({ boardRowId: "BT13", employeeId: "e1", cycleLength: 2, cycleWeeks: [1], weekdays: [1, 2] }),
+      base({ boardRowId: "BT24", employeeId: "e1", cycleLength: 2, cycleWeeks: [1], weekdays: [3, 4] }),
+      base({ boardRowId: "BT50", employeeId: "e1", cycleLength: 2, cycleWeeks: [2] }),
     ];
     const veckan = (position: number) =>
       planWeek({
         workDays: work("e1", [MON, TUE, WED, THU]),
         baseSchedule: schema,
         existing: [],
-        cyclePosition: position,
+        isoWeek: position,
         dates: WEEK,
       }).create.map((c) => c.boardRowId);
 
@@ -426,7 +429,7 @@ describe("planWeek med rotation", () => {
       workDays: work("e1", [MON, TUE]),
       baseSchedule: [base({ boardRowId: "BT13", employeeId: "e1" })],
       existing: [],
-      cyclePosition: 3,
+      isoWeek: 3,
       dates: WEEK,
     });
 
@@ -444,5 +447,155 @@ describe("planWeek med rotation", () => {
 
     expect(plan.create.map((c) => c.date)).toEqual([TUE]);
     expect(plan.unplaced.map((u) => u.date)).toEqual([MON]);
+  });
+});
+
+/**
+ * Fallet som inte gick att skriva ned.
+ *
+ * En förare i fyraveckorscykel:
+ *
+ *   vecka 1: fyra nattpass
+ *   vecka 2: fyra nattpass
+ *   vecka 3: ett nattpass, två dagpass
+ *   vecka 4: tre dagpass
+ *
+ * Med skift i kopplingen behövdes en koppling per skift, och vecka 3
+ * krävde två kopplingar till *samma* bil som bara skilde sig på dag
+ * eller natt. Ingen av dem var fel, så valet mellan dem blev godtyckligt
+ * — och personen hamnade på båda skiften varje vecka.
+ *
+ * Nu säger kopplingen bara vilken bil. Vilket skift ett pass är vet
+ * TransPA av tiderna.
+ */
+describe("blandade skift i en rotation", () => {
+  const koppling = base({ boardRowId: "BT13", employeeId: "e1", cycleLength: 4 });
+
+  const kör = (isoWeek: number, workDays: WorkDay[]) =>
+    planWeek({
+      workDays,
+      baseSchedule: [koppling],
+      existing: [],
+      visibleShifts: ["day", "night"],
+      isoWeek,
+      dates: WEEK,
+    });
+
+  it("lägger nattveckorna på nattraden", () => {
+    for (const vecka of [1, 2]) {
+      const plan = kör(vecka, work("e1", [MON, TUE, WED, THU], "night"));
+      expect(plan.create).toHaveLength(4);
+      expect(plan.create.every((c) => c.shift === "night")).toBe(true);
+      expect(plan.create.every((c) => c.boardRowId === "BT13")).toBe(true);
+    }
+  });
+
+  /* Veckan som var omöjlig: samma bil, samma person, båda skiften. */
+  it("klarar en vecka med både natt och dag på samma bil", () => {
+    const plan = kör(3, [...work("e1", [MON], "night"), ...work("e1", [WED, THU], "day")]);
+
+    expect(plan.create.map((c) => [c.date, c.shift])).toEqual([
+      [MON, "night"],
+      [WED, "day"],
+      [THU, "day"],
+    ]);
+    expect(plan.unplaced).toEqual([]);
+    /* Och ingen gissning: det finns bara en koppling, den om bilen. */
+    expect(plan.ambiguous).toEqual([]);
+  });
+
+  it("lägger dagveckan på dagraden", () => {
+    const plan = kör(4, work("e1", [TUE, WED, THU], "day"));
+    expect(plan.create).toHaveLength(3);
+    expect(plan.create.every((c) => c.shift === "day")).toBe(true);
+  });
+
+  /* Ingen dubblering: en person med ett nattpass ska inte också dyka
+     upp på dagraden bara för att kopplingen inte längre nämner skift. */
+  it("lägger ut ett pass en gång, på sitt eget skift", () => {
+    const plan = kör(1, work("e1", [MON], "night"));
+    expect(plan.create).toEqual([
+      { boardRowId: "BT13", date: MON, shift: "night", slot: 0, employeeId: "e1" },
+    ]);
+  });
+});
+
+/**
+ * Cykeln per koppling, inte per tavla.
+ *
+ * Två personer på samma tavla kan gå i olika cykler, och samma person
+ * kan gå i olika cykler på olika bilar. Det var inte möjligt när
+ * längden satt på tavlan — och att det inte var möjligt syntes inte,
+ * eftersom fältet fanns och tog emot ett värde.
+ */
+describe("cykler sida vid sida", () => {
+  it("låter två personer på samma tavla ha olika cykellängd", () => {
+    const schema = [
+      // Varje vecka.
+      base({ boardRowId: "BT13", employeeId: "varje" }),
+      // Varannan vecka, de udda.
+      base({ boardRowId: "BT24", employeeId: "varannan", cycleLength: 2, cycleWeeks: [1] }),
+    ];
+    const kör = (isoWeek: number) =>
+      planWeek({
+        workDays: [...work("varje", [MON]), ...work("varannan", [MON])],
+        baseSchedule: schema,
+        existing: [],
+        isoWeek,
+        dates: WEEK,
+      });
+
+    /* Udda ISO-vecka: båda kör. Jämn: bara den som kör varje vecka,
+       och den andra räknas som ej utlagd i stället för att tyst
+       försvinna. */
+    expect(kör(1).create.map((c) => c.employeeId).sort()).toEqual(["varannan", "varje"]);
+    expect(kör(2).create.map((c) => c.employeeId)).toEqual(["varje"]);
+    expect(kör(2).unplaced.map((u) => u.employeeId)).toEqual(["varannan"]);
+  });
+
+  it("låter samma person ha olika cykler på olika bilar", () => {
+    const schema = [
+      // Varannan vecka på BT13.
+      base({ boardRowId: "BT13", employeeId: "e1", cycleLength: 2, cycleWeeks: [1] }),
+      // Var fjärde vecka på BT24, och bara vecka 4 i den cykeln.
+      base({ boardRowId: "BT24", employeeId: "e1", cycleLength: 4, cycleWeeks: [4] }),
+    ];
+    const bilen = (isoWeek: number) =>
+      planWeek({
+        workDays: work("e1", [MON]),
+        baseSchedule: schema,
+        existing: [],
+        isoWeek,
+        dates: WEEK,
+      }).create[0]?.boardRowId;
+
+    expect(bilen(1)).toBe("BT13"); // udda vecka
+    expect(bilen(3)).toBe("BT13"); // udda igen
+    expect(bilen(4)).toBe("BT24"); // jämn, och fjärde i sin cykel
+    expect(bilen(2)).toBeUndefined(); // jämn men inte fjärde: ingen bil
+  });
+
+  /* Förskjutningen finns för att numreringen ska gå att ställa mot den
+     planeraren redan använder. Värnamobladet börjar inte på 1. */
+  it("förskjuter cykeln", () => {
+    const utan = base({ boardRowId: "A", employeeId: "e1", cycleLength: 4, cycleWeeks: [1] });
+    const med = base({
+      boardRowId: "B",
+      employeeId: "e2",
+      cycleLength: 4,
+      cycleWeeks: [1],
+      cycleOffset: 2,
+    });
+    const kör = (isoWeek: number) =>
+      planWeek({
+        workDays: [...work("e1", [MON]), ...work("e2", [MON])],
+        baseSchedule: [utan, med],
+        existing: [],
+        isoWeek,
+        dates: WEEK,
+      }).create.map((c) => c.employeeId);
+
+    expect(kör(1)).toEqual(["e1"]); // utan förskjutning träffar vecka 1
+    expect(kör(3)).toEqual(["e2"]); // med förskjutning 2 träffar vecka 3
   });
 });

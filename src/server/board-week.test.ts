@@ -65,7 +65,6 @@ beforeAll(async () => {
     boardId: board.id,
     boardRowId: row.id,
     employeeId: elin.id,
-    shift: "day",
   });
   await db.insert(schema.assignment).values({
     boardRowId: row.id,

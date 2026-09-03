@@ -87,24 +87,39 @@ check("tisdag och torsdag följer tis/tors-regeln", veckan[1] === "BT24/26" && v
    — det är hela poängen med att dagarna kommer från TransPA. */
 check("onsdagen är tom eftersom han inte jobbar då", veckan[2] === "—");
 
-/* ---- 2. Olika bilar olika veckor ---- */
-await page.getByRole("button", { name: "⚙ Tavla" }).click();
-await page.waitForTimeout(700);
-await page.locator("select").filter({ hasText: "Ingen rotation" }).selectOption("2");
-await page.waitForTimeout(1500);
-check("cykelval sparades", (await page.locator("body").innerText()).includes("cykelvecka"));
-await page.getByRole("button", { name: "Klar" }).click();
-await page.waitForTimeout(800);
-
+/* ---- 2. Cykeln sitter på kopplingen, inte på tavlan ---- */
 await page.getByRole("button", { name: /Bas-schema/ }).click();
 await page.waitForTimeout(900);
 await rad("BT13/14").getByRole("button", { name: /mån, ons/ }).click();
 await page.waitForTimeout(500);
-const cykelrad = dialog().locator("div", { hasText: "Cykelvecka" }).last();
-check("cykelveckor går att välja när tavlan har rotation", (await cykelrad.count()) > 0);
-await page.getByRole("button", { name: "Avbryt" }).click();
-await page.waitForTimeout(400);
+
+/* Innan en frekvens är vald finns inga cykelveckor att peka ut — det
+   vore en regel utan cykel att räkna i. */
+check(
+  "ingen cykelvecka innan frekvensen är satt",
+  !(await dialog().innerText()).includes("Cykelvecka"),
+);
+
+await dialog().getByRole("button", { name: "var 2:e", exact: true }).click();
+await page.waitForTimeout(300);
+const rutan = await dialog().innerText();
+check("cykelveckor går att välja när kopplingen har en cykel", rutan.includes("Cykelvecka"));
+check("förskjutningen går att välja", rutan.includes("Förskjutning"));
+/* Ett cykelnummer är obekräftbart; veckonumren går att hålla mot det
+   schema planeraren redan har. */
+check("de träffade veckorna räknas ut och visas", /Gäller v\. \d+/.test(rutan));
+
+await dialog().getByRole("button", { name: "1", exact: true }).click();
+await page.waitForTimeout(300);
+await dialog().getByRole("button", { name: "Spara" }).click();
+await page.waitForTimeout(1500);
+
+const regeln = await rad("BT13/14").innerText();
+console.log("  regeln efter cykelval:", regeln.replace(/\n+/g, " "));
+check("regeln nämner cykeln", /vecka|v\./i.test(regeln));
+
 await page.getByRole("button", { name: "Klar" }).click();
+await page.waitForTimeout(600);
 
 await page.screenshot({ path: "/tmp/rotation.png" });
 await browser.close();
