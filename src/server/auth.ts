@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
 import { getDb, schema, readWithTimeout } from "@/db";
-import { verifyPassword } from "@/lib/password";
+import { dummyHash, verifyPassword } from "@/lib/password";
+import { decideSignIn } from "@/lib/sign-in-decision";
 
 import { SESSION_COOKIE } from "./auth-cookie";
 
@@ -133,19 +134,31 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     .from(schema.appUser)
     .where(eq(schema.appUser.email, email.trim().toLowerCase()));
 
-  if (user?.lockedUntil && user.lockedUntil > new Date()) {
-    const minutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+  /* Lösenordet räknas alltid, även när kontot inte finns.
+     scrypt är avsiktligt långsamt, så "finns inte" svarade på en
+     millisekund medan "fel lösenord" tog hundra — och den skillnaden
+     går att mäta utifrån. Då hjälper det inte att felmeddelandet är
+     detsamma: klockan säger vilka adresser som är riktiga konton. */
+  const passwordOk = await verifyPassword(password, user?.passwordHash ?? (await dummyHash()));
+
+  const beslut = decideSignIn({
+    finns: Boolean(user),
+    passwordOk,
+    lockedUntil: user?.lockedUntil ?? null,
+    isActive: user?.isActive ?? false,
+  });
+
+  if (beslut.kind === "locked") {
     return {
       ok: false,
-      error: `Kontot är tillfälligt spärrat efter flera felaktiga försök. Försök igen om ${minutes} min.`,
+      error: `Kontot är tillfälligt spärrat efter flera felaktiga försök. Försök igen om ${beslut.minutes} min.`,
     };
   }
+  if (beslut.kind === "inactive") {
+    return { ok: false, error: "Kontot är avstängt. Kontakta en administratör." };
+  }
 
-  // Samma svar oavsett om användaren finns eller lösenordet var fel, så
-  // inloggningen inte går att använda för att kartlägga vilka som finns.
-  const ok = user ? await verifyPassword(password, user.passwordHash) : false;
-
-  if (!ok || !user?.isActive) {
+  if (beslut.kind === "denied") {
     if (user) {
       const failed = user.failedLoginCount + 1;
       await db
@@ -163,7 +176,8 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   await db
     .update(schema.appUser)
     .set({ failedLoginCount: 0, lockedUntil: null })
-    .where(eq(schema.appUser.id, user.id));
-  await createSession(user.id);
+    .where(eq(schema.appUser.id, user!.id));
+  await createSession(user!.id);
   return { ok: true };
 }
+

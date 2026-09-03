@@ -43,3 +43,22 @@ export async function verifyPassword(password: string, stored: string | null): P
 
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
+
+/**
+ * En hash att räkna mot när kontot inte finns.
+ *
+ * scrypt är avsiktligt långsamt — det är hela poängen. Men det gör
+ * också att "kontot finns inte" svarar på en millisekund medan "fel
+ * lösenord" tar hundra, och den skillnaden går att mäta utifrån. Då
+ * spelar det ingen roll att felmeddelandet är detsamma: klockan säger
+ * vilka adresser som är riktiga konton.
+ *
+ * Inloggningen räknar därför alltid mot något. Hashen görs en gång av
+ * ett slumpat lösenord ingen känner till, så jämförelsen alltid
+ * misslyckas — det är tiden den ska kosta, inte svaret.
+ */
+let attrapp: Promise<string> | null = null;
+export function dummyHash(): Promise<string> {
+  attrapp ??= hashPassword(randomBytes(32).toString("base64url"));
+  return attrapp;
+}
