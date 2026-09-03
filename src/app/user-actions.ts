@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin, requireUser } from "@/server/auth";
+import { currentSessionHash, requireAdmin, requireUser } from "@/server/auth";
 import {
   createUser,
   otherActiveAdmins,
@@ -35,7 +35,10 @@ export async function changeUserPassword(userId: string, password: string): Prom
 
 export async function changeOwnPassword(password: string): Promise<UserResult> {
   const user = await requireUser();
-  const result = await setPassword(user.id, password);
+  /* Den egna sessionen skonas, alla andra rivs. Byter man lösenord för
+     att någon annan kan ha kommit över det hjälper det inte om den
+     sitter kvar på en giltig kaka i trettio dagar. */
+  const result = await setPassword(user.id, password, await currentSessionHash());
   revalidatePath("/konto");
   return result;
 }

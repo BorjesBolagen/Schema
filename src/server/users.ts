@@ -1,6 +1,6 @@
 import "server-only";
-import { asc, eq, ne } from "drizzle-orm";
-import { getDb, schema, readWithTimeout } from "@/db";
+import { and, asc, eq, ne } from "drizzle-orm";
+import { getDb, schema, readWithTimeout, type Db } from "@/db";
 import { hashPassword } from "@/lib/password";
 import { passwordProblem } from "@/lib/password-rules";
 
@@ -85,14 +85,42 @@ export async function setBoardAccess(userId: string, boardIds: string[]): Promis
   }
 }
 
-export async function setPassword(userId: string, password: string): Promise<UserResult> {
+export async function setPassword(
+  userId: string,
+  password: string,
+  /**
+   * Sessionen som ska överleva bytet, som hash.
+   *
+   * Utelämnad river alla — det är vad en administratör som byter någon
+   * annans lösenord vill: sker bytet för att kontot kan vara kapat
+   * hjälper det inte att lösenordet ändras om den som tagit sig in
+   * sitter kvar på en giltig kaka i trettio dagar.
+   *
+   * Byter man sitt eget skickas den egna sessionen med, annars kastas
+   * man ut i samma sekund man gjort rätt sak.
+   */
+  keepSessionHash?: string | null,
+  dbOverride?: Db,
+): Promise<UserResult> {
   const problem = passwordProblem(password);
   if (problem) return { ok: false, error: problem };
 
-  await getDb()
+  const db = dbOverride ?? getDb();
+  await db
     .update(schema.appUser)
     .set({ passwordHash: await hashPassword(password), failedLoginCount: 0, lockedUntil: null })
     .where(eq(schema.appUser.id, userId));
+
+  await db
+    .delete(schema.session)
+    .where(
+      keepSessionHash
+        ? and(
+            eq(schema.session.userId, userId),
+            ne(schema.session.tokenHash, keepSessionHash),
+          )
+        : eq(schema.session.userId, userId),
+    );
   return { ok: true };
 }
 

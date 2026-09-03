@@ -46,6 +46,18 @@ export async function createSession(userId: string): Promise<void> {
   });
 }
 
+/**
+ * Sessionshashen för den som är inloggad just nu, eller null.
+ *
+ * Finns för lösenordsbytet: alla *andra* sessioner ska rivas, men inte
+ * den man byter lösenord i — annars kastas man ut i samma sekund man
+ * gjort rätt sak.
+ */
+export async function currentSessionHash(): Promise<string | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? hashToken(token) : null;
+}
+
 export async function destroySession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
