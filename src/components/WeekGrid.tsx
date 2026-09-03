@@ -137,7 +137,7 @@ function RowHeader({ row, rowSpan }: { row: BoardWeek["rows"][number]; rowSpan: 
       rowSpan={rowSpan}
       className={`sticky left-0 z-10 border-b border-(--color-line) px-3 py-2 text-left font-medium whitespace-nowrap ${
         draggingPerson && isOver
-          ? "bg-(--color-accent) text-white"
+          ? "bg-(--color-primary) text-white"
           : draggingPerson
             ? "bg-amber-50"
             : "bg-white"

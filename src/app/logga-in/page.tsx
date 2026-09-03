@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, signIn } from "@/server/auth";
 import { needsSetup } from "@/server/setup";
 import { LoginForm, type LoginState } from "@/components/LoginForm";
+import { Lodjur } from "@/components/Lodjur";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,12 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="text-2xl font-semibold">Schema</h1>
+      {/* Märket här och inte i listen: den ritas bara för inloggade, och
+          inloggningssidan vore annars den enda sidan utan avsändare. */}
+      <div className="flex items-center gap-3">
+        <Lodjur className="h-10" />
+        <h1 className="text-2xl font-semibold">Schema</h1>
+      </div>
       <p className="mt-1 text-sm text-(--color-muted)">Logga in för att komma åt tavlorna.</p>
       <LoginForm action={attempt} />
     </main>

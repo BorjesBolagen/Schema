@@ -59,7 +59,7 @@ export function OwnPasswordForm() {
       <button
         type="submit"
         disabled={pending || !password || !!problem}
-        className="self-start rounded bg-(--color-accent) px-4 py-2 text-sm text-white disabled:opacity-50"
+        className="self-start rounded bg-(--color-primary) px-4 py-2 text-sm text-white disabled:opacity-50"
       >
         {pending ? "Byter…" : "Byt lösenord"}
       </button>

@@ -19,5 +19,20 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!logga-in|kom-igang|_next/static|_next/image|favicon.ico).*)"],
+  /*
+    Bilder och ikoner undantas.
+
+    Utan det skickades /lodjur.svg till inloggningen — och just
+    inloggningssidan är den enda där ingen är inloggad, så märket blev
+    en trasig bild på precis den sida som skulle bära det. Filändelserna
+    räknas upp i stället för "allt med en punkt i", så undantaget inte
+    växer av sig självt.
+
+    Att lägga ut dem öppet är ofarligt: det är en logotyp. Och den
+    verkliga gränsen ligger ändå inte här utan i requireUser() på varje
+    sida och server-action — mellanvaran är en genväg.
+  */
+  matcher: [
+    "/((?!logga-in|kom-igang|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|ico|webmanifest)$).*)",
+  ],
 };

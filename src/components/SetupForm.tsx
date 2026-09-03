@@ -75,7 +75,7 @@ export function SetupForm({
       <button
         type="submit"
         disabled={pending || !!local}
-        className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
         {pending ? "Skapar…" : "Skapa konto och logga in"}
       </button>

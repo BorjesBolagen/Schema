@@ -2,10 +2,30 @@
 
 @theme {
   --color-surface: #ffffff;
-  --color-ink: #16181d;
+
+  /* Börjes två märkeskulörer, hämtade ur loggan själv — lodjurets
+     konturer och dess ögon. Inga gissningar: värdena är utlästa ur
+     CMYKlodjur.pdf.
+
+     Gulen är en signalfärg och duger inte till text eller knappytor:
+     mot vitt ger den knappt 1,5:1, alltså oläsbart. Den används där
+     den ska synas som en färg och inte läsas som ett ord — märkeslisten
+     överst, lodjurets ögon. Svart text på gult är däremot utmärkt
+     (11:1), så den vägen är öppen om något ska markeras. */
+  --color-brand: #fcd006;
+  --color-brand-ink: #231f20;
+
+  --color-ink: #231f20;
   --color-muted: #6b7280;
   --color-line: #e3e6ea;
+  /* Blått för länkar. Det är en konvention värd att behålla — en länk
+     som inte ser ut som en länk kostar mer än den ger märket. */
   --color-accent: #1f5fa9;
+
+  /* Fyllda ytor: primärknappar och det valda läget i en väljare.
+     Märkessvart i stället för blått, så det som är starkast på sidan
+     hör ihop med loggan. Vit text på den ger 15:1. */
+  --color-primary: #231f20;
   --color-warn: #b45309;
   --color-danger: #b42318;
 

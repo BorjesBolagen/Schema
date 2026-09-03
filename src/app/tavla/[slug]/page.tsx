@@ -158,13 +158,13 @@ export default async function BoardPage({ params, searchParams }: Props) {
           <div className="flex overflow-hidden rounded border border-(--color-line) bg-white text-sm">
             <Link
               href={href({ year, week, view: "resource" })}
-              className={`px-3 py-1 ${view === "resource" ? "bg-(--color-accent) text-white" : "hover:bg-gray-50"}`}
+              className={`px-3 py-1 ${view === "resource" ? "bg-(--color-primary) text-white" : "hover:bg-gray-50"}`}
             >
               Bilar
             </Link>
             <Link
               href={href({ year, week, view: "person" })}
-              className={`px-3 py-1 ${view === "person" ? "bg-(--color-accent) text-white" : "hover:bg-gray-50"}`}
+              className={`px-3 py-1 ${view === "person" ? "bg-(--color-primary) text-white" : "hover:bg-gray-50"}`}
             >
               Personer
             </Link>

@@ -94,7 +94,7 @@ function RuleEditor({
       onClick={onClick}
       className={`rounded border px-2 py-1 text-xs ${
         on
-          ? "border-(--color-accent) bg-(--color-accent) text-white"
+          ? "border-(--color-accent) bg-(--color-primary) text-white"
           : "border-(--color-line) bg-white text-(--color-muted) hover:border-(--color-accent)"
       }`}
     >
@@ -186,7 +186,7 @@ function RuleEditor({
           type="button"
           disabled={pending}
           onClick={() => onSave({ cycleWeeks, weekdays, cycleLength, cycleOffset })}
-          className="rounded bg-(--color-accent) px-3 py-1 text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-3 py-1 text-white disabled:opacity-50"
         >
           {pending ? "Sparar …" : "Spara"}
         </button>
@@ -433,7 +433,7 @@ export function BaseScheduleEditor({
                 }),
               )
             }
-            className="rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white disabled:opacity-40"
+            className="rounded bg-(--color-primary) px-3 py-1.5 text-sm text-white disabled:opacity-40"
           >
             Koppla
           </button>

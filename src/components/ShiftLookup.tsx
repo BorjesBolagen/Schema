@@ -87,7 +87,7 @@ export function ShiftLookup({
           type="button"
           onClick={look}
           disabled={pending}
-          className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {pending ? "Hämtar …" : "Hämta passen"}
         </button>

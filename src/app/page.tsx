@@ -92,7 +92,7 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Schema</h1>
+        <h1 className="text-2xl font-semibold">Tavlor</h1>
         {user.role === "admin" && (
           <nav className="flex gap-4 text-sm">
             <Link href="/grunddata" className="text-(--color-accent) hover:underline">

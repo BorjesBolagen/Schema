@@ -74,7 +74,7 @@ export function AssignmentEditor({
                   onClose();
                 })
               }
-              className="rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              className="rounded bg-(--color-primary) px-3 py-1.5 text-sm text-white disabled:opacity-50"
             >
               Spara
             </button>

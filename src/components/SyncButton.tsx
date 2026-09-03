@@ -14,7 +14,7 @@ export function SyncButton({ disabled }: { disabled: boolean }) {
         type="button"
         disabled={disabled || pending}
         onClick={() => startTransition(async () => setResult(await runTranspaSync()))}
-        className="rounded bg-(--color-accent) px-4 py-1.5 text-sm text-white disabled:opacity-40"
+        className="rounded bg-(--color-primary) px-4 py-1.5 text-sm text-white disabled:opacity-40"
       >
         {pending ? "Synkar…" : "Synka nu"}
       </button>

@@ -242,7 +242,7 @@ export function VacationYear({ data }: { data: YearData }) {
           </li>
         ))}
         <li className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded-sm bg-(--color-accent) opacity-35" />
+          <span className="inline-block h-3 w-3 rounded-sm bg-(--color-primary) opacity-35" />
           Önskemål
         </li>
       </ul>

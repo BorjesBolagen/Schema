@@ -72,7 +72,7 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
       <button
         type="button"
         onClick={reset}
-        className="mt-6 rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white"
+        className="mt-6 rounded bg-(--color-primary) px-3 py-1.5 text-sm text-white"
       >
         Försök igen
       </button>

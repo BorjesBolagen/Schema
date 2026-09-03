@@ -344,7 +344,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
               );
             })
           }
-          className="rounded bg-(--color-accent) px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-3 py-1.5 text-sm text-white disabled:opacity-50"
         >
           3 · Fyll veckan
         </button>
@@ -411,7 +411,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
 
       <DragOverlay>
         {dragging && (
-          <span className="rounded bg-(--color-accent) px-2 py-1 text-sm text-white shadow-lg">
+          <span className="rounded bg-(--color-primary) px-2 py-1 text-sm text-white shadow-lg">
             {draggedLabel}
           </span>
         )}

@@ -330,7 +330,7 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete 
                     onClick={() => set({ visibleWeekdays: toggle(board.visibleWeekdays, d.value) })}
                     className={`h-7 w-7 rounded border text-xs ${
                       on
-                        ? "border-(--color-accent) bg-(--color-accent) text-white"
+                        ? "border-(--color-accent) bg-(--color-primary) text-white"
                         : "border-(--color-line) text-(--color-ink)"
                     }`}
                   >
@@ -354,7 +354,7 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete 
                     onClick={() => set({ visibleShifts: toggle(board.visibleShifts, s) })}
                     className={`rounded border px-3 py-1 text-xs ${
                       on
-                        ? "border-(--color-accent) bg-(--color-accent) text-white"
+                        ? "border-(--color-accent) bg-(--color-primary) text-white"
                         : "border-(--color-line) text-(--color-ink)"
                     }`}
                   >
@@ -378,7 +378,7 @@ export function BoardEditor({ board, rows, groups, vehicles, onClose, canDelete 
                     onClick={() => set({ cellFields: toggle(board.cellFields, f.value) })}
                     className={`rounded border px-3 py-1 text-xs ${
                       on
-                        ? "border-(--color-accent) bg-(--color-accent) text-white"
+                        ? "border-(--color-accent) bg-(--color-primary) text-white"
                         : "border-(--color-line) text-(--color-ink)"
                     }`}
                   >

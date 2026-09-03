@@ -99,7 +99,7 @@ export function NewBoardForm({ templates, startOpen = false }: Props) {
         <button
           onClick={submit}
           disabled={pending || !name.trim()}
-          className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {pending ? "Skapar…" : "Skapa tavla"}
         </button>

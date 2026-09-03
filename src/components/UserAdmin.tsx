@@ -81,7 +81,7 @@ export function UserAdmin({ users, boards, currentUserId }: Props) {
                           }
                           className={`rounded border px-2 py-0.5 text-xs ${
                             on
-                              ? "border-(--color-accent) bg-(--color-accent) text-white"
+                              ? "border-(--color-accent) bg-(--color-primary) text-white"
                               : "border-(--color-line)"
                           }`}
                         >
@@ -149,7 +149,7 @@ export function UserAdmin({ users, boards, currentUserId }: Props) {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="rounded bg-(--color-accent) px-4 py-1.5 text-sm text-white"
+            className="rounded bg-(--color-primary) px-4 py-1.5 text-sm text-white"
           >
             Lägg till användare
           </button>
@@ -176,7 +176,7 @@ function PasswordBox({ onSave, onCancel }: { onSave: (pw: string) => void; onCan
         type="button"
         disabled={!pw || !!problem}
         onClick={() => onSave(pw)}
-        className="rounded bg-(--color-accent) px-2 py-1 text-white disabled:opacity-40"
+        className="rounded bg-(--color-primary) px-2 py-1 text-white disabled:opacity-40"
       >
         Spara
       </button>
@@ -279,7 +279,7 @@ function NewUserForm({
                     setBoardIds(on ? boardIds.filter((id) => id !== b.id) : [...boardIds, b.id])
                   }
                   className={`rounded border px-2 py-0.5 ${
-                    on ? "border-(--color-accent) bg-(--color-accent) text-white" : "border-(--color-line)"
+                    on ? "border-(--color-accent) bg-(--color-primary) text-white" : "border-(--color-line)"
                   }`}
                 >
                   {b.name}
@@ -296,7 +296,7 @@ function NewUserForm({
         <button
           type="submit"
           disabled={!!problem || !password}
-          className="rounded bg-(--color-accent) px-4 py-1.5 text-sm text-white disabled:opacity-40"
+          className="rounded bg-(--color-primary) px-4 py-1.5 text-sm text-white disabled:opacity-40"
         >
           Skapa
         </button>

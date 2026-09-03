@@ -205,7 +205,7 @@ function EmployeeTab({
         <button
           onClick={add}
           disabled={pending || !firstName.trim() || !lastName.trim()}
-          className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           Lägg till
         </button>
@@ -270,7 +270,7 @@ function EmployeeTab({
           <button
             onClick={applyStation}
             disabled={pending}
-            className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             Sätt på {picked.size}
           </button>
@@ -439,7 +439,7 @@ function VehicleTab({
         <button
           onClick={add}
           disabled={pending || !displayName.trim()}
-          className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           Lägg till
         </button>
@@ -544,7 +544,7 @@ function StationTab({
         <button
           onClick={() => run(() => createStation(name), () => setName(""))}
           disabled={pending || !name.trim()}
-          className="rounded bg-(--color-accent) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded bg-(--color-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           Lägg till
         </button>
