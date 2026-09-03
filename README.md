@@ -211,6 +211,8 @@ npm test                                   # enhetstester
 npx tsx scripts/e2e-fill.ts                # fyll veckan i en riktig webbläsare
 npx tsx scripts/e2e-drag.ts                # dra ut och flytta pass
 npx tsx scripts/e2e-editor.ts              # bygg om tavlan, mönster, bas-schema
+# Kräver en databas utan tavlor — annars står inte formuläret öppet:
+#   rm -rf .pgdata && npx tsx scripts/seed-tom.ts
 npx tsx scripts/e2e-tomstart.ts            # tom databas → bemannad vecka
 npx tsx scripts/e2e-radera.ts              # ta bort en tavla, se att rätt saker överlever
 npx tsx scripts/screenshot.ts <url> <fil>  # bild av en vy

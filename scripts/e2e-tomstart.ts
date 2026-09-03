@@ -38,7 +38,19 @@ await signIn(page, base);
 check("loggar in", !page.url().includes("logga-in"));
 
 const start = (await page.textContent("body")) ?? "";
-check("tom databas erbjuder att skapa tavla", start.includes("Inga tavlor ännu"));
+
+/* Skriptet provar en *ny* installation, och det kräver en databas utan
+   tavlor. Körs det mot demo-seedens data står formuläret inte öppet, och
+   felet blev då en trettio sekunders timeout på en fältväljare — som
+   säger att fältet saknas, inte att förutsättningen är fel. Säg det i
+   stället, direkt. */
+if (!start.includes("Inga tavlor ännu")) {
+  console.log("✗ kräver en databas utan tavlor.");
+  console.log("  Kör:  rm -rf .pgdata && npx tsx scripts/seed-tom.ts");
+  await browser.close();
+  process.exit(1);
+}
+check("tom databas erbjuder att skapa tavla", true);
 check("formuläret är öppet direkt", await page.isVisible('button:text("Skapa tavla")'));
 
 await page.fill('input[placeholder="Fjärr Nybro/Hultsfred"]', "Fjärr Nybro");

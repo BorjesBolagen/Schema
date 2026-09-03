@@ -155,6 +155,8 @@ const baseEntries = await db
   ])
   .returning();
 
+const today = isoWeek(toIso(new Date()));
+
 /* Frånvaro spridd över året, så semestervyn har något att visa och
    bemanningsraden dippar under sommaren precis som i verkligheten. */
 const week = (w: number, len = 1) => ({
@@ -176,11 +178,23 @@ const absenceRows = await db
     { employeeId: byName.Roger.id, ...week(9), type: "vab", status: "approved" },
     // Den vecka som testas i veckovyn.
     { employeeId: byName.Johan.id, fromDate: "2026-08-20", toDate: "2026-08-21", type: "semester", status: "approved" },
+    /* En frånvaro i den vecka demot öppnar på, så förstasidans
+       frånvarosiffra och tavlans varningar har något att visa. Roger kör
+       bara onsdagar, så veckan blir inte urholkad av det. */
+    { employeeId: byName.Roger.id, ...week(today.week), type: "vab", status: "approved" },
   ])
   .returning();
 
+/* Ett synkkvitto, så förstasidan kan visa när grunddata senast hämtades.
+   Utan raden går den grenen aldrig att se i demot. */
+await db.insert(schema.syncRun).values({
+  resource: "employees",
+  status: "ok",
+  itemCount: 12,
+  finishedAt: new Date(Date.now() - 26 * 3600 * 1000),
+});
+
 /* Fyll veckorna runt idag, så appen visar ett bemannat schema direkt. */
-const today = isoWeek(toIso(new Date()));
 let filled = 0;
 /**
  * Pass, som om de kommit från TransPA.
