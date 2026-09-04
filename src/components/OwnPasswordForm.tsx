@@ -5,6 +5,10 @@ import { passwordProblem } from "@/lib/password-rules";
 import { changeOwnPassword } from "@/app/user-actions";
 
 export function OwnPasswordForm() {
+  /* Det nuvarande lösenordet krävs. Utan det räcker en stulen session
+     för att ta över kontot: sätt ett eget, behåll sin egen kaka, kasta
+     ut ägaren — sessionerna rivs ju vid byte. */
+  const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -16,16 +20,31 @@ export function OwnPasswordForm() {
       onSubmit={(e) => {
         e.preventDefault();
         startTransition(async () => {
-          const result = await changeOwnPassword(password);
+          const result = await changeOwnPassword(current, password);
           setMessage(
             result.ok
               ? { ok: true, text: "Lösenordet är bytt." }
               : { ok: false, text: result.error },
           );
-          if (result.ok) setPassword("");
+          if (result.ok) {
+            setCurrent("");
+            setPassword("");
+          }
         });
       }}
     >
+      <label className="text-xs text-(--color-muted)">
+        Nuvarande lösenord
+        <input
+          type="password"
+          autoComplete="current-password"
+          required
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+          className="mt-1 w-full rounded border border-(--color-line) bg-white px-3 py-2 text-sm text-(--color-ink)"
+        />
+      </label>
+
       <label className="text-xs text-(--color-muted)">
         Nytt lösenord
         <input
@@ -58,7 +77,7 @@ export function OwnPasswordForm() {
 
       <button
         type="submit"
-        disabled={pending || !password || !!problem}
+        disabled={pending || !current || !password || !!problem}
         className="self-start rounded bg-(--color-primary) px-4 py-2 text-sm text-white disabled:opacity-50"
       >
         {pending ? "Byter…" : "Byt lösenord"}

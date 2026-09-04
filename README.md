@@ -40,7 +40,7 @@ npm run demo
 ```
 
 Öppna sedan <http://localhost:3000> och logga in med uppgifterna som
-skrivs ut av seed-skriptet (`admin@example.se` / `schema1234` om inget
+skrivs ut av seed-skriptet (`admin@example.se` / `schema-demo-2026` om inget
 annat anges). `npm run demo` lägger upp ett
 demounderlag och startar appen med några veckor redan bemannade, så det
 går att klicka runt direkt. Underlaget är påhittat — skarp personal och

@@ -32,7 +32,7 @@ if ((finns[0]?.n ?? 0) > 0) {
 }
 
 const email = process.env.SEED_ADMIN_EMAIL ?? "admin@example.se";
-const password = process.env.SEED_ADMIN_PASSWORD ?? "schema1234";
+const password = process.env.SEED_ADMIN_PASSWORD ?? "schema-demo-2026";
 await db
   .insert(schema.appUser)
   .values({

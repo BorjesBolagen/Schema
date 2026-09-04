@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { currentSessionHash, requireAdmin, requireUser } from "@/server/auth";
 import {
+  changeOwnPassword as bytEgetLösenord,
   createUser,
   otherActiveAdmins,
   setActive,
@@ -33,12 +34,25 @@ export async function changeUserPassword(userId: string, password: string): Prom
   return result;
 }
 
-export async function changeOwnPassword(password: string): Promise<UserResult> {
+/**
+ * Byter sitt eget lösenord.
+ *
+ * Det nuvarande krävs — se changeOwnPassword i users.ts. Den egna
+ * sessionen skonas, alla andra rivs: byter man lösenord för att någon
+ * annan kan ha kommit över det hjälper det inte om den sitter kvar på
+ * en giltig kaka i trettio dagar.
+ */
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<UserResult> {
   const user = await requireUser();
-  /* Den egna sessionen skonas, alla andra rivs. Byter man lösenord för
-     att någon annan kan ha kommit över det hjälper det inte om den
-     sitter kvar på en giltig kaka i trettio dagar. */
-  const result = await setPassword(user.id, password, await currentSessionHash());
+  const result = await bytEgetLösenord(
+    user.id,
+    currentPassword,
+    newPassword,
+    await currentSessionHash(),
+  );
   revalidatePath("/konto");
   return result;
 }

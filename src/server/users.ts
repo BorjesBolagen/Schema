@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { getDb, schema, readWithTimeout, type Db } from "@/db";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
 import { passwordProblem } from "@/lib/password-rules";
 
 export interface ManagedUser {
@@ -122,6 +122,45 @@ export async function setPassword(
         : eq(schema.session.userId, userId),
     );
   return { ok: true };
+}
+
+/**
+ * Byter sitt eget lösenord, mot uppvisande av det nuvarande.
+ *
+ * Bytet krävde tidigare bara en giltig session. Det gick an så länge
+ * ett byte bara var ett byte — men sedan sessionerna rivs vid byte är
+ * det något mer: den som kommit över en kaka kan sätta ett eget
+ * lösenord, behålla sin egen session och kasta ut den rätta ägaren.
+ * Kakan blev alltså en väg till kontot, inte bara till innehållet, och
+ * det var min egen förra rättning som gjorde den vägen värd att gå.
+ *
+ * Det nuvarande lösenordet stänger den: en stulen session räcker inte
+ * längre för att ta över kontot.
+ *
+ * Ingen spärräknare här. Den som frågar är redan inloggad, så det finns
+ * inget konto att räkna upp — och en räknare vore i stället en väg att
+ * låsa ute någon vars dator man lånat en stund.
+ */
+export async function changeOwnPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  keepSessionHash?: string | null,
+  dbOverride?: Db,
+): Promise<UserResult> {
+  const db = dbOverride ?? getDb();
+  const [user] = await db.select().from(schema.appUser).where(eq(schema.appUser.id, userId));
+  if (!user) return { ok: false, error: "Kontot finns inte." };
+
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    return { ok: false, error: "Nuvarande lösenord stämmer inte." };
+  }
+  /* Prövas efter det nuvarande lösenordet, inte före: annars säger
+     formuläret "för kort" till den som inte visat att kontot är hens. */
+  const problem = passwordProblem(newPassword);
+  if (problem) return { ok: false, error: problem };
+
+  return setPassword(userId, newPassword, keepSessionHash, db);
 }
 
 /**
