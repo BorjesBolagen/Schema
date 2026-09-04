@@ -21,6 +21,16 @@ interface Props {
   searchParams: Promise<{ ar?: string; vecka?: string; vy?: string }>;
 }
 
+/**
+ * De sällan använda uttagen: samma konturform, ingen fyllning.
+ *
+ * De låg förut som tre olika sorters länkar — en blå, två grå — trots
+ * att de gör samma sorts sak. Formen säger nu att de hör ihop, och att
+ * ingen av dem är veckans huvudsak.
+ */
+const SEKUNDÄR =
+  "flex h-[38px] items-center rounded-[9px] border border-(--color-field-line) bg-white px-3.5 font-semibold text-(--color-label) transition hover:border-(--color-dim)";
+
 /** Föregående och nästa vecka, med årsskiftet hanterat. */
 function step(year: number, week: number, delta: number): { year: number; week: number } {
   let y = year;
@@ -123,75 +133,87 @@ export default async function BoardPage({ params, searchParams }: Props) {
         </Link>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-3">
-          <h1 className="text-xl font-semibold">{data.board.name}</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.015em]">{data.board.name}</h1>
 
-          {/* Veckan. Det man rör oftast, närmast namnet. */}
-          <div className="flex items-center gap-1">
-            <Link
-              href={href(prev)}
-              aria-label="Föregående vecka"
-              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
-            >
-              ◀
-            </Link>
-            <span className="px-2 text-sm font-medium whitespace-nowrap">
-              Vecka {week} <span className="text-(--color-muted)">· {dateRangeLabel(data.dates)}</span>
-            </span>
-            <Link
-              href={href(next)}
-              aria-label="Nästa vecka"
-              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
-            >
-              ▶
-            </Link>
+          {/* Veckan. Det man rör oftast, närmast namnet.
+              Pilarna och veckan satt förut som tre lösa ytor bredvid
+              varandra; nu är de ett reglage, så det syns att de hör ihop
+              och att det är en axel man rör sig längs. */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5 rounded-[10px] border border-(--color-line) bg-(--color-chip) p-[3px]">
+              <Link
+                href={href(prev)}
+                aria-label="Föregående vecka"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-xs text-(--color-label) transition hover:bg-white"
+              >
+                ◀
+              </Link>
+              <span className="px-3 text-sm font-semibold whitespace-nowrap tabular-nums">
+                Vecka {week}{" "}
+                <span className="font-normal text-(--color-muted)">
+                  · {dateRangeLabel(data.dates)}
+                </span>
+              </span>
+              <Link
+                href={href(next)}
+                aria-label="Nästa vecka"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-xs text-(--color-label) transition hover:bg-white"
+              >
+                ▶
+              </Link>
+            </div>
             {/* Vägen tillbaka. Fem steg framåt hade ingen återresa utom
                 fem klick bakåt — och visas den alltid säger den
                 ingenting, för då är man oftast redan där. */}
             {!ärDennaVecka && (
               <Link
                 href={href({ ...nu, view })}
-                className="ml-2 text-xs text-(--color-accent) hover:underline"
+                className="text-xs text-(--color-accent) hover:underline"
               >
                 Denna vecka
               </Link>
             )}
           </div>
 
-          <div className="flex overflow-hidden rounded border border-(--color-line) bg-white text-sm">
-            <Link
-              href={href({ year, week, view: "resource" })}
-              className={`px-3 py-1 ${view === "resource" ? "bg-(--color-primary) text-white" : "hover:bg-gray-50"}`}
-            >
-              Bilar
-            </Link>
-            <Link
-              href={href({ year, week, view: "person" })}
-              className={`px-3 py-1 ${view === "person" ? "bg-(--color-primary) text-white" : "hover:bg-gray-50"}`}
-            >
-              Personer
-            </Link>
+          <div className="flex rounded-[10px] border border-(--color-line) bg-(--color-chip) p-[3px] text-sm">
+            {(
+              [
+                ["resource", "Bilar"],
+                ["person", "Personer"],
+              ] as const
+            ).map(([v, etikett]) => (
+              <Link
+                key={v}
+                href={href({ year, week, view: v })}
+                aria-current={view === v ? "page" : undefined}
+                className={`rounded-[7px] px-4 py-1.5 font-semibold transition ${
+                  view === v
+                    ? "bg-(--color-primary) text-white"
+                    : "text-(--color-label) hover:bg-white"
+                }`}
+              >
+                {etikett}
+              </Link>
+            ))}
           </div>
 
           {/* Det som görs sällan: en annan vy och två uttag. Tyst, och
               skilt från reglagen med ett streck i stället för att stå
               som ännu tre likadana knappar. */}
-          <div className="ml-auto flex items-center gap-4 border-l border-(--color-line) pl-4 text-sm">
+          <div className="ml-auto flex items-center gap-2.5 text-sm">
             <Link
               href={`/tavla/${slug}/semester?ar=${year}`}
-              className="text-(--color-accent) hover:underline"
+              className={SEKUNDÄR}
             >
               Semester
             </Link>
             <a
               href={`/tavla/${slug}/export?ar=${year}&vecka=${week}&vy=${view}`}
-              className="text-(--color-muted) hover:text-(--color-ink) hover:underline"
+              className={SEKUNDÄR}
             >
               Excel
             </a>
-            <PrintButton
-              label="Skriv ut"
-              className="cursor-pointer text-(--color-muted) hover:text-(--color-ink) hover:underline"
-            />
+            <PrintButton label="Skriv ut" className={`cursor-pointer ${SEKUNDÄR}`} />
           </div>
         </div>
       </header>
@@ -202,7 +224,7 @@ export default async function BoardPage({ params, searchParams }: Props) {
           inte är ett problem alls utan hur långt veckan kommit. Räknat
           med bland varningarna såg en halvfylld vecka ut som en trasig. */}
       {problem.length > 0 && (
-        <div className="mt-4 flex w-fit max-w-full items-start gap-2 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-(--color-warn)">
+        <div className="mt-4 flex w-fit max-w-full items-start gap-2 rounded-xl border border-(--color-brand-line) bg-(--color-brand-soft) px-4 py-2.5 text-sm text-(--color-warn)">
           <span aria-hidden className="select-none leading-5">
             ⚠
           </span>
@@ -218,8 +240,9 @@ export default async function BoardPage({ params, searchParams }: Props) {
           utan varningsfärg — den som ser den ska läsa den som en
           mätare, inte som något att åtgärda. */}
       {unmanned > 0 && (
-        <p className="mt-2 text-xs text-(--color-muted)">
-          {antal(unmanned, "tomt pass", "tomma pass")} kvar den här veckan.
+        <p className="mt-3 flex w-fit items-center gap-2 rounded-full border border-(--color-brand-line) bg-(--color-brand-wash) px-3 py-1.5 text-[13px] font-semibold text-(--color-brand-deep) no-print">
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-(--color-brand-amber)" />
+          {antal(unmanned, "tomt pass", "tomma pass")} kvar den här veckan
         </p>
       )}
 

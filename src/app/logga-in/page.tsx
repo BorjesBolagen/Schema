@@ -97,13 +97,13 @@ export default async function LoginPage({
             <h1 className="font-(family-name:--font-space-grotesk) text-2xl font-semibold tracking-[-0.01em] text-(--color-ink)">
               Logga in på Schema
             </h1>
-            <p className="text-sm text-(--color-login-sub)">Tavlor för schema och semester</p>
+            <p className="text-sm text-(--color-muted)">Tavlor för schema och semester</p>
           </div>
         </div>
 
         <LoginForm action={attempt} />
 
-        <div className="mt-[22px] flex items-center justify-between border-t border-(--color-login-rule) pt-4 text-xs text-(--color-login-foot)">
+        <div className="mt-[22px] flex items-center justify-between border-t border-(--color-line-soft) pt-4 text-xs text-(--color-muted)">
           <span>Börjes Koncernen</span>
           <span className="flex items-center gap-1.5">
             <span

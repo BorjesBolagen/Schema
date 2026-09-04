@@ -14,9 +14,9 @@ export interface LoginState {
    box-shadow så den inte flyttar något, och ramen mörknar samtidigt —
    gult ensamt syns för dåligt mot vitt för att duga som enda markör. */
 const FIELD =
-  "h-[50px] w-full rounded-[11px] border-[1.5px] border-(--color-login-field-line) bg-(--color-login-field) px-3.5 text-[15px] text-(--color-ink) outline-none transition placeholder:text-(--color-login-foot) focus:border-(--color-primary) focus:bg-white focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-brand)_45%,transparent)]";
+  "h-[50px] w-full rounded-[11px] border-[1.5px] border-(--color-field-line) bg-(--color-field) px-3.5 text-[15px] text-(--color-ink) outline-none transition placeholder:text-(--color-muted) focus:border-(--color-primary) focus:bg-white focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-brand)_45%,transparent)]";
 
-const LABEL = "text-[12.5px] font-semibold text-(--color-login-label)";
+const LABEL = "text-[12.5px] font-semibold text-(--color-label)";
 
 export function LoginForm({
   action,
@@ -86,14 +86,14 @@ export function LoginForm({
             type="button"
             onClick={() => setVisible((v) => !v)}
             aria-pressed={visible}
-            className="absolute top-2 right-2 h-[34px] cursor-pointer rounded-lg bg-(--color-login-chip) px-3 text-[12.5px] font-semibold text-(--color-login-label) transition hover:bg-(--color-login-chip-hover)"
+            className="absolute top-2 right-2 h-[34px] cursor-pointer rounded-lg bg-(--color-chip) px-3 text-[12.5px] font-semibold text-(--color-label) transition hover:bg-(--color-chip-hover)"
           >
             {visible ? "Dölj" : "Visa"}
           </button>
         </div>
       </div>
 
-      <label className="flex cursor-pointer items-center gap-[9px] text-[13.5px] text-(--color-login-label)">
+      <label className="flex cursor-pointer items-center gap-[9px] text-[13.5px] text-(--color-label)">
         <input
           type="checkbox"
           name="remember"

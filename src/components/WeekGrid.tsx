@@ -8,9 +8,8 @@ import { shortDayLabel } from "@/lib/week";
 import { DIRECTION_ARROW, DIRECTION_LABEL } from "@/lib/transpa/direction";
 import { showsDirection } from "@/lib/vehicle-kind";
 import type { VehicleKind } from "@/lib/vehicle-kind";
-import { personColor } from "@/lib/person-color";
 import { ConflictMark } from "./ConflictBadge";
-import { SHIFT_COLOR, SHIFT_LABEL } from "./shift";
+import { SHIFT_COLOR, SHIFT_INITIAL, SHIFT_INK, SHIFT_LABEL } from "./shift";
 import { dragId } from "./dnd";
 
 export interface DropCheck {
@@ -22,38 +21,23 @@ export interface DropCheck {
  *
  * Visas bara på linjebilar, för det är bara där två personer kör samma
  * rad samma natt åt var sitt håll. På en bytesbil vore pilen brus.
- *
- * Saknas riktningen står ett tomt streck i stället för ingenting: en
- * benämning som inte sade något ska synas som en lucka att fylla, inte
- * försvinna tyst.
+ * Anropas bara när riktningen faktiskt är känd — se PassMark.
  */
-function DirectionMark({ cell }: { cell: CellAssignment }) {
+function DirectionMark({ cell }: { cell: CellAssignment & { direction: NonNullable<CellAssignment["direction"]> } }) {
   if (!cell.employeeName) return null;
 
-  /* Okänd riktning tar samma plats men ritar ingenting.
-     Platsen behövs för att namnen ska stå i linje — ett hopp i
-     vänsterkanten läses som struktur och drar ögat till fel sak. Men en
-     synlig markering behövs inte: dagpassen på en linjebil saknar
-     nästan alltid riktning, och fem frågetecken i rad tar bara
-     uppmärksamhet från de pilar som faktiskt säger något. */
-  if (!cell.direction) {
-    return (
-      <span
-        className="inline-block h-4 w-4 shrink-0"
-        title="Riktningen står inte i passets benämning i TransPA"
-      />
-    );
-  }
-
   /* Två saker skiljer upp från ner, inte en: både formen på triangeln
-     och färgen. Färgen ensam faller bort i svartvit utskrift och för
-     den som inte skiljer rött från grönt; formen ensam är för lik på
-     avstånd i ett tätt rutnät. */
+     och om brickan är fylld eller ljus. Färgen ensam faller bort i
+     svartvit utskrift; formen ensam är för lik på avstånd i ett tätt
+     rutnät. Båda tonerna hör till nattskiftet, så en nattcell läses som
+     natt även innan man hunnit se åt vilket håll resan går. */
   const upp = cell.direction === "upp";
   return (
     <span
-      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] leading-none font-bold text-white ${
-        upp ? "bg-(--color-dir-up)" : "bg-(--color-dir-down)"
+      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] text-[8px] leading-none font-bold ${
+        upp
+          ? "bg-(--color-shift-night-ink) text-white"
+          : "bg-[#E9EBF6] text-(--color-shift-night-ink)"
       }`}
       style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
       title={`${DIRECTION_LABEL[cell.direction]} — ur passets benämning i TransPA`}
@@ -64,12 +48,58 @@ function DirectionMark({ cell }: { cell: CellAssignment }) {
   );
 }
 
+/**
+ * Brickan längst till vänster i ett pass.
+ *
+ * Riktningen när den finns och bilen är en linjebil — det är bara där
+ * två personer kör samma rad samma natt åt var sitt håll, och då är
+ * pilen det som skiljer dem åt. Annars skiftets initial.
+ *
+ * Platsen stod tidigare tom när riktningen saknades, med motiveringen
+ * att fem frågetecken i rad tar uppmärksamhet från de pilar som faktiskt
+ * säger något. Det gällde när alternativet var ett frågetecken. Ett D
+ * säger däremot något i sig, och utan det fick dagpassen på just
+ * linjebilarna ingen bricka alls medan alla andra dagpass hade en —
+ * samma sorts pass såg olika ut beroende på bilens typ.
+ */
+function PassMark({
+  cell,
+  shift,
+  vehicleKind,
+}: {
+  cell: CellAssignment;
+  shift: Shift;
+  vehicleKind: VehicleKind;
+}) {
+  if (showsDirection(vehicleKind) && cell.direction) {
+    return <DirectionMark cell={{ ...cell, direction: cell.direction }} />;
+  }
+  if (!cell.employeeName) return null;
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[4px] text-[8px] leading-none font-bold"
+      style={{
+        background: SHIFT_COLOR[shift],
+        color: shift === "day" ? "var(--color-brand-deep)" : "#fff",
+        printColorAdjust: "exact",
+        WebkitPrintColorAdjust: "exact",
+      }}
+      title={SHIFT_LABEL[shift]}
+    >
+      {SHIFT_INITIAL[shift]}
+    </span>
+  );
+}
+
 function Pass({
   cell,
+  shift,
   vehicleKind,
   onOpen,
 }: {
   cell: CellAssignment;
+  shift: Shift;
   vehicleKind: VehicleKind;
   onOpen: (cell: CellAssignment) => void;
 }) {
@@ -77,11 +107,19 @@ function Pass({
     id: dragId.assignment(cell.id),
   });
 
-  /* Kulören hör till personen, inte till cellen: samma person ser
-     likadan ut på varje dag och varje rad, så ögat kan följa en linje
-     utan att läsa namnen. Tomma pass och fritextnoteringar får ingen
-     kulör — det finns ingen att känna igen. */
-  const color = cell.employeeId ? personColor(cell.employeeId) : null;
+  /* Kulören hör till skiftet, inte till personen.
+     Den satt förut på personen: tolv pastellfärger i en egen modul,
+     så att ögat kunde följa *en* person genom veckan. Priset var att
+     färgen inte betydde något i sig — man fick lära sig att Elin är
+     blek blå — och att en tavla med tolv personer blev en färgkarta.
+     Omgång 2 byter det mot två färger som säger något utan att läras
+     in: varm gul yta är dag, vit med skugga är natt. Vem passet gäller
+     står i klartext bredvid.
+
+     Ett pass utan person — en fritextnotering — får ingen fyllning.
+     Det är inte ett skift utan en anteckning om ett hål. */
+  const namngivet = Boolean(cell.employeeName);
+  const dag = shift === "day";
 
   return (
     <span
@@ -89,30 +127,29 @@ function Pass({
       {...listeners}
       {...attributes}
       onClick={() => onOpen(cell)}
-      style={
-        color
-          ? {
-              backgroundColor: color.bg,
-              borderColor: color.border,
-              printColorAdjust: "exact",
-              WebkitPrintColorAdjust: "exact",
-            }
-          : undefined
-      }
-      className={`flex cursor-grab items-center gap-1 rounded border px-1.5 py-0.5 ${
-        color ? "" : "border-transparent hover:bg-blue-50"
-      } ${isDragging ? "opacity-40" : ""} ${
-        cell.source === "generated" ? "" : "font-medium"
-      }`}
+      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+      className={`flex w-full min-w-0 cursor-grab items-center gap-1.5 rounded-lg border px-1.5 py-1 text-left ${
+        !namngivet
+          ? "border-dashed border-(--color-field-line) bg-white"
+          : dag
+            ? "border-(--color-brand-line) bg-(--color-brand-soft)"
+            : "border-(--color-line) bg-white shadow-[0_1px_2px_rgba(34,36,42,.05)]"
+      } ${isDragging ? "opacity-40" : ""} ${cell.source === "generated" ? "" : "font-semibold"}`}
       title={cell.source === "generated" ? "Från bas-schemat" : "Ändrad för hand"}
     >
-      {showsDirection(vehicleKind) && <DirectionMark cell={cell} />}
-      <span className={cell.employeeName ? "" : "text-(--color-muted) italic"}>
+      <PassMark cell={cell} shift={shift} vehicleKind={vehicleKind} />
+      {/* Långa namn kapas med ellips i stället för att spränga kolumnen.
+          Dagkolumnerna är lika breda, och ett enda långt namn skulle
+          annars flytta hela veckan i sidled. */}
+      <span
+        className={`min-w-0 flex-1 truncate ${namngivet ? "" : "text-(--color-muted) italic"}`}
+        title={cell.employeeName ?? undefined}
+      >
         {cell.employeeName ?? cell.note ?? "—"}
       </span>
       <ConflictMark conflicts={cell.conflicts} />
       {cell.employeeName && cell.note && (
-        <span className="text-xs text-(--color-warn)">{cell.note}</span>
+        <span className="shrink-0 text-xs text-(--color-warn)">{cell.note}</span>
       )}
     </span>
   );
@@ -135,11 +172,11 @@ function RowHeader({ row, rowSpan }: { row: BoardWeek["rows"][number]; rowSpan: 
       ref={setNodeRef}
       scope="row"
       rowSpan={rowSpan}
-      className={`sticky left-0 z-10 border-b border-(--color-line) px-3 py-2 text-left font-medium whitespace-nowrap ${
+      className={`sticky left-0 z-10 border-b border-(--color-line) px-3 py-2 text-left font-bold whitespace-nowrap tabular-nums ${
         draggingPerson && isOver
           ? "bg-(--color-primary) text-white"
           : draggingPerson
-            ? "bg-amber-50"
+            ? "bg-(--color-brand-soft)"
             : "bg-white"
       }`}
       style={row.color ? { borderLeft: `3px solid ${row.color}` } : undefined}
@@ -198,27 +235,39 @@ function ShiftCell({
       data-cell={`${row.id}|${date}|${shift}`}
       data-shift={shift}
       className={`group/cell px-2 ${compact ? "min-h-6 py-0.5" : "min-h-9 py-1.5"} ${
-        isOver ? (problem ? "bg-red-100 outline outline-(--color-danger)" : "bg-blue-100") : ""
+        isOver ? (problem ? "bg-red-50 outline outline-(--color-danger)" : "bg-(--color-brand-wash)") : ""
       }`}
     >
       {/* En person per rad, aldrig två sida vid sida. Två namn på samma
           rad blir en klump att läsa i stället för en lista, och de slutar
           dessutom stå i linje med grannkolumnen. */}
-      <div className="flex flex-col items-start gap-1">
+      <div className="flex flex-col items-stretch gap-1">
         {cells.length === 0
-          ? /* Tomt är tomt. En ▢ i varje ledig cell blev fyrtio tecken
-               som inte betyder något var för sig — de talade om att man
-               kan släppa här, men bara medan ingen drar. Nu syns
-               släppzonen när den är aktuell: en streckad ram så snart
-               något faktiskt dras. */
-            active && (
-              <span
-                aria-hidden
-                className="block w-full rounded border border-dashed border-(--color-line) py-1"
-              />
-            )
+          ? /* Ett tomt pass ska synas som ett hål, inte som vit yta.
+               Här stod tidigare ingenting alls utom under en dragning,
+               med motiveringen att en ruta i varje ledig cell blir
+               tecken som inte betyder något var för sig. Omgång 2 vänder
+               på det: hålen i veckan är själva arbetet, och siffran
+               "tomma pass kvar" i sidhuvudet säger hur många de är utan
+               att visa var. Rutan är avsiktligt tyst — ljus streckad ram
+               och ett plus i --color-dim — och tänds först när något
+               dras över den.
+
+               Plusset är en markering, inte en knapp: det finns ingen
+               väg att skapa ett pass ur en tom cell, och en pekare som
+               lovar det vore ett löfte utan täckning. */
+            <span
+              aria-hidden
+              className={`flex w-full items-center justify-center rounded-lg border border-dashed py-1 text-sm leading-none transition ${
+                active
+                  ? "border-(--color-primary) bg-(--color-field) text-(--color-primary)"
+                  : "border-(--color-field-line) text-(--color-dim)"
+              }`}
+            >
+              +
+            </span>
           : cells.map((c) => (
-              <Pass key={c.id} cell={c} vehicleKind={row.vehicleKind} onOpen={onOpen} />
+              <Pass key={c.id} cell={c} shift={shift} vehicleKind={row.vehicleKind} onOpen={onOpen} />
             ))}
       </div>
       {showVehicle && vehicle && cells.length > 0 && (
@@ -263,21 +312,41 @@ export function WeekGrid({
   let lastGroup: string | null | undefined;
 
   return (
-    <div className="grid-scroll rounded border border-(--color-line) bg-white">
-      <table className="w-full border-collapse text-sm">
+    <div className="grid-scroll rounded-xl border border-(--color-line) bg-white">
+      {/* Fast tabellayout, så dagkolumnerna blir lika breda spår.
+          Med automatisk layout satte webbläsaren bredden efter innehållet:
+          en dag med ett långt namn blev bred och en tom dag smal, och
+          veckan gick inte att läsa som ett rutnät. Nu räknas spåren ur
+          antalet dagar tavlan visar — lägger någon till en dag i tavelns
+          inställningar delas bredden om, i stället för att allt flyttar.
+
+          min-w håller spåren läsbara på en smal skärm och låter .grid-scroll
+          rulla i stället; i utskrift släpps den, för där finns ingen
+          rullning och sidan ska rymmas på bredden. */}
+      <table className="w-full min-w-[1040px] table-fixed border-collapse text-sm print:min-w-0">
+        <colgroup>
+          <col className="w-[92px]" />
+          <col className="w-[140px]" />
+          <col className="w-[64px]" />
+          {data.dates.map((d) => (
+            <col key={d} />
+          ))}
+        </colgroup>
         <thead>
-          <tr className="bg-gray-50">
-            <th className="sticky left-0 z-10 border-b border-(--color-line) bg-gray-50 px-3 py-2 text-left font-medium">
+          <tr className="bg-(--color-field)">
+            <th className="sticky left-0 z-10 border-b border-(--color-line) bg-(--color-field) px-3 py-2.5 text-left text-[11px] font-bold tracking-[.07em] text-(--color-muted) uppercase">
               Bil
             </th>
-            <th className="border-b border-(--color-line) px-3 py-2 text-left font-medium">Linje</th>
-            <th className="border-b border-l border-(--color-line) px-2 py-2 text-left font-medium">
+            <th className="border-b border-(--color-line) px-2 py-2.5 text-left text-[11px] font-bold tracking-[.07em] text-(--color-muted) uppercase">
+              Linje
+            </th>
+            <th className="border-b border-l border-(--color-line-soft) px-2 py-2.5 text-left text-[11px] font-bold tracking-[.07em] text-(--color-muted) uppercase">
               Skift
             </th>
             {data.dates.map((d) => (
               <th
                 key={d}
-                className="min-w-32 border-b border-l border-(--color-line) px-3 py-2 text-left font-medium"
+                className="border-b border-l border-(--color-line-soft) px-2.5 py-2.5 text-left text-[11px] font-bold tracking-[.07em] text-(--color-muted) uppercase"
               >
                 {shortDayLabel(d)}
               </th>
@@ -294,7 +363,7 @@ export function WeekGrid({
                   <tr>
                     <td
                       colSpan={3 + data.dates.length}
-                      className="border-b border-(--color-line) bg-gray-100 px-3 py-1 text-xs font-semibold tracking-wide uppercase"
+                      className="border-b border-(--color-line) bg-(--color-chip) px-3 py-1.5 text-[11px] font-bold tracking-[.07em] text-(--color-label) uppercase"
                     >
                       {groupHeader}
                     </td>
@@ -324,24 +393,29 @@ export function WeekGrid({
                         <RowHeader row={row} rowSpan={data.shifts.length} />
                         <td
                           rowSpan={data.shifts.length}
-                          className="border-b border-(--color-line) px-3 py-2 text-(--color-muted) whitespace-nowrap"
+                          className="truncate border-b border-(--color-line) px-2 py-2 text-[13px] text-(--color-muted)"
                         >
                           {row.sublabel}
                         </td>
                       </>
                     )}
                     <td
-                      className={`border-l border-(--color-line) px-2 text-xs whitespace-nowrap text-(--color-muted) ${
+                      className={`border-l border-(--color-line-soft) px-2 text-[11px] font-bold whitespace-nowrap ${
                         tomRad ? "py-0.5" : "py-1.5"
-                      } ${
-                        i === data.shifts.length - 1 ? "border-b" : ""
-                      } ${shift === "night" ? "bg-gray-50" : ""}`}
+                      } ${i === data.shifts.length - 1 ? "border-b" : ""} ${
+                        i > 0 ? "border-t border-dashed border-(--color-line-soft)" : ""
+                      }`}
+                      style={{ color: SHIFT_INK[shift] }}
                     >
                       <span className="flex items-center gap-1.5">
                         <span
                           aria-hidden
-                          className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                          style={{ background: SHIFT_COLOR[shift] }}
+                          className="h-2 w-2 shrink-0 rounded-[2px]"
+                          style={{
+                            background: SHIFT_COLOR[shift],
+                            printColorAdjust: "exact",
+                            WebkitPrintColorAdjust: "exact",
+                          }}
                         />
                         {data.shifts.length > 1 ? SHIFT_LABEL[shift] : ""}
                       </span>
@@ -351,9 +425,11 @@ export function WeekGrid({
                       return (
                         <td
                           key={date}
-                          className={`border-l border-(--color-line) p-0 ${
+                          className={`border-l border-(--color-line-soft) p-0 ${
                             i === data.shifts.length - 1 ? "border-b" : ""
-                          } ${inactive ? "bg-gray-50" : shift === "night" ? "bg-gray-50/60" : ""}`}
+                          } ${i > 0 ? "border-t border-dashed border-(--color-line-soft)" : ""} ${
+                            inactive ? "bg-(--color-field)" : ""
+                          }`}
                         >
                           {inactive ? (
                             <div className="px-3 py-2 text-xs text-(--color-muted)">–</div>

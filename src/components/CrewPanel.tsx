@@ -36,7 +36,7 @@ function CrewCard({
      tappa bort vem det gällde. */
   if (facts) {
     return (
-      <li className="rounded border border-(--color-danger) bg-white px-2 py-1.5">
+      <li className="rounded-lg border border-(--color-danger) bg-white px-2.5 py-1.5">
         <span className="block text-sm font-medium">{member.name}</span>
         <p className="mt-1 text-[11px] text-(--color-muted)">
           Kopplas bort från tavlan.
@@ -81,7 +81,7 @@ function CrewCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`group cursor-grab rounded border border-(--color-line) bg-white px-2 py-1.5 ${
+      className={`group cursor-grab rounded-lg border border-(--color-line) bg-white px-2.5 py-1.5 transition hover:border-(--color-dim) ${
         isDragging ? "opacity-40" : ""
       }`}
     >
@@ -180,7 +180,7 @@ function SearchCard({ person }: { person: PickerEmployee }) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`cursor-grab rounded border border-dashed border-(--color-accent) bg-white px-2 py-1.5 ${
+      className={`cursor-grab rounded-lg border border-dashed border-(--color-accent) bg-white px-2.5 py-1.5 ${
         isDragging ? "opacity-40" : ""
       }`}
     >
@@ -244,12 +244,12 @@ export function CrewPanel({
   return (
     <aside
       ref={setNodeRef}
-      className={`w-64 shrink-0 rounded border p-3 no-print ${
-        isOver ? "border-(--color-danger) bg-red-50" : "border-(--color-line) bg-gray-50"
+      className={`flex w-72 shrink-0 flex-col rounded-xl border p-3.5 no-print ${
+        isOver ? "border-(--color-danger) bg-red-50" : "border-(--color-line) bg-white"
       }`}
     >
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xs font-semibold tracking-wide uppercase">Bemanning</h2>
+        <h2 className="text-[11px] font-bold tracking-[.07em] text-(--color-label) uppercase">Bemanning</h2>
         <button
           type="button"
           onClick={onOpenPicker}
@@ -265,7 +265,7 @@ export function CrewPanel({
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Sök i all personal …"
         aria-label="Sök i all personal"
-        className="mt-2 w-full rounded border border-(--color-line) bg-white px-2 py-1 text-sm"
+        className="mt-2.5 w-full rounded-lg border border-(--color-field-line) bg-(--color-field) px-2.5 py-1.5 text-sm outline-none transition focus:border-(--color-primary) focus:bg-white"
       />
 
       {query.trim().length >= 2 && (
@@ -297,7 +297,7 @@ export function CrewPanel({
 
       {unplaced.length > 0 && (
         <>
-          <h3 className="mt-4 text-[11px] font-semibold tracking-wide text-(--color-warn) uppercase">
+          <h3 className="mt-4 text-[11px] font-bold tracking-[.07em] text-(--color-warn) uppercase">
             Ej utlagda ({unplaced.length})
           </h3>
           <ul className="mt-1.5 space-y-1.5">
@@ -310,7 +310,7 @@ export function CrewPanel({
 
       {rest.length > 0 && (
         <>
-          <h3 className="mt-4 text-[11px] font-semibold tracking-wide text-(--color-muted) uppercase">
+          <h3 className="mt-4 text-[11px] font-bold tracking-[.07em] text-(--color-muted) uppercase">
             Utlagda
           </h3>
           <ul className="mt-1.5 space-y-1.5">
@@ -322,9 +322,46 @@ export function CrewPanel({
       )}
 
       {isOver && (
-        <p className="mt-3 rounded bg-red-100 px-2 py-1 text-xs text-(--color-danger)">
+        <p className="mt-3 rounded-lg bg-red-100 px-2 py-1 text-xs text-(--color-danger)">
           Släpp här för att ta bort passet
         </p>
+      )}
+
+      {/* Vad rutorna betyder.
+          Veckoremsan har funnits här hela tiden utan att någonstans säga
+          vad en fylld ruta är — man fick föra musen över en och läsa
+          title-texten, en ruta i taget. Nu står nyckeln en gång, längst
+          ner där den inte är i vägen, och den använder samma två färger
+          som passen i rutnätet. */}
+      {crew.length > 0 && (
+        <dl className="mt-4 flex flex-wrap gap-x-3 gap-y-1.5 border-t border-(--color-line-soft) pt-3 text-[11px] text-(--color-muted)">
+          {(
+            [
+              ["Dag", "var(--color-shift-day)", false],
+              ["Natt", "var(--color-shift-night)", false],
+              ["Ledigt", "transparent", true],
+            ] as const
+          ).map(([etikett, färg, ram]) => (
+            <span key={etikett} className="flex items-center gap-1.5">
+              <dt className="sr-only">{etikett}</dt>
+              <dd
+                aria-hidden
+                className={`h-3 w-1.5 rounded-[1px] ${ram ? "border border-(--color-line)" : ""}`}
+                style={{ background: färg }}
+              />
+              <dd>{etikett}</dd>
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5">
+            <dt className="sr-only">Ej utlagd</dt>
+            <dd
+              aria-hidden
+              className="h-3 w-1.5 rounded-[1px] ring-1 ring-(--color-warn)"
+              style={{ background: "var(--color-shift-day)" }}
+            />
+            <dd>Ej utlagd</dd>
+          </span>
+        </dl>
       )}
     </aside>
   );

@@ -57,6 +57,70 @@ const collisionDetection: CollisionDetection = (args) => {
   return byPointer.length > 0 ? byPointer : rectIntersection(args);
 };
 
+type StegLäge = "klart" | "aktivt" | "kommande";
+
+/**
+ * Ett steg i kedjan.
+ *
+ * Fyra knappar som satt löst bredvid varandra läses som fyra val. Sitter
+ * de ihop läses de som en ordning — och då bär numret sin egen vikt i
+ * stället för att bara vara ett prefix i etiketten.
+ */
+function stegKlass(läge: StegLäge, plats: "först" | "mitten" | "sist"): string {
+  const hörn =
+    plats === "först"
+      ? "rounded-l-[10px]"
+      : plats === "sist"
+        ? "rounded-r-[10px]"
+        : "";
+  const kant = plats === "först" ? "border" : "border border-l-0";
+  const ton =
+    läge === "aktivt"
+      ? "border-(--color-primary) bg-(--color-primary) text-white"
+      : läge === "klart"
+        ? "border-(--color-line) bg-(--color-chip) text-(--color-label) hover:bg-white"
+        : "border-(--color-line) bg-white text-(--color-muted) hover:border-(--color-dim)";
+  return `flex h-[38px] items-center gap-2 px-3.5 text-[13.5px] font-semibold transition disabled:opacity-50 ${hörn} ${kant} ${ton}`;
+}
+
+/** Siffran, eller en bock när steget är gjort. */
+function StegSiffra({ nr, läge }: { nr: number; läge: StegLäge }) {
+  return (
+    <span
+      aria-hidden
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+        läge === "aktivt"
+          ? "bg-(--color-brand) text-(--color-brand-ink)"
+          : läge === "klart"
+            ? "bg-(--color-primary) text-(--color-brand)"
+            : "bg-(--color-line-soft) text-(--color-muted)"
+      }`}
+    >
+      {läge === "klart" ? "✓" : nr}
+    </span>
+  );
+}
+
+function StegKnapp({
+  nr,
+  läge,
+  plats,
+  children,
+  ...rest
+}: {
+  nr: number;
+  läge: StegLäge;
+  plats: "först" | "mitten" | "sist";
+  children: ReactNode;
+} & Omit<React.ComponentPropsWithoutRef<"button">, "className" | "children">) {
+  return (
+    <button type="button" className={stegKlass(läge, plats)} {...rest}>
+      <StegSiffra nr={nr} läge={läge} />
+      {children}
+    </button>
+  );
+}
+
 export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props) {
   const [dragging, setDragging] = useState<string | null>(null);
   const [open, setOpen] = useState<CellAssignment | null>(null);
@@ -296,6 +360,18 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
     );
   }
 
+  /* Stegens läge, läst ur tavlan. Se kommentaren vid verktygsraden. */
+  const klart = [
+    data.baseSchedule.length > 0,
+    data.crew.some((c) => c.workDays.length > 0),
+    data.rows.some((r) => Object.values(r.cells).some((celler) => celler.length > 0)),
+    false,
+  ];
+  const aktivt = klart.indexOf(false);
+  const steg: StegLäge[] = klart.map((k, i) =>
+    k ? "klart" : i === aktivt ? "aktivt" : "kommande",
+  );
+
   return (
     <DndContext
       // Fast id så serverns och klientens aria-attribut blir lika.
@@ -309,48 +385,77 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
       {/* Verktygsraden läses vänster till höger som arbetsgången:
           bas-schema, hämta, fyll, skicka. Stegen låg tidigare i annan
           ordning — ettan längst till höger — och det sista steget stod
-          utanför numreringen och såg ut som vilken knapp som helst. */}
-      <div data-verktygsrad className="mb-2 flex flex-wrap items-center gap-3 no-print">
-        <button
-          type="button"
-          onClick={() => setPanel("base")}
-          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
-        >
-          1 · Bas-schema
-        </button>
+          utanför numreringen och såg ut som vilken knapp som helst.
 
-        <button
-          type="button"
-          onClick={loadShifts}
-          disabled={pending}
-          className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm disabled:opacity-50"
-          title="Hämtar veckans pass ur TransPA för de personer tavlan hanterar"
-        >
-          {pending ? "Hämtar …" : "2 · Hämta schema"}
-        </button>
+          Nu sitter de ihop som en stepper, och läget är *härlett ur
+          tavlan* — inte påhittat för att det ser bra ut. Ett steg räknas
+          som klart när dess spår finns i datat: bas-schemat har rader,
+          veckans arbetsdagar är hämtade, något pass är utlagt. Det
+          aktiva steget är det första som inte är klart.
 
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              setFillReport(
-                await fillWeek({
-                  boardId: data.board.id,
-                  boardSlug: data.board.slug,
-                  year: data.year,
-                  week: data.week,
-                }),
-              );
-            })
-          }
-          className="rounded bg-(--color-primary) px-3 py-1.5 text-sm text-white disabled:opacity-50"
-        >
-          3 · Fyll veckan
-        </button>
-        {/* Sista steget i kedjan: hämta, fyll, justera — och skicka
-            tillbaka det som justerats. */}
-        <SendChangesButton boardSlug={data.board.slug} year={data.year} week={data.week} />
+          Steg 4 markeras aldrig som klart härifrån. Om något återstår
+          att skicka vet bara TransPA, och det svaret kostar ett anrop
+          som inte ska ligga i en sidrendering — knappen frågar när man
+          trycker på den. */}
+      <div data-verktygsrad className="mb-3 flex flex-wrap items-center gap-3 no-print">
+        <div className="flex items-stretch">
+          <StegKnapp
+            nr={1}
+            läge={steg[0]}
+            plats="först"
+            onClick={() => setPanel("base")}
+          >
+            Bas-schema
+          </StegKnapp>
+
+          <StegKnapp
+            nr={2}
+            läge={steg[1]}
+            plats="mitten"
+            onClick={loadShifts}
+            disabled={pending}
+            title="Hämtar veckans pass ur TransPA för de personer tavlan hanterar"
+          >
+            {pending ? "Hämtar …" : "Hämta schema"}
+          </StegKnapp>
+
+          <StegKnapp
+            nr={3}
+            läge={steg[2]}
+            plats="mitten"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                setFillReport(
+                  await fillWeek({
+                    boardId: data.board.id,
+                    boardSlug: data.board.slug,
+                    year: data.year,
+                    week: data.week,
+                  }),
+                );
+              })
+            }
+          >
+            Fyll veckan
+          </StegKnapp>
+
+          {/* Sista steget i kedjan: hämta, fyll, justera — och skicka
+              tillbaka det som justerats. Knappen bär sin egen dialog, så
+              den får stegets form utifrån i stället för att byggas om. */}
+          <SendChangesButton
+            boardSlug={data.board.slug}
+            year={data.year}
+            week={data.week}
+            className={stegKlass(steg[3], "sist")}
+            label={
+              <>
+                <StegSiffra nr={4} läge={steg[3]} />
+                Skicka till TransPA
+              </>
+            }
+          />
+        </div>
 
         {/* Sidoåtgärder, inte steg: rensningen tar tillbaka veckan och
             tavelredigeringen rör utseendet. De ska inte ligga i kedjan. */}
@@ -359,7 +464,7 @@ export function BoardWorkspace({ data, allEmployees, canDelete = false }: Props)
           <button
             type="button"
             onClick={() => setPanel("board")}
-            className="rounded border border-(--color-line) bg-white px-3 py-1.5 text-sm"
+            className="flex h-[38px] items-center rounded-[9px] border border-(--color-field-line) bg-white px-3.5 text-sm font-semibold text-(--color-label) transition hover:border-(--color-dim)"
           >
             ⚙ Tavla
           </button>
