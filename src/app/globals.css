@@ -41,7 +41,34 @@
      jämföra mellan personer på en blick. */
   --color-shift-day: #e8b356;
   --color-shift-night: #5b6b8a;
+
+  /* Inloggningens palett, ur Börjeskoncernen.pdf.
+     Den grafiska profilen och CMYKlodjur.pdf ger inte riktigt samma
+     värden: profilen har koltyp #2C2E35 och gult #FFDD45, loggan
+     #231f20 och #fcd006. Skillnaden syns knappt i svarten men märks i
+     gulen. Tokens ovan är därför orörda — de bär hela appen — och
+     inloggningen får sin egen uppsättning tills någon bestämt vilken
+     källa som gäller. Då slås de ihop till en. */
+  --color-login-ink: #22242A;
+  --color-login-ink-hover: #34373F;
+  --color-login-yellow: #FFDD45;
+  --color-login-field: #FAF9F6;
+  --color-login-field-line: #E2E0D8;
+  --color-login-label: #4A4D54;
+  --color-login-sub: #7A7D74;
+  --color-login-foot: #8E9188;
+  --color-login-rule: #EFEDE7;
+  --color-login-chip: #F2F1EC;
+  --color-login-chip-hover: #E6E4DE;
 }
+
+/* Typsnitten står avsiktligt inte som tokens i @theme.
+   next/font sätter --font-space-grotesk och --font-manrope på det träd
+   där typsnittet används, medan @theme lägger sina variabler på :root.
+   En token där som pekar vidare med var() på ett namn :root inte känner
+   blir ogiltig redan när den räknas ut, och ärver ner som tomt värde —
+   utility-klassen ser rätt ut men typsnittet slår aldrig igenom. Därför
+   pekar inloggningen direkt på next/fonts egna variabler. */
 
 html {
   color-scheme: light;
