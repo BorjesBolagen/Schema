@@ -25,15 +25,40 @@ import type { Shift, WorkDay } from "@/lib/work-days";
  */
 const STOCKHOLM = "Europe/Stockholm";
 
+/**
+ * Formateraren byggs en gång per tidszon, inte en gång per pass.
+ *
+ * Intl.DateTimeFormat är dyr att konstruera — den slår upp tidszonens
+ * regler — men billig att använda om och om igen, och instansen är
+ * oföränderlig. Här byggdes den inuti funktionen, alltså två gånger per
+ * pass, och den här funktionen är den hetaste i hela appen: varje pass
+ * tolkas om vid *läsning*, med flit, så att en rättad regel slår igenom
+ * utan omhämtning.
+ *
+ * Med fyrahundra personers pass för en vecka blev det drygt tretusen
+ * konstruktioner för att rita en tavla med sex rader — nära två
+ * tiondelars sekund, och åtta tiondelar av vyns hela tid. Ingenting av
+ * det var databasens fel; samlingsfrågan tog en tiondel så lång tid.
+ */
+const formaterare = new Map<string, Intl.DateTimeFormat>();
+function formateraren(timeZone: string): Intl.DateTimeFormat {
+  let f = formaterare.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("sv-SE", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+    });
+    formaterare.set(timeZone, f);
+  }
+  return f;
+}
+
 export function localParts(iso: string, timeZone = STOCKHOLM): { date: string; hour: number } {
-  const parts = new Intl.DateTimeFormat("sv-SE", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date(iso));
+  const parts = formateraren(timeZone).formatToParts(new Date(iso));
 
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   // hourCycle h23 ger "24" för midnatt i vissa körningar; normalisera.
