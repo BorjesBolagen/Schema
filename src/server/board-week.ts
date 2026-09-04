@@ -398,7 +398,41 @@ async function runGetBoardWeek(
       },
     ]),
   ];
-  const index = indexConflicts(conflicts);
+  /**
+   * Bara konflikter som rör den här tavlan.
+   *
+   * detectBookingConflicts får hela bolagets pass för veckan, och det
+   * ska den ha: en förare bokad på både fjärr- och lotstavlan syns bara
+   * om båda ligger på bordet. Men resultatet gick tillbaka orört, och
+   * då följde också krockar helt mellan två *andra* tavlor med.
+   *
+   * Det syntes i rubriken. "3 dubbelbokningar" på en tavla med sex
+   * rader kunde vara noll på den här och tre någon annanstans, och den
+   * som gick för att leta hittade ingenting. Med tjugofem tavlor blev
+   * siffran obrukbar — och femtiotvå kilobyte av svaret var andras
+   * konflikter.
+   *
+   * En konflikt behålls om minst ett av dess pass ligger här. Det
+   * bevarar korsningen — den delade förarens pass på den här tavlan är
+   * ett av dem — och släpper det som inte angår tavlan.
+   */
+  const boardAssignmentIds = new Set(boardAssignments.map((a) => a.id));
+  const härInblandad = (c: Conflict): boolean => {
+    switch (c.kind) {
+      case "unmanned":
+        return boardRowIds.has(c.boardRowId);
+      case "absent":
+      case "shift-mismatch":
+        return boardAssignmentIds.has(c.assignmentId);
+      case "double-booked":
+      case "vehicle-clash":
+      case "day-and-night":
+        return c.assignmentIds.some((id) => boardAssignmentIds.has(id));
+    }
+  };
+  const tavlansKonflikter = conflicts.filter(härInblandad);
+
+  const index = indexConflicts(tavlansKonflikter);
 
   /* Riktningen slås upp på person, datum och skift — den hör till det
      hämtade passet, inte till tavlans pass. Både dagen och riktningen
@@ -410,12 +444,55 @@ async function runGetBoardWeek(
     directionOf.set(`${day.employeeId}|${day.date}|${day.shift}`, parseDirection(s.name));
   }
 
+  /**
+   * Uppslag i stället för genomsökningar.
+   *
+   * rawAssignments är hela bolagets pass för veckan — det behövs för
+   * konfliktdetekteringen tvärs över tavlor — men allt nedanför handlar
+   * om den här tavlan. Varje rad, varje person och varje dag sökte
+   * igenom hela listan, och personvyn gjorde det en gång per person och
+   * dag: med tjugofem tavlor blev det över hundratusen genomläsningar
+   * för att rita sex rader. Det var åtta tiondelar av tiden vyn tog, och
+   * ingenting av det var databasens fel.
+   *
+   * Tre index byggs en gång var. Kostnaden är ett svep genom listan;
+   * vinsten är att inget senare behöver svepa alls.
+   */
+  const passPerRad = new Map<string, typeof rawAssignments>();
+  const passPerPersonDag = new Map<string, typeof rawAssignments>();
+  for (const a of rawAssignments) {
+    (passPerRad.get(a.boardRowId) ?? passPerRad.set(a.boardRowId, []).get(a.boardRowId)!).push(a);
+    /* Bara tavlans egna pass — personvyn visar den här tavlan, inte var
+       personen råkar stå någon annanstans. */
+    if (a.employeeId && boardRowIds.has(a.boardRowId)) {
+      const nyckel = `${a.employeeId}|${a.date}`;
+      (
+        passPerPersonDag.get(nyckel) ?? passPerPersonDag.set(nyckel, []).get(nyckel)!
+      ).push(a);
+    }
+  }
+
+  const frånvaroPerPerson = new Map<string, typeof rawAbsences>();
+  for (const x of rawAbsences) {
+    (
+      frånvaroPerPerson.get(x.employeeId) ??
+      frånvaroPerPerson.set(x.employeeId, []).get(x.employeeId)!
+    ).push(x);
+  }
+
+  const arbetsdagarPerPerson = new Map<string, typeof workDayResult.workDays>();
+  for (const w of workDayResult.workDays) {
+    (
+      arbetsdagarPerPerson.get(w.employeeId) ??
+      arbetsdagarPerPerson.set(w.employeeId, []).get(w.employeeId)!
+    ).push(w);
+  }
+
   const weekRows: WeekRow[] = rows.map((r) => {
     const cells: Record<string, CellAssignment[]> = {};
     for (const date of dates) for (const s of shifts) cells[`${date}|${s}`] = [];
 
-    for (const a of rawAssignments) {
-      if (a.boardRowId !== r.id) continue;
+    for (const a of passPerRad.get(r.id) ?? []) {
       const key = `${a.date}|${a.shift}`;
       if (!cells[key]) continue;
       const emp = a.employeeId ? employeeById.get(a.employeeId) : undefined;
@@ -465,10 +542,11 @@ async function runGetBoardWeek(
   const crew: CrewMember[] = crewRows
     .map((c) => {
       const emp = employeeById.get(c.employeeId);
-      const mine = workDayResult.workDays
-        .filter((w) => w.employeeId === c.employeeId)
-        .map((w) => ({ date: w.date, shift: w.shift }));
-      const mineAbsences = rawAbsences.filter((a) => a.employeeId === c.employeeId);
+      const mine = (arbetsdagarPerPerson.get(c.employeeId) ?? []).map((w) => ({
+        date: w.date,
+        shift: w.shift,
+      }));
+      const mineAbsences = frånvaroPerPerson.get(c.employeeId) ?? [];
       const abs = mineAbsences[0];
       const isAway = (date: string) =>
         mineAbsences.some((a) => date >= a.fromDate && date <= a.toDate);
@@ -501,10 +579,7 @@ async function runGetBoardWeek(
     .map((employeeId) => {
       const emp = employeeById.get(employeeId);
       const days: PersonDay[] = dates.map((date) => {
-        const entries = rawAssignments
-          .filter(
-            (a) => a.employeeId === employeeId && a.date === date && boardRowIds.has(a.boardRowId),
-          )
+        const entries = (passPerPersonDag.get(`${employeeId}|${date}`) ?? [])
           .map((a) => {
             const row = rowInfo.get(a.boardRowId);
             // Passets egen bil vinner, annars radens standardbil.
@@ -516,8 +591,8 @@ async function runGetBoardWeek(
               note: a.note,
             };
           });
-        const abs = rawAbsences.find(
-          (x) => x.employeeId === employeeId && date >= x.fromDate && date <= x.toDate,
+        const abs = (frånvaroPerPerson.get(employeeId) ?? []).find(
+          (x) => date >= x.fromDate && date <= x.toDate,
         );
         return {
           date,
@@ -539,7 +614,7 @@ async function runGetBoardWeek(
     shifts,
     rows: weekRows,
     personRows,
-    conflicts,
+    conflicts: tavlansKonflikter,
     crew,
     workDaySource: provider.name,
     pickerEmployees: employees

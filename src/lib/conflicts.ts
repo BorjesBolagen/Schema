@@ -110,8 +110,20 @@ export function detectBookingConflicts(input: {
   const conflicts: Conflict[] = [];
   const place = (a: AssignmentLike) => `${a.boardName}: ${a.rowLabel}`;
 
+  /* Passen och frånvaron indexeras en gång i stället för att sökas
+     igenom om och om igen.
+
+     Listan här är hela bolagets pass för veckan — det är själva
+     poängen, en förare bokad på två tavlor ska hittas — och den växer
+     alltså med antalet tavlor. Ett filter per datum och ett find per
+     pass betydde att varje rad lästes om för varje dag och varje
+     person. Med tjugofem tavlor gick det åt ett par hundra millisekunder
+     i ren genomsökning, för en tavla med sex rader. */
+  const perDatum = groupBy(input.assignments, (a) => a.date);
+  const frånvaroPerPerson = groupBy(input.absences, (x) => x.employeeId);
+
   for (const date of input.dates) {
-    const onDate = input.assignments.filter((a) => a.date === date);
+    const onDate = perDatum.get(date) ?? [];
 
     for (const [employeeId, all] of groupBy(onDate, (a) => a.employeeId)) {
       // Två pass samma skift är en verklig krock — personen kan inte
@@ -161,7 +173,7 @@ export function detectBookingConflicts(input: {
 
     for (const a of onDate) {
       if (!a.employeeId) continue;
-      const hit = input.absences.find((x) => x.employeeId === a.employeeId && coversDate(x, date));
+      const hit = frånvaroPerPerson.get(a.employeeId)?.find((x) => coversDate(x, date));
       if (hit) {
         conflicts.push({
           kind: "absent",
