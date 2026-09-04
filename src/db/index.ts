@@ -224,9 +224,22 @@ function raceTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
  * **Bara för läsningar.** Omtaget kör anropet en gång till, vilket bara
  * är ofarligt när det inte skriver något. Skrivningar får ta
  * raceTimeout() direkt om de behöver en gräns.
+ *
+ * `db` är kopplingen anropet faktiskt använder. Utelämnad betyder den
+ * globala, som i drift. Den som skickar en egen — scoping-funktionerna
+ * gör det, för att gå att prova mot en egen databas — måste skicka den
+ * hit också: annars pensioneras fel koppling vid en tidsgräns, och i
+ * ett test *skapades* dessutom en global bara för att hålla den här
+ * raden. Nio sådana i samma fil räckte för att PGlite skulle avbryta i
+ * nedstängningen, och hela provkörningen slutade med felkod trots att
+ * varje enskilt prov var grönt.
  */
-export async function readWithTimeout<T>(fn: () => Promise<T>, ms = 6_000): Promise<T> {
-  const used = getDb();
+export async function readWithTimeout<T>(
+  fn: () => Promise<T>,
+  ms = 6_000,
+  db?: Db,
+): Promise<T> {
+  const used = db ?? getDb();
   try {
     return await raceTimeout(fn(), ms);
   } catch (error) {

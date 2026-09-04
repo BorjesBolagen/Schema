@@ -128,11 +128,14 @@ export async function canAccessBoard(
   dbOverride?: Db,
 ): Promise<boolean> {
   if (user.role === "admin") return true;
-  const rows = await readWithTimeout(() =>
-    (dbOverride ?? getDb())
-      .select()
-      .from(schema.boardMember)
-      .where(eq(schema.boardMember.userId, user.id)),
+  const rows = await readWithTimeout(
+    () =>
+      (dbOverride ?? getDb())
+        .select()
+        .from(schema.boardMember)
+        .where(eq(schema.boardMember.userId, user.id)),
+    undefined,
+    dbOverride,
   );
   return rows.some((m) => m.boardId === boardId);
 }
@@ -165,11 +168,14 @@ export async function editableBoardIds(
   dbOverride?: Db,
 ): Promise<Set<string> | "alla"> {
   if (user.role === "admin") return "alla";
-  const rows = await readWithTimeout(() =>
-    (dbOverride ?? getDb())
-      .select()
-      .from(schema.boardMember)
-      .where(eq(schema.boardMember.userId, user.id)),
+  const rows = await readWithTimeout(
+    () =>
+      (dbOverride ?? getDb())
+        .select()
+        .from(schema.boardMember)
+        .where(eq(schema.boardMember.userId, user.id)),
+    undefined,
+    dbOverride,
   );
   return new Set(rows.filter((m) => m.role === "editor").map((m) => m.boardId));
 }
@@ -180,11 +186,14 @@ export async function canEditBoard(
   dbOverride?: Db,
 ): Promise<boolean> {
   if (user.role === "admin") return true;
-  const rows = await readWithTimeout(() =>
-    (dbOverride ?? getDb())
-      .select()
-      .from(schema.boardMember)
-      .where(eq(schema.boardMember.userId, user.id)),
+  const rows = await readWithTimeout(
+    () =>
+      (dbOverride ?? getDb())
+        .select()
+        .from(schema.boardMember)
+        .where(eq(schema.boardMember.userId, user.id)),
+    undefined,
+    dbOverride,
   );
   return rows.some((m) => m.boardId === boardId && m.role === "editor");
 }
