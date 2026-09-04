@@ -17,6 +17,7 @@ import {
   addVehicle,
   removeStation,
   renameStation,
+  setStationPlaceForEmployees,
   updateEmployee,
   updateVehicle,
   type BaseDataResult,
@@ -120,14 +121,9 @@ export async function setStationPlaceForMany(
   stationPlaceId: string | null,
 ): Promise<BaseDataResult> {
   await requireUser();
-  for (const id of employeeIds) {
-    const result = await updateEmployee(id, { stationPlaceId });
-    // Faller en rad avbryts hela ändringen — hellre ett tydligt fel än
-    // en halvt genomförd massättning som ingen ser.
-    if (!result.ok) return result;
-  }
+  const result = await setStationPlaceForEmployees(employeeIds, stationPlaceId);
   refresh();
-  return { ok: true };
+  return result;
 }
 
 export async function createVehicle(input: {

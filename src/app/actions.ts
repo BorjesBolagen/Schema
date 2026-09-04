@@ -9,6 +9,7 @@ import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
 import { MAX_CYCLE_WEEKS } from "@/lib/rotation";
 import { requireUser } from "@/server/auth";
 import { boardForAction, requireBoardBySlug } from "@/server/access";
+import { skrivOrdning } from "@/server/sortering";
 import {
   assignmentOnBoard,
   employeeOnBoard,
@@ -686,14 +687,10 @@ export async function reorderBaseSchedule(input: {
     );
   const tillatna = new Set(egna.map((e) => e.id));
 
-  let ordning = 0;
-  for (const id of input.ids) {
-    if (!tillatna.has(id)) continue;
-    await db
-      .update(schema.baseSchedule)
-      .set({ sortOrder: ordning++ })
-      .where(eq(schema.baseSchedule.id, id));
-  }
+  await skrivOrdning(
+    "base_schedule",
+    input.ids.filter((id) => tillatna.has(id)),
+  );
   refresh(input.boardSlug);
 }
 
@@ -847,10 +844,7 @@ export async function deleteBoardRow(rowId: string, boardSlug: string): Promise<
 export async function reorderBoardRows(rowIds: string[], boardSlug: string): Promise<void> {
   const user = await requireUser();
   const board = await boardForAction(user, boardSlug);
-  const db = getDb();
-  for (const [i, id] of (await rowsOnBoard(board.id, rowIds)).entries()) {
-    await db.update(schema.boardRow).set({ sortOrder: i }).where(eq(schema.boardRow.id, id));
-  }
+  await skrivOrdning("board_row", await rowsOnBoard(board.id, rowIds));
   refresh(boardSlug);
 }
 

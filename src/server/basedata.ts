@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb, schema, readWithTimeout } from "@/db";
 
 /**
@@ -166,6 +166,31 @@ export async function addEmployee(input: {
     employeeNumber,
     stationPlaceId: input.stationPlaceId || null,
   });
+  return { ok: true };
+}
+
+/**
+ * Sätter stationsort på flera personer i en enda skrivning.
+ *
+ * Låg tidigare som en slinga i basedata-actions med ett anrop per
+ * person. Kommentaren där sa "hellre ett tydligt fel än en halvt
+ * genomförd massättning" — men det var precis vad slingan gav: de rader
+ * som redan hunnit skrivas stod kvar när nästa föll. Och med flera
+ * hundra personer i registret, som är hela skälet till att funktionen
+ * finns, blev det lika många turer till databasen.
+ *
+ * En sats i stället. Antingen gäller den för alla eller för ingen, och
+ * den kostar en tur.
+ */
+export async function setStationPlaceForEmployees(
+  employeeIds: string[],
+  stationPlaceId: string | null,
+): Promise<BaseDataResult> {
+  if (employeeIds.length === 0) return { ok: true };
+  await getDb()
+    .update(schema.employee)
+    .set({ stationPlaceId: stationPlaceId || null, updatedAt: new Date() })
+    .where(inArray(schema.employee.id, employeeIds));
   return { ok: true };
 }
 
