@@ -14,7 +14,7 @@ export interface LoginState {
    box-shadow så den inte flyttar något, och ramen mörknar samtidigt —
    gult ensamt syns för dåligt mot vitt för att duga som enda markör. */
 const FIELD =
-  "h-[50px] w-full rounded-[11px] border-[1.5px] border-(--color-login-field-line) bg-(--color-login-field) px-3.5 text-[15px] text-(--color-login-ink) outline-none transition placeholder:text-(--color-login-foot) focus:border-(--color-login-ink) focus:bg-white focus:shadow-[0_0_0_3px_rgba(255,221,69,.45)]";
+  "h-[50px] w-full rounded-[11px] border-[1.5px] border-(--color-login-field-line) bg-(--color-login-field) px-3.5 text-[15px] text-(--color-ink) outline-none transition placeholder:text-(--color-login-foot) focus:border-(--color-primary) focus:bg-white focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-brand)_45%,transparent)]";
 
 const LABEL = "text-[12.5px] font-semibold text-(--color-login-label)";
 
@@ -99,7 +99,7 @@ export function LoginForm({
           name="remember"
           checked={remember}
           onChange={(e) => setRemember(e.target.checked)}
-          className="h-[17px] w-[17px] accent-(--color-login-ink)"
+          className="h-[17px] w-[17px] accent-(--color-primary)"
         />
         Håll mig inloggad
       </label>
@@ -116,7 +116,7 @@ export function LoginForm({
       <button
         type="submit"
         disabled={pending}
-        className="mt-1.5 h-[52px] cursor-pointer rounded-[11px] bg-(--color-login-ink) font-(family-name:--font-space-grotesk) text-base font-semibold text-white shadow-[0_10px_22px_-12px_rgba(34,36,42,.9)] transition hover:bg-(--color-login-ink-hover) active:translate-y-px disabled:cursor-default disabled:opacity-50"
+        className="mt-1.5 h-[52px] cursor-pointer rounded-[11px] bg-(--color-primary) font-(family-name:--font-space-grotesk) text-base font-semibold text-white shadow-[0_10px_22px_-12px_color-mix(in_srgb,var(--color-primary)_90%,transparent)] transition hover:bg-(--color-primary-hover) active:translate-y-px disabled:cursor-default disabled:opacity-50"
       >
         {pending ? "Loggar in…" : "Logga in"}
       </button>
