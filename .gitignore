@@ -20,3 +20,6 @@ data/
 *.xlsx
 *.xlsm
 *.xls
+
+# Mätunderlaget. Byggs om med scripts/seed-stort.ts när det behövs.
+.pgdata-stort/
