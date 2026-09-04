@@ -3,6 +3,7 @@ import { getCurrentUser, signIn } from "@/server/auth";
 import { needsSetup } from "@/server/setup";
 import { LoginForm, type LoginState } from "@/components/LoginForm";
 import { Lodjur } from "@/components/Lodjur";
+import { internReturväg } from "@/lib/retur";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,12 @@ export default async function LoginPage({
     const result = await signIn(email, String(formData.get("password") ?? ""));
     if (!result.ok) return { error: result.error, email };
 
-    // Bara interna vägar, annars går inloggningen att använda för att
-    // skicka någon vidare till en annan sajt.
-    redirect(retur?.startsWith("/") && !retur.startsWith("//") ? retur : "/");
+    /* Bara interna vägar, annars går inloggningen att använda för att
+       skicka någon vidare till en annan sajt. Regeln bor i lib/retur.ts
+       med sina prov — den som stod här släppte igenom en väg som
+       inleddes med snedstreck och bakstreck, vilket webbläsaren gör om
+       till en protokollrelativ adress mot en annan värd. */
+    redirect(internReturväg(retur));
   }
 
   return (
