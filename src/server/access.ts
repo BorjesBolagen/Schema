@@ -3,9 +3,9 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getDb, schema, readWithTimeout } from "@/db";
 import type { CurrentUser } from "./auth";
-import { canAccessBoard, canEditBoard } from "./board-scope";
+import { canAccessBoard, canEditBoard, editableBoardIds } from "./board-scope";
 
-export { canAccessBoard, canEditBoard };
+export { canAccessBoard, canEditBoard, editableBoardIds };
 
 /**
  * Vilka tavlor en användare når.
@@ -51,6 +51,25 @@ export async function requireBoardBySlug(user: CurrentUser, slug: string) {
     getDb().select().from(schema.board).where(eq(schema.board.slug, slug)),
   );
   if (!board || !(await canAccessBoard(user, board.id))) notFound();
+  return board;
+}
+
+/**
+ * Tavlan efter kontroll av *ändringsrätt*, utifrån dess id.
+ *
+ * Samma sak som boardForAction men för de vägar som bär ett id i
+ * stället för en slug — borttagningen i tavellistan, till exempel, där
+ * det är kortet man klickat på som pekas ut och inte adressen man står
+ * på.
+ */
+export async function boardForActionById(user: CurrentUser, boardId: string) {
+  const [board] = await getDb().select().from(schema.board).where(eq(schema.board.id, boardId));
+  if (!board || !(await canAccessBoard(user, board.id))) {
+    throw new Error("Du har inte tillgång till den här tavlan.");
+  }
+  if (!(await canEditBoard(user, board.id))) {
+    throw new Error("Du har bara läsbehörighet till den här tavlan.");
+  }
   return board;
 }
 

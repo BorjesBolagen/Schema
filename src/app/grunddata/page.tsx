@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { listEmployees, listStations, listVehicles } from "@/server/basedata";
 import { isHostedDatabase } from "@/db";
 import { BaseDataAdmin } from "@/components/BaseDataAdmin";
@@ -7,7 +7,10 @@ import { BaseDataAdmin } from "@/components/BaseDataAdmin";
 export const dynamic = "force-dynamic";
 
 export default async function BaseDataPage() {
-  await requireAdmin();
+  /* Öppen för planerare. Grunddata är inte administration av appen utan
+     underlaget en tavla byggs av: den som får bygga en tavla behöver
+     kunna lägga upp bilen som ska stå på raden. */
+  await requireUser();
   // Seriellt, inte parallellt — se kommentaren i board-week.ts.
   const stations = await listStations();
   const employees = await listEmployees();

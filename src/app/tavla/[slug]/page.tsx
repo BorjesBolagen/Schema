@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { asc } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { requireUser } from "@/server/auth";
-import { requireBoardBySlug } from "@/server/access";
+import { canEditBoard, requireBoardBySlug } from "@/server/access";
 import { getBoardWeek } from "@/server/board-week";
 import { fullDisplayName } from "@/lib/name";
 import { dateRangeLabel, isoWeek, toIso, weeksInYear } from "@/lib/week";
@@ -52,8 +52,10 @@ export default async function BoardPage({ params, searchParams }: Props) {
      notFound() kastar också, men schemaStatusFor svarar null på allt
      som inte är ett schemafel, och då kastas det vidare orört. */
   let data: Awaited<ReturnType<typeof getBoardWeek>>;
+  let fårÄndra = false;
   try {
-    await requireBoardBySlug(user, slug);
+    const board = await requireBoardBySlug(user, slug);
+    fårÄndra = await canEditBoard(user, board.id);
     data = await getBoardWeek(slug, year, week);
   } catch (error) {
     const status = await schemaStatusFor(error);
@@ -221,11 +223,14 @@ export default async function BoardPage({ params, searchParams }: Props) {
         </p>
       )}
 
+      {/* canDelete följer ändringsrätten på tavlan, inte rollen: den
+          som byggt en tavla ska få riva den igen, och den som bara får
+          läsa ska inte se knappen alls. */}
       <div className="mt-5">
         {view === "person" ? (
           <PersonGrid data={data} />
         ) : (
-          <BoardWorkspace data={data} allEmployees={allEmployees} canDelete={user.role === "admin"} />
+          <BoardWorkspace data={data} allEmployees={allEmployees} canDelete={fårÄndra} />
         )}
       </div>
     </main>

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireAdmin, requireUser } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import {
   boardRemovalFacts,
   createBoard,
@@ -10,7 +10,7 @@ import {
   type BoardResult,
   type BoardTemplate,
 } from "@/server/boards";
-import { requireBoardById } from "@/server/access";
+import { boardForActionById } from "@/server/access";
 import {
   addEmployee,
   addStation,
@@ -37,15 +37,26 @@ export async function addBoard(input: { name: string; template: BoardTemplate })
 
 /** Vad en borttagning skulle ta med sig — underlag för bekräftelsen. */
 export async function boardRemovalPreview(boardId: string): Promise<BoardRemovalFacts> {
-  const user = await requireAdmin();
-  await requireBoardById(user, boardId);
+  const user = await requireUser();
+  await boardForActionById(user, boardId);
   return boardRemovalFacts(boardId);
 }
 
-/** Endast admin. En planerare ska inte kunna radera en kollegas tavla. */
+/**
+ * Tar bort en tavla.
+ *
+ * Var admin-bara med skälet "en planerare ska inte kunna radera en
+ * kollegas tavla". Skälet höll, men medlet var för trubbigt: det
+ * hindrade också planeraren från att ta bort sin *egen*, och den som
+ * får bygga en tavla ska få riva den igen.
+ *
+ * Rätt gräns är ändringsrätt på just den tavlan, inte rollen. Den som
+ * inte är medlem når den ändå inte — och den som bara får läsa får inte
+ * radera.
+ */
 export async function removeBoard(boardId: string): Promise<void> {
-  const user = await requireAdmin();
-  await requireBoardById(user, boardId);
+  const user = await requireUser();
+  await boardForActionById(user, boardId);
   await deleteBoard(boardId);
   revalidatePath("/");
 }
@@ -55,21 +66,21 @@ export async function removeBoard(boardId: string): Promise<void> {
  * ------------------------------------------------------------------ */
 
 export async function createStation(name: string): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await addStation(name);
   refresh();
   return result;
 }
 
 export async function editStation(id: string, name: string): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await renameStation(id, name);
   refresh();
   return result;
 }
 
 export async function deleteStation(id: string): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await removeStation(id);
   refresh();
   return result;
@@ -81,7 +92,7 @@ export async function createEmployee(input: {
   employeeNumber?: string;
   stationPlaceId?: string | null;
 }): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await addEmployee(input);
   refresh();
   return result;
@@ -91,7 +102,7 @@ export async function editEmployee(
   id: string,
   patch: { firstName?: string; lastName?: string; stationPlaceId?: string | null; isActive?: boolean },
 ): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await updateEmployee(id, patch);
   refresh();
   return result;
@@ -108,7 +119,7 @@ export async function setStationPlaceForMany(
   employeeIds: string[],
   stationPlaceId: string | null,
 ): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   for (const id of employeeIds) {
     const result = await updateEmployee(id, { stationPlaceId });
     // Faller en rad avbryts hela ändringen — hellre ett tydligt fel än
@@ -124,7 +135,7 @@ export async function createVehicle(input: {
   registrationNumber?: string;
   stationPlaceId?: string | null;
 }): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await addVehicle(input);
   refresh();
   return result;
@@ -139,7 +150,7 @@ export async function editVehicle(
     isActive?: boolean;
   },
 ): Promise<BaseDataResult> {
-  await requireAdmin();
+  await requireUser();
   const result = await updateVehicle(id, patch);
   refresh();
   return result;

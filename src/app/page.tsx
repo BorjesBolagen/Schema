@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/server/auth";
-import { visibleBoards } from "@/server/access";
+import { editableBoardIds, visibleBoards } from "@/server/access";
 import { TEMPLATE_LABELS } from "@/server/boards";
 import { dateRangeLabel, isoWeek, toIso, weekDates } from "@/lib/week";
 import { boardOverviews, lastSync } from "@/server/board-overview";
@@ -81,6 +81,12 @@ export default async function Home() {
     throw error;
   }
 
+  /* Vilka tavlor som får ändras, hämtat en gång i stället för en fråga
+     per kort. Avgör om bort-knappen ritas — en läsare ska inte se en
+     knapp som servern ändå vägrar. */
+  const fårÄndra = await editableBoardIds(user);
+  const ändringsbar = (id: string) => fårÄndra === "alla" || fårÄndra.has(id);
+
   const now = isoWeek(toIso(new Date()));
 
   /* Veckans läge per tavla. Ett anrop för alla, inte ett per tavla — och
@@ -93,19 +99,26 @@ export default async function Home() {
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-2xl font-semibold">Tavlor</h1>
-        {user.role === "admin" && (
-          <nav className="flex gap-4 text-sm">
-            <Link href="/grunddata" className="text-(--color-accent) hover:underline">
-              Grunddata
-            </Link>
-            <Link href="/transpa" className="text-(--color-accent) hover:underline">
-              TransPA-anslutning
-            </Link>
-            <Link href="/db-health" className="text-(--color-accent) hover:underline">
-              Databaskoppling
-            </Link>
-          </nav>
-        )}
+        <nav className="flex gap-4 text-sm">
+          {/* Grunddata är underlaget tavlorna byggs av, inte
+              administration av appen — planeraren behöver det. */}
+          <Link href="/grunddata" className="text-(--color-accent) hover:underline">
+            Grunddata
+          </Link>
+          {/* Kopplingen till TransPA och databasen är driftsfrågor.
+              De hör till den som förvaltar appen, inte till den som
+              lägger scheman i den. */}
+          {user.role === "admin" && (
+            <>
+              <Link href="/transpa" className="text-(--color-accent) hover:underline">
+                TransPA-anslutning
+              </Link>
+              <Link href="/db-health" className="text-(--color-accent) hover:underline">
+                Databaskoppling
+              </Link>
+            </>
+          )}
+        </nav>
       </div>
       <p className="mt-2 text-sm text-(--color-muted)">
         Vecka {now.week} · {dateRangeLabel(weekDates(now.year, now.week, 1, [0, 1, 2, 3, 4, 5, 6]))}
@@ -183,9 +196,10 @@ export default async function Home() {
                   >
                     Semester
                   </Link>
-                  {/* Bara admin. En planerare ska inte kunna radera en
-                      kollegas tavla från listan. */}
-                  {user.role === "admin" && (
+                  {/* Listan visar bara tavlor man har tillgång till, och
+                      servern prövar ändringsrätt på just den tavlan. Den
+                      som byggt en tavla ska få riva den igen. */}
+                  {ändringsbar(b.id) && (
                     <span className="ml-auto">
                       <RemoveBoardButton boardId={b.id} boardName={b.name} />
                     </span>

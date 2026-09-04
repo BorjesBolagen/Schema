@@ -149,6 +149,31 @@ export async function canAccessBoard(
  * Ett fält som finns, tar emot ett värde och inte gör något är värre än
  * ett som saknas. Nu betyder det något.
  */
+/**
+ * Vilka av tavlorna användaren får ändra.
+ *
+ * Finns för listor. canEditBoard frågar databasen en gång per tavla,
+ * och en startsida med tio tavlor skulle alltså ställa tio frågor för
+ * att avgöra vilka knappar som ska ritas. Medlemskapen hämtas i stället
+ * en gång.
+ *
+ * "alla" för administratörer — de går förbi medlemskapet, och en lista
+ * över allt vore bara ett sämre sätt att säga samma sak.
+ */
+export async function editableBoardIds(
+  user: CurrentUser,
+  dbOverride?: Db,
+): Promise<Set<string> | "alla"> {
+  if (user.role === "admin") return "alla";
+  const rows = await readWithTimeout(() =>
+    (dbOverride ?? getDb())
+      .select()
+      .from(schema.boardMember)
+      .where(eq(schema.boardMember.userId, user.id)),
+  );
+  return new Set(rows.filter((m) => m.role === "editor").map((m) => m.boardId));
+}
+
 export async function canEditBoard(
   user: CurrentUser,
   boardId: string,

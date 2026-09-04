@@ -321,7 +321,35 @@ if (viewer) {
     .onConflictDoNothing();
 }
 
+/**
+ * Ett planerarkonto med ändringsrätt.
+ *
+ * Det är den vanligaste användaren appen har — en trafikansvarig som
+ * bygger och justerar sin egen tavla — och den enda roll som inte fanns
+ * i underlaget. Utan den provades hela appen som administratör, och
+ * administratören går förbi varje medlemskontroll.
+ */
+const plannerEmail = process.env.SEED_PLANNER_EMAIL ?? "planerare@example.se";
+const plannerPassword = process.env.SEED_PLANNER_PASSWORD ?? "schema-demo-2026";
+const [planner] = await db
+  .insert(schema.appUser)
+  .values({
+    email: plannerEmail,
+    name: "Planerare",
+    role: "planner",
+    passwordHash: await hashPassword(plannerPassword),
+  })
+  .onConflictDoNothing({ target: schema.appUser.email })
+  .returning();
+if (planner) {
+  await db
+    .insert(schema.boardMember)
+    .values({ boardId: board.id, userId: planner.id, role: "editor" })
+    .onConflictDoNothing();
+}
+
 if (admin) console.log(`Inloggning: ${adminEmail} / ${adminPassword}`);
+if (planner) console.log(`Planerare: ${plannerEmail} / ${plannerPassword}`);
 if (viewer) console.log(`Läsbehörighet: ${viewerEmail} / ${viewerPassword}`);
 console.log(`Tavla: ${board.name}  →  /tavla/${board.slug}`);
 console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${today.year}&vecka=${today.week}`);

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, createDb, schema, type Db } from "@/db";
 import { runMigrations } from "@/db/migrate";
-import { canAccessBoard, canEditBoard } from "./board-scope";
+import { canAccessBoard, canEditBoard, editableBoardIds } from "./board-scope";
 
 /**
  * board_member.role.
@@ -99,5 +99,78 @@ describe("läsa men inte ändra", () => {
     const [b] = await db.insert(schema.board).values({ name: "T", slug: "t" }).returning();
     const admin = { id: "00000000-0000-0000-0000-000000000000", email: "", name: "", role: "admin" as const };
     expect(await canEditBoard(admin, b.id, db)).toBe(true);
+  });
+});
+
+/**
+ * Listvarianten.
+ *
+ * Startsidan ritar en bort-knapp per tavla och behöver veta vilka som
+ * får ändras. canEditBoard hade betytt en databasfråga per kort; den
+ * här hämtar medlemskapen en gång. Svaren måste vara desamma, annars
+ * ritas en knapp servern ändå vägrar.
+ */
+describe("editableBoardIds", () => {
+  it("ger bara de tavlor man är editor på", async () => {
+    const [u] = await db
+      .insert(schema.appUser)
+      .values({ email: "i@j.se", name: "I", role: "planner", passwordHash: "x" })
+      .returning();
+    const [ändra] = await db.insert(schema.board).values({ name: "A", slug: "a" }).returning();
+    const [läsa] = await db.insert(schema.board).values({ name: "B", slug: "b" }).returning();
+    const [främmande] = await db.insert(schema.board).values({ name: "C", slug: "c" }).returning();
+    await db.insert(schema.boardMember).values([
+      { boardId: ändra.id, userId: u.id, role: "editor" },
+      { boardId: läsa.id, userId: u.id, role: "viewer" },
+    ]);
+
+    const ids = await editableBoardIds(planerare(u.id), db);
+    expect(ids).toEqual(new Set([ändra.id]));
+    expect(ids === "alla" ? true : ids.has(läsa.id)).toBe(false);
+    expect(ids === "alla" ? true : ids.has(främmande.id)).toBe(false);
+  });
+
+  it("svarar samma sak som canEditBoard, tavla för tavla", async () => {
+    const [u] = await db
+      .insert(schema.appUser)
+      .values({ email: "k@l.se", name: "K", role: "planner", passwordHash: "x" })
+      .returning();
+    const tavlor = await db
+      .insert(schema.board)
+      .values([
+        { name: "A", slug: "a" },
+        { name: "B", slug: "b" },
+        { name: "C", slug: "c" },
+      ])
+      .returning();
+    await db.insert(schema.boardMember).values([
+      { boardId: tavlor[0].id, userId: u.id, role: "editor" },
+      { boardId: tavlor[1].id, userId: u.id, role: "viewer" },
+    ]);
+
+    const ids = await editableBoardIds(planerare(u.id), db);
+    for (const t of tavlor) {
+      const enligtLista = ids === "alla" || ids.has(t.id);
+      expect(enligtLista).toBe(await fårÄndra(u.id, t.id));
+    }
+  });
+
+  it("svarar alla för en administratör", async () => {
+    const admin = {
+      id: "00000000-0000-0000-0000-000000000000",
+      email: "",
+      name: "",
+      role: "admin" as const,
+    };
+    expect(await editableBoardIds(admin, db)).toBe("alla");
+  });
+
+  it("ger ingenting till en planerare utan medlemskap", async () => {
+    const [u] = await db
+      .insert(schema.appUser)
+      .values({ email: "m@n.se", name: "M", role: "planner", passwordHash: "x" })
+      .returning();
+    await db.insert(schema.board).values({ name: "A", slug: "a" });
+    expect(await editableBoardIds(planerare(u.id), db)).toEqual(new Set());
   });
 });
