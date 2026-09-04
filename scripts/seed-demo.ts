@@ -42,7 +42,10 @@ if ((existing[0]?.n ?? 0) > 0) {
 }
 
 const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@example.se";
-const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "schema1234";
+/* Demolösenordet måste själv klara appens krav — tolv tecken. Det gamla
+   var tio, alltså kortare än vad appen tillåter, och kontot gick därför
+   inte att byta lösenord på genom sitt eget formulär. */
+const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "schema-demo-2026";
 const [admin] = await db
   .insert(schema.appUser)
   .values({
@@ -290,7 +293,36 @@ for (let i = -1; i <= 3; i++) {
   }
 }
 
+/**
+ * Ett läskonto.
+ *
+ * board_member.role fick betydelse i säkerhetsomgången, men rollen går
+ * inte att sätta någonstans i gränssnittet — alla medlemmar skrivs in
+ * som editor. Utan ett läskonto i underlaget finns det alltså ingen väg
+ * att pröva den halvan alls, och en spärr ingen kört är en spärr man
+ * hoppas på.
+ */
+const viewerEmail = process.env.SEED_VIEWER_EMAIL ?? "lasare@example.se";
+const viewerPassword = process.env.SEED_VIEWER_PASSWORD ?? "schema-demo-2026";
+const [viewer] = await db
+  .insert(schema.appUser)
+  .values({
+    email: viewerEmail,
+    name: "Läsare",
+    role: "planner",
+    passwordHash: await hashPassword(viewerPassword),
+  })
+  .onConflictDoNothing({ target: schema.appUser.email })
+  .returning();
+if (viewer) {
+  await db
+    .insert(schema.boardMember)
+    .values({ boardId: board.id, userId: viewer.id, role: "viewer" })
+    .onConflictDoNothing();
+}
+
 if (admin) console.log(`Inloggning: ${adminEmail} / ${adminPassword}`);
+if (viewer) console.log(`Läsbehörighet: ${viewerEmail} / ${viewerPassword}`);
 console.log(`Tavla: ${board.name}  →  /tavla/${board.slug}`);
 console.log(`Veckoschema v.${today.week}      →  /tavla/${board.slug}?ar=${today.year}&vecka=${today.week}`);
 console.log(`Semesterplanering       →  /tavla/${board.slug}/semester?ar=2026`);

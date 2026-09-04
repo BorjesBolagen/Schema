@@ -6,9 +6,14 @@ import type { Page } from "playwright-core";
  * Uppgifterna kommer från seed-skriptet och går att styra med
  * E2E_EMAIL/E2E_PASSWORD när databasen satts upp med andra.
  */
-export async function signIn(page: Page, base: string): Promise<void> {
-  const email = process.env.E2E_EMAIL ?? "admin@example.se";
-  const password = process.env.E2E_PASSWORD ?? "schema1234";
+export async function signIn(
+  page: Page,
+  base: string,
+  /** Andra uppgifter än förvalet, t.ex. läskontot i viewer-provet. */
+  som?: { email: string; password: string },
+): Promise<void> {
+  const email = som?.email ?? process.env.E2E_EMAIL ?? "admin@example.se";
+  const password = som?.password ?? process.env.E2E_PASSWORD ?? "schema-demo-2026";
 
   await page.goto(`${base}/logga-in`, { waitUntil: "networkidle" });
   if (!page.url().includes("/logga-in")) return; // redan inloggad

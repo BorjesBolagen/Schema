@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { requireUser } from "@/server/auth";
-import { requireBoardBySlug } from "@/server/access";
+import { boardForAction, requireBoardBySlug } from "@/server/access";
 import { addDays, weekSpan } from "@/lib/week";
 import { detectMoves, type ScheduleMove } from "@/lib/schedule-diff";
 import { workDayFromStored } from "@/lib/transpa/shifts";
@@ -33,9 +33,28 @@ export interface PendingChanges {
   removed: number;
 }
 
-async function collect(boardSlug: string, year: number, week: number) {
+/**
+ * Underlaget för både förhandsvisningen och skickandet.
+ *
+ * `rätt` avgör vilken behörighet som krävs. Förhandsvisningen räknar
+ * bara fram vad som *skulle* skickas och nöjer sig med läsrätt.
+ * Skickandet ändrar riktiga chaufförers pass i Börjes produktionstenant
+ * och kräver ändringsrätt — det är husets allvarligaste skrivning, och
+ * den låg bakom läsrättens spärr. Att ingen kan vara viewer i dag är
+ * inget försvar: fältet finns, tar emot värdet, och den som sätter det
+ * tror att hen gett läsrätt.
+ */
+async function collect(
+  boardSlug: string,
+  year: number,
+  week: number,
+  rätt: "läsa" | "ändra" = "läsa",
+) {
   const user = await requireUser();
-  const board = await requireBoardBySlug(user, boardSlug);
+  const board =
+    rätt === "ändra"
+      ? await boardForAction(user, boardSlug)
+      : await requireBoardBySlug(user, boardSlug);
   const db = getDb();
   const { from, to } = weekSpan(year, week, board.weekStartsOn);
 
@@ -160,7 +179,12 @@ export async function sendPendingChanges(input: {
   year: number;
   week: number;
 }): Promise<SendResult> {
-  const { placed, planned, user } = await collect(input.boardSlug, input.year, input.week);
+  const { placed, planned, user } = await collect(
+    input.boardSlug,
+    input.year,
+    input.week,
+    "ändra",
+  );
   const { moves } = detectMoves({ placed, planned });
 
   const messages: string[] = [];
