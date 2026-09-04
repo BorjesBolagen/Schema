@@ -9,4 +9,14 @@ next-env.d.ts
 .pgdata/
 drizzle/meta/_journal.json.bak
 .DS_Store
-.pgdata/
+
+# Källfilerna från TransPA och Excel.
+#
+# De bär personnummer, hemadresser och förarkortnummer. Ingenting av det
+# importeras, och ingenting av det ska ligga i ett repo — men katalogen
+# stod inte här, så nästa `git add -A` hade tagit med det som råkade
+# ligga i den. Att den är tom i dag är tur, inte skydd.
+data/
+*.xlsx
+*.xlsm
+*.xls
