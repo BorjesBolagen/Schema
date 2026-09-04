@@ -9,6 +9,10 @@ import { PrintButton } from "@/components/PrintButton";
 
 export const dynamic = "force-dynamic";
 
+/** Samma konturform som tavlans uttag — se tavla/[slug]/page.tsx. */
+const SEKUNDÄR =
+  "flex h-[38px] items-center rounded-[9px] border border-(--color-field-line) bg-white px-3.5 font-semibold text-(--color-label) transition hover:border-(--color-dim)";
+
 interface Props {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ ar?: string }>;
@@ -40,51 +44,49 @@ export default async function VacationPage({ params, searchParams }: Props) {
         </Link>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-5 gap-y-3">
-          <h1 className="text-xl font-semibold">Semesterplanering</h1>
+          <h1 className="text-2xl font-semibold tracking-[-0.015em]">Semesterplanering</h1>
 
-          <div className="flex items-center gap-1">
-            <Link
-              href={`/tavla/${slug}/semester?ar=${year - 1}`}
-              aria-label="Föregående år"
-              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
-            >
-              ◀
-            </Link>
-            <span className="px-2 text-sm font-medium">{year}</span>
-            <Link
-              href={`/tavla/${slug}/semester?ar=${year + 1}`}
-              aria-label="Nästa år"
-              className="rounded border border-(--color-line) bg-white px-2 py-1 text-sm hover:border-(--color-accent)"
-            >
-              ▶
-            </Link>
+          {/* Samma reglage som veckoväxlingen på tavlan — det är samma
+              sorts rörelse, bara ett annat steg i tiden. */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5 rounded-[10px] border border-(--color-line) bg-(--color-chip) p-[3px]">
+              <Link
+                href={`/tavla/${slug}/semester?ar=${year - 1}`}
+                aria-label="Föregående år"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-xs text-(--color-label) transition hover:bg-white"
+              >
+                ◀
+              </Link>
+              <span className="px-3 text-sm font-semibold tabular-nums">{year}</span>
+              <Link
+                href={`/tavla/${slug}/semester?ar=${year + 1}`}
+                aria-label="Nästa år"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-xs text-(--color-label) transition hover:bg-white"
+              >
+                ▶
+              </Link>
+            </div>
             {year !== nuvarandeÅr && (
               <Link
                 href={`/tavla/${slug}/semester?ar=${nuvarandeÅr}`}
-                className="ml-2 text-xs text-(--color-accent) hover:underline"
+                className="text-xs text-(--color-accent) hover:underline"
               >
                 I år
               </Link>
             )}
           </div>
 
-          <div className="ml-auto flex items-center gap-4 border-l border-(--color-line) pl-4 text-sm">
-            <a
-              href={`/tavla/${slug}/export?ar=${year}&vy=semester`}
-              className="text-(--color-muted) hover:text-(--color-ink) hover:underline"
-            >
+          <div className="ml-auto flex items-center gap-2.5 text-sm">
+            <a href={`/tavla/${slug}/export?ar=${year}&vy=semester`} className={SEKUNDÄR}>
               Excel
             </a>
-            <PrintButton
-              label="Skriv ut"
-              className="cursor-pointer text-(--color-muted) hover:text-(--color-ink) hover:underline"
-            />
+            <PrintButton label="Skriv ut" className={`cursor-pointer ${SEKUNDÄR}`} />
           </div>
         </div>
       </header>
 
       {data.rows.length === 0 ? (
-        <p className="mt-6 rounded border border-(--color-line) bg-white p-6 text-sm text-(--color-muted)">
+        <p className="mt-6 rounded-2xl border border-(--color-line) bg-white p-6 text-sm text-(--color-muted)">
           Ingen bemanning vald för tavlan ännu. Välj personal i veckovyn först.
         </p>
       ) : (

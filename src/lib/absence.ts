@@ -21,15 +21,26 @@ export const ABSENCE_LABEL: Record<AbsenceType, string> = {
   ovrig: "Övrig",
 };
 
-/** Färger i årsvyn. Semester är den vanliga och får den tydligaste tonen. */
+/**
+ * Färger i årsvyn, ur omgång 2 av den grafiska profilen.
+ *
+ * Semester är den vanliga och får den tydligaste tonen. Alla sju är
+ * mörka nog för vit text ovanpå — staplarna bär sin egen etikett, och
+ * en stapel man inte kan läsa namnet på är en färgad rand utan mening.
+ * Svagast är VAB på 4,5:1, starkast Tjänstledig på 6,6:1.
+ *
+ * VAB står som #BC5B1B och inte profilens #C25E1C: den gav 4,3:1 med
+ * vit text ovanpå, och etiketterna i staplarna är 11 px feta — för
+ * små för att räknas som stor text. En nyans mörkare räcker.
+ */
 export const ABSENCE_COLOR: Record<AbsenceType, string> = {
-  semester: "#1f5fa9",
-  sjuk: "#b42318",
-  vab: "#b45309",
-  tjanstledig: "#6b7280",
-  foraldraledig: "#7c3aed",
-  kompledig: "#0f766e",
-  ovrig: "#9ca3af",
+  semester: "#1F5FB0",
+  sjuk: "#B3261E",
+  vab: "#BC5B1B",
+  tjanstledig: "#5A5D64",
+  foraldraledig: "#7A3FD4",
+  kompledig: "#0E6B5C",
+  ovrig: "#6E7168",
 };
 
 export function isAbsenceType(v: string): v is AbsenceType {
