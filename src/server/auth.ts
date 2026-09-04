@@ -23,7 +23,16 @@ export interface CurrentUser {
 /** Sessionstoken lagras bara som hash — se schema.session. */
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-export async function createSession(userId: string): Promise<void> {
+/**
+ * @param remember Ska kakan ligga kvar när webbläsaren stängs?
+ *
+ * Sessionen i databasen lever trettio dagar oavsett — den är kvittot på
+ * att inloggningen ägt rum, och att korta ner den hade bara flyttat
+ * gränsen. Det som styrs här är kakans livslängd i webbläsaren: utan
+ * expires blir den en sessionskaka och försvinner med fönstret. Sant är
+ * förvalet, alltså precis det som gällde innan kryssrutan fanns.
+ */
+export async function createSession(userId: string, remember = true): Promise<void> {
   const db = getDb();
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
@@ -43,7 +52,7 @@ export async function createSession(userId: string): Promise<void> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    expires: expiresAt,
+    ...(remember ? { expires: expiresAt } : {}),
   });
 }
 
@@ -127,7 +136,11 @@ const LOCK_MINUTES = 15;
 
 const GENERIC = "Fel e-post eller lösenord.";
 
-export async function signIn(email: string, password: string): Promise<SignInResult> {
+export async function signIn(
+  email: string,
+  password: string,
+  remember = true,
+): Promise<SignInResult> {
   const db = getDb();
   const [user] = await db
     .select()
@@ -177,7 +190,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
     .update(schema.appUser)
     .set({ failedLoginCount: 0, lockedUntil: null })
     .where(eq(schema.appUser.id, user!.id));
-  await createSession(user!.id);
+  await createSession(user!.id, remember);
   return { ok: true };
 }
 

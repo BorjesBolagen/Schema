@@ -24,10 +24,16 @@ export function SendChangesButton({
   boardSlug,
   year,
   week,
+  className,
+  label,
 }: {
   boardSlug: string;
   year: number;
   week: number;
+  /** Utseendet på knappen som öppnar jämförelsen — steget i kedjan. */
+  className?: string;
+  /** Etiketten på samma knapp. Numret bärs av steppern i stället. */
+  label?: React.ReactNode;
 }) {
   const [changes, setChanges] = useState<PendingChanges | null>(null);
   const [result, setResult] = useState<{
@@ -50,10 +56,13 @@ export function SendChangesButton({
           type="button"
           onClick={ask}
           disabled={pending}
-          className="rounded border border-(--color-warn) bg-white px-3 py-1.5 text-sm font-medium text-(--color-warn) disabled:opacity-50"
+          className={
+            className ??
+            "rounded border border-(--color-warn) bg-white px-3 py-1.5 text-sm font-medium text-(--color-warn) disabled:opacity-50"
+          }
           title="Jämför tavlan med TransPA och skickar tillbaka det du ändrat"
         >
-          {pending ? "Jämför …" : "4 · Skicka till TransPA"}
+          {pending ? "Jämför …" : (label ?? "4 · Skicka till TransPA")}
         </button>
         {result && (
           /* Skälet stod tidigare bara i en title-attribut, alltså

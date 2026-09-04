@@ -1,31 +1,71 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #ffffff;
+  /* Omgång 2 av den grafiska profilen (Börjeskoncernen.pdf), utrullad
+     över hela appen: inloggningen, startsidan och tavlorna delar nu en
+     palett i stället för tre. */
 
-  /* Börjes två märkeskulörer, hämtade ur loggan själv — lodjurets
-     konturer och dess ögon. Inga gissningar: värdena är utlästa ur
-     CMYKlodjur.pdf.
+  --color-surface: #ffffff;
+  /* Sidans botten. Varm i stället för den kalla #f5f6f8 som stod här —
+     hela skalan nedan lutar åt varmt, och en kall botten under varma
+     kort syns som en smutsig ton i kanterna. */
+  --color-canvas: #F7F6F3;
+
+  /* Börjes två märkeskulörer, ur profilen. Stod tidigare utlästa ur
+     CMYKlodjur.pdf som #fcd006 och #231f20 — nära, men inte samma.
 
      Gulen är en signalfärg och duger inte till text eller knappytor:
-     mot vitt ger den knappt 1,5:1, alltså oläsbart. Den används där
-     den ska synas som en färg och inte läsas som ett ord — märkeslisten
-     överst, lodjurets ögon. Svart text på gult är däremot utmärkt
-     (11:1), så den vägen är öppen om något ska markeras. */
-  --color-brand: #fcd006;
-  --color-brand-ink: #231f20;
+     mot vitt ger den 1,3:1, alltså oläsbart. Den används där den ska
+     synas som en färg och inte läsas som ett ord — märkeslisten, det
+     aktiva stegets siffra, dagpassens bricka. Svart text på gult är
+     däremot utmärkt (11,6:1).
 
-  --color-ink: #231f20;
-  --color-muted: #6b7280;
-  --color-line: #e3e6ea;
+     Obs: lodjur.svg har ögonen hårdkodade till gamla #fcd006. Loggan är
+     en fil för sig och byts inte i förbifarten. */
+  --color-brand: #FFDD45;
+  --color-brand-ink: #22242A;
+  /* Profilens amber. Skiljer dagskiftet från märkesgulen: gult betyder
+     "märke", amber betyder "dag". */
+  --color-brand-amber: #FFC240;
+  /* Text och kant på de gula ytorna. #6B5300 mot #FFDD45 ger 5,5:1 och
+     mot den svagaste gula ytan 7,3:1, så en gul bricka går att läsa. */
+  --color-brand-deep: #6B5300;
+  --color-brand-line: #F4E2A0;
+  /* Två gula ytor, båda ljusa nog för svart text: den svagaste bär
+     dagpassen i rutnätet, den starkare de gula pillren. */
+  --color-brand-soft: #FFFBEB;
+  --color-brand-wash: #FFF6D6;
+
+  /* Text. Tre steg, alla prövade mot både vitt och --color-canvas.
+     Profilens egna #8E9188 och #7A7D74 stod först här men ger 3,2:1
+     respektive 4,2:1 mot botten — under gränsen för brödtext, och de
+     bär just de småstilta versaletiketterna. Mörknade till kravet
+     landar båda på --color-muted, så de blev inte egna tokens. */
+  --color-ink: #22242A;
+  --color-label: #4A4D54;
+  --color-muted: #6E7168;
+  /* Bara dekor: pilen på ett kort, den streckade ramen i en tom cell.
+     2,1:1 — aldrig till text som ska läsas. */
+  --color-dim: #B6B3A8;
+
+  /* Linjer och ytor. */
+  --color-line: #E6E4DE;
+  --color-line-soft: #EFEDE7;
+  --color-field: #FAF9F6;
+  --color-field-line: #E2E0D8;
+  --color-chip: #F2F1EC;
+  --color-chip-hover: #E6E4DE;
+
   /* Blått för länkar. Det är en konvention värd att behålla — en länk
      som inte ser ut som en länk kostar mer än den ger märket. */
   --color-accent: #1f5fa9;
 
   /* Fyllda ytor: primärknappar och det valda läget i en väljare.
      Märkessvart i stället för blått, så det som är starkast på sidan
-     hör ihop med loggan. Vit text på den ger 15:1. */
-  --color-primary: #231f20;
+     hör ihop med loggan. Vit text på den ger 15,5:1. */
+  --color-primary: #22242A;
+  /* Samma yta när pekaren ligger på den. */
+  --color-primary-hover: #34373F;
   --color-warn: #b45309;
   --color-danger: #b42318;
 
@@ -34,13 +74,20 @@
   --color-dir-up: #1f5fa9;
   --color-dir-down: #7a3ea3;
 
-  /* Veckans form i sidopanelen, en ruta per dag.
-     Tolv personer gånger fem dagar blev sextio emoji i en smal kolumn —
-     avläsbart var för sig, en julgran tillsammans. Två dova kulörer och
-     en tom ruta säger samma sak utan att ropa, och mönstret går att
-     jämföra mellan personer på en blick. */
-  --color-shift-day: #e8b356;
-  --color-shift-night: #5b6b8a;
+  /* Skiftet, och bara skiftet.
+     Kulörerna satt förut på personen: tolv pastellfärger som gjorde att
+     ögat kunde följa en person genom veckan. Omgång 2 byter det mot två
+     färger som betyder något i sig — amber är dag, blått är natt — och
+     samma par går igen i rutnätets pass, i skiftkolumnen och i
+     bemanningens veckoremsa, så en person går att läsa av på en blick
+     utan att man först lärt sig vilken pastell som är vem.
+
+     Rutorna är fyllningar, aldrig text. Etiketterna intill dem tar
+     -ink-tonerna, som klarar 5,1:1 respektive 9,6:1 mot vitt. */
+  --color-shift-day: #FFC240;
+  --color-shift-night: #7B83C4;
+  --color-shift-day-ink: #8A6A00;
+  --color-shift-night-ink: #3B4173;
 }
 
 html {
@@ -48,7 +95,7 @@ html {
 }
 
 body {
-  background: #f5f6f8;
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }

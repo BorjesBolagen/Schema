@@ -12,37 +12,45 @@ import { schemaStatusFor } from "@/server/schema-guard";
 
 export const dynamic = "force-dynamic";
 
+/** Samma konturform som tavlans uttag — se tavla/[slug]/page.tsx. */
+const SEKUNDÄR =
+  "flex h-[38px] items-center rounded-[9px] border border-(--color-field-line) bg-white px-3.5 font-semibold text-(--color-label) transition hover:border-(--color-dim)";
+
 /**
  * Ett tal med sin etikett.
  *
- * Talet först och stort, ordet efter och litet: listan läses genom att
- * jämföra siffror mellan tavlor, inte genom att läsa meningar.
+ * Talet först och stort, ordet under och litet: korten läses genom att
+ * jämföra siffror mellan tavlor, inte genom att läsa meningar. Stod
+ * tidigare på en rad med ordet efter talet — det gick att läsa, men inte
+ * att jämföra i sidled mellan tre kort.
  */
 function Tal({
   värde,
   etikett,
-  stark = false,
   ton,
 }: {
   värde: number;
   etikett: string;
-  stark?: boolean;
-  ton?: "varning";
+  ton?: "varning" | "svag";
 }) {
   return (
-    <span className="flex items-baseline gap-1">
+    <span className="flex flex-col gap-0.5">
       <span
-        className={`text-sm ${
+        className={`text-[22px] leading-none font-semibold tabular-nums ${
           ton === "varning"
-            ? "font-semibold text-(--color-warn)"
-            : stark
-              ? "font-semibold text-(--color-ink)"
+            ? "text-(--color-warn)"
+            : ton === "svag"
+              ? "text-(--color-dim)"
               : "text-(--color-ink)"
         }`}
       >
         {värde}
       </span>
-      <span className={ton === "varning" ? "text-(--color-warn)" : "text-(--color-muted)"}>
+      <span
+        className={`text-[11px] font-medium tracking-[.06em] uppercase ${
+          ton === "varning" ? "text-(--color-warn)" : "text-(--color-muted)"
+        }`}
+      >
         {etikett}
       </span>
     </span>
@@ -96,13 +104,13 @@ export default async function Home() {
   const senastSynk = await lastSync().catch(() => null);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <div className="flex items-baseline justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Tavlor</h1>
-        <nav className="flex gap-4 text-sm">
+    <main className="mx-auto max-w-6xl px-6 py-12">
+      <div className="flex flex-wrap items-baseline justify-between gap-4">
+        <h1 className="text-[27px] font-semibold tracking-[-0.015em]">Tavlor</h1>
+        <nav className="flex flex-wrap gap-2 text-sm">
           {/* Grunddata är underlaget tavlorna byggs av, inte
               administration av appen — planeraren behöver det. */}
-          <Link href="/grunddata" className="text-(--color-accent) hover:underline">
+          <Link href="/grunddata" className={SEKUNDÄR}>
             Grunddata
           </Link>
           {/* Kopplingen till TransPA och databasen är driftsfrågor.
@@ -110,31 +118,38 @@ export default async function Home() {
               lägger scheman i den. */}
           {user.role === "admin" && (
             <>
-              <Link href="/transpa" className="text-(--color-accent) hover:underline">
+              <Link href="/transpa" className={SEKUNDÄR}>
                 TransPA-anslutning
               </Link>
-              <Link href="/db-health" className="text-(--color-accent) hover:underline">
+              <Link href="/db-health" className={SEKUNDÄR}>
                 Databaskoppling
               </Link>
             </>
           )}
         </nav>
       </div>
-      <p className="mt-2 text-sm text-(--color-muted)">
-        Vecka {now.week} · {dateRangeLabel(weekDates(now.year, now.week, 1, [0, 1, 2, 3, 4, 5, 6]))}
+      {/* Färskheten som ett eget märke, inte som ett led i en mening.
+          Den säger om underlaget går att lita på, och det är en annan
+          sorts upplysning än vilken vecka man tittar på. */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-(--color-muted)">
         {senastSynk && (
-          <>
-            {" · "}
-            <span title={senastSynk.toISOString()}>
-              hämtat från TransPA {relativTid(senastSynk)}
-            </span>
-          </>
+          <span
+            title={senastSynk.toISOString()}
+            className="flex items-center gap-2 rounded-full border border-(--color-brand-line) bg-(--color-brand-wash) px-3 py-1 font-semibold text-(--color-brand-deep)"
+          >
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-(--color-brand-amber)" />
+            Hämtat från TransPA {relativTid(senastSynk)}
+          </span>
         )}
-      </p>
+        <span>
+          Vecka {now.week} ·{" "}
+          {dateRangeLabel(weekDates(now.year, now.week, 1, [0, 1, 2, 3, 4, 5, 6]))}
+        </span>
+      </div>
 
       {boards.length === 0 ? (
         <>
-          <p className="mt-8 rounded border border-(--color-line) bg-white p-6 text-sm">
+          <p className="mt-8 rounded-2xl border border-(--color-line) bg-white p-6 text-sm">
             {user.role === "admin"
               ? "Inga tavlor ännu. Skapa den första nedan."
               : "Du har inte fått tillgång till någon tavla. Skapa en egen, eller be en administratör lägga till dig på en."}
@@ -143,70 +158,108 @@ export default async function Home() {
         </>
       ) : (
         <>
-          <ul className="mt-8 space-y-3">
-            {boards.map((b) => (
-              <li
-                key={b.id}
-                className="rounded border border-(--color-line) bg-white transition hover:border-(--color-accent)"
-              >
-                <Link
-                  href={`/tavla/${b.slug}?ar=${now.year}&vecka=${now.week}`}
-                  className="block px-5 pt-4"
+          {/* Kort i ett rutnät i stället för rader i en lista.
+              Raderna var en meny med siffror efter: man läste dem uppifrån
+              och ned, en tavla i taget. Korten går att jämföra i sidled —
+              samma tre tal på samma plats i varje kort — vilket är hur
+              man använder sidan: var behöver något göras i dag. */}
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {boards.map((b) => {
+              const o = översikt.get(b.id);
+              const tomt = (o?.assignments ?? 0) === 0;
+              return (
+                <li
+                  key={b.id}
+                  className="flex flex-col rounded-2xl border border-(--color-line) bg-white shadow-[0_1px_2px_rgba(34,36,42,.04)] transition hover:border-(--color-primary) hover:shadow-[0_12px_26px_-16px_rgba(34,36,42,.35)]"
                 >
-                  <span className="flex items-baseline gap-3">
-                    <span className="font-medium">{b.name}</span>
-                    <span className="text-xs text-(--color-muted)">
-                      {antal(b.visibleWeekdays.length, "dag", "dagar")} · start{" "}
-                      {b.weekStartsOn === 0 ? "söndag" : "måndag"} ·{" "}
-                      {b.visibleShifts.length > 1 ? "dag och natt" : "bara dag"}
-                    </span>
-                    {/* Kortet är en länk, och det ska synas utan att man
-                        först måste föra musen över det. */}
-                    <span aria-hidden className="ml-auto text-(--color-muted)">
-                      →
-                    </span>
-                  </span>
-
-                  {/* Veckans läge, inte bara ett namn att klicka på.
-                      Fyra tal som går att räkna i databasen utan att
-                      tolka något — se board-overview.ts för varför "ej
-                      utlagda" inte står här. */}
-                  <span className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
-                    <Tal
-                      värde={översikt.get(b.id)?.assignments ?? 0}
-                      etikett="utlagda pass"
-                      stark
-                    />
-                    <Tal värde={översikt.get(b.id)?.crew ?? 0} etikett="i bemanningen" />
-                    <Tal värde={översikt.get(b.id)?.rows ?? 0} etikett="rader" />
-                    {(översikt.get(b.id)?.absent ?? 0) > 0 && (
-                      <Tal
-                        värde={översikt.get(b.id)!.absent}
-                        etikett="frånvarande"
-                        ton="varning"
-                      />
-                    )}
-                  </span>
-                </Link>
-
-                <div className="mt-3 flex items-center gap-4 border-t border-(--color-line) px-5 py-2 text-sm">
                   <Link
-                    href={`/tavla/${b.slug}/semester?ar=${now.year}`}
-                    className="text-(--color-accent) hover:underline"
+                    href={`/tavla/${b.slug}?ar=${now.year}&vecka=${now.week}`}
+                    className="flex flex-1 flex-col gap-4 px-5 pt-5"
                   >
-                    Semester
-                  </Link>
-                  {/* Listan visar bara tavlor man har tillgång till, och
-                      servern prövar ändringsrätt på just den tavlan. Den
-                      som byggt en tavla ska få riva den igen. */}
-                  {ändringsbar(b.id) && (
-                    <span className="ml-auto">
-                      <RemoveBoardButton boardId={b.id} boardName={b.name} />
+                    <span className="flex items-start justify-between gap-3">
+                      <span className="flex flex-col gap-1">
+                        <span className="text-xl font-semibold">{b.name}</span>
+                        <span className="text-[13px] text-(--color-muted)">
+                          {antal(b.visibleWeekdays.length, "dag", "dagar")} · start{" "}
+                          {b.weekStartsOn === 0 ? "söndag" : "måndag"} ·{" "}
+                          {b.visibleShifts.length > 1 ? "dag och natt" : "bara dag"}
+                        </span>
+                      </span>
+                      {/* Kortet är en länk, och det ska synas utan att man
+                          först måste föra musen över det. */}
+                      <span aria-hidden className="text-lg text-(--color-dim)">
+                        →
+                      </span>
                     </span>
-                  )}
-                </div>
-              </li>
-            ))}
+
+                    {/* Veckans läge, inte bara ett namn att klicka på.
+                        Tal som går att räkna i databasen utan att tolka
+                        något — se board-overview.ts för varför "ej utlagda"
+                        inte står här. Designförslaget hade "37 tomma pass
+                        kvar" på den här platsen; det talet finns bara på
+                        tavlan själv, där passens tider redan tolkats, och
+                        att räkna fram det en andra gång i SQL vore en andra
+                        sanning som kan säga emot den första. */}
+                    <span className="flex gap-6">
+                      <Tal
+                        värde={o?.assignments ?? 0}
+                        etikett="utlagda pass"
+                        ton={tomt ? "svag" : undefined}
+                      />
+                      <Tal
+                        värde={o?.crew ?? 0}
+                        etikett="i bemanning"
+                        ton={(o?.crew ?? 0) === 0 ? "svag" : undefined}
+                      />
+                      <Tal värde={o?.rows ?? 0} etikett="rader" />
+                    </span>
+                  </Link>
+
+                  <div className="mt-4 flex items-center justify-between gap-3 border-t border-(--color-line-soft) px-5 py-3 text-[12.5px] font-semibold">
+                    {/* Kortets kvitto: det som är värt att veta innan man
+                        öppnar tavlan. Frånvaro först — den är det enda som
+                        kräver ett beslut. */}
+                    {(o?.absent ?? 0) > 0 ? (
+                      <span className="flex min-w-0 items-center gap-2 text-(--color-warn)">
+                        <span
+                          aria-hidden
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-brand-amber)"
+                        />
+                        <span className="truncate">
+                          {antal(o!.absent, "frånvarande", "frånvarande")}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="flex min-w-0 items-center gap-2 text-(--color-muted)">
+                        <span
+                          aria-hidden
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-dim)"
+                        />
+                        <span className="truncate">
+                          {tomt ? "Inget utlagt än" : "Veckan är igång"}
+                        </span>
+                      </span>
+                    )}
+
+                    <span className="flex shrink-0 items-center gap-3 whitespace-nowrap">
+                      <Link
+                        href={`/tavla/${b.slug}/semester?ar=${now.year}`}
+                        className="text-(--color-label) hover:underline"
+                      >
+                        Semester
+                      </Link>
+                      {/* Listan visar bara tavlor man har tillgång till,
+                          och servern prövar ändringsrätt på just den
+                          tavlan. Den som byggt en tavla ska få riva den
+                          igen. */}
+                      {ändringsbar(b.id) && (
+                        <RemoveBoardButton boardId={b.id} boardName={b.name} />
+                      )}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           <NewBoardForm templates={TEMPLATE_LABELS} />
         </>
