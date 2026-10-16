@@ -12,7 +12,11 @@ import {
 } from "@/lib/conflicts";
 import { fullDisplayName } from "@/lib/name";
 import type { Shift, WorkDay } from "@/lib/work-days";
-import { parseDirection, type Direction } from "@/lib/transpa/direction";
+import {
+  alternatingNightDirections,
+  parseDirection,
+  type Direction,
+} from "@/lib/transpa/direction";
 import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, weekDates } from "@/lib/week";
 import { workDayFromStored } from "@/lib/transpa/shifts";
@@ -29,10 +33,12 @@ export interface CellAssignment {
   source: "generated" | "manual";
   conflicts: Conflict[];
   /**
-   * Riktningen på det hämtade passet, när TransPA:s benämning sade den.
+   * Riktningen på passet: ur TransPA:s benämning när den säger den,
+   * och för nattpass på en linjebil annars ur turordningen — första
+   * natten i följd upp, nästa ner, och så vidare.
    *
-   * Null betyder att benämningen inte sade något, inte att passet
-   * saknar riktning — och på en linjebil ska den skillnaden synas.
+   * Null betyder att riktningen inte gick att få fram, inte att passet
+   * saknar riktning.
    */
   direction: Direction | null;
 }
@@ -153,6 +159,7 @@ interface BoardWeekBundle {
     isActive: boolean;
   }>;
   vehicles: Array<{ id: string; displayName: string; isActive: boolean }>;
+  earlier_nights: Array<{ boardRowId: string; date: string; employeeId: string }>;
   stations: Array<{ id: string; name: string }>;
   crew: Array<{ employeeId: string; sortOrder: number }>;
   base_schedule: Array<{
@@ -304,6 +311,16 @@ async function runGetBoardWeek(
         'note', a.note, 'source', a.source)), '[]'::json)
        from assignment a where a.date >= ${first} and a.date <= ${last}) as assignments,
 
+      /* Nätterna före veckan på tavlans linjebilar. Riktningen räknas ur
+         turordningen, och en följd som började förra veckan ska inte
+         börja om med upp på måndagen. Två veckor bakåt räcker gott. */
+      (select coalesce(json_agg(json_build_object(
+        'boardRowId', a.board_row_id, 'date', a.date, 'employeeId', a.employee_id)), '[]'::json)
+       from assignment a join board_row r on r.id = a.board_row_id
+       where r.board_id = ${board.id} and r.vehicle_kind = 'linjebil'
+         and a.shift = 'night' and a.employee_id is not null
+         and a.date >= ${addDays(first, -14)} and a.date < ${first}) as earlier_nights,
+
       (select coalesce(json_agg(json_build_object(
         'employeeId', x.employee_id, 'fromDate', x.from_date, 'toDate', x.to_date,
         'type', x.type, 'note', x.note)), '[]'::json)
@@ -444,6 +461,31 @@ async function runGetBoardWeek(
     directionOf.set(`${day.employeeId}|${day.date}|${day.shift}`, parseDirection(s.name));
   }
 
+  /* På en linjebil växlar nattpassen riktning: första natten i följd
+     upp, nästa ner, och så vidare. Det räknas per rad och person, med
+     nätterna före veckan med i underlaget så att en följd som började
+     förra veckan fortsätter rätt. */
+  const linjeRader = new Set(rows.filter((r) => r.vehicleKind === "linjebil").map((r) => r.id));
+  const nätterPerRadPerson = new Map<string, Array<{ date: string; known: Direction | null }>>();
+  const läggTillNatt = (boardRowId: string, employeeId: string, date: string) => {
+    const nyckel = `${boardRowId}|${employeeId}`;
+    (
+      nätterPerRadPerson.get(nyckel) ?? nätterPerRadPerson.set(nyckel, []).get(nyckel)!
+    ).push({ date, known: directionOf.get(`${employeeId}|${date}|night`) ?? null });
+  };
+  for (const n of bundle.earlier_nights) läggTillNatt(n.boardRowId, n.employeeId, n.date);
+  for (const a of rawAssignments) {
+    if (a.shift === "night" && a.employeeId && linjeRader.has(a.boardRowId)) {
+      läggTillNatt(a.boardRowId, a.employeeId, a.date);
+    }
+  }
+  const linjeRiktning = new Map<string, Direction>();
+  for (const [nyckel, nätter] of nätterPerRadPerson) {
+    for (const [date, d] of alternatingNightDirections(nätter, addDays)) {
+      linjeRiktning.set(`${nyckel}|${date}`, d);
+    }
+  }
+
   /**
    * Uppslag i stället för genomsökningar.
    *
@@ -508,7 +550,11 @@ async function runGetBoardWeek(
         source: a.source,
         conflicts: index.byAssignment.get(a.id) ?? [],
         direction: a.employeeId
-          ? (directionOf.get(`${a.employeeId}|${a.date}|${a.shift}`) ?? null)
+          ? ((a.shift === "night"
+              ? linjeRiktning.get(`${a.boardRowId}|${a.employeeId}|${a.date}`)
+              : undefined) ??
+            directionOf.get(`${a.employeeId}|${a.date}|${a.shift}`) ??
+            null)
           : null,
       });
     }

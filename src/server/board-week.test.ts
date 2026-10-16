@@ -18,6 +18,7 @@ import { getBoardWeek } from "./board-week";
 
 let db: Db;
 let linjeRow: string;
+let följdRow: string;
 
 /** Symbolen getDb() slår upp i. Registrerad globalt, så den går att sätta här. */
 const DB_KEY = Symbol.for("schema.db");
@@ -130,6 +131,41 @@ beforeAll(async () => {
   }
 });
 
+/* En linjebil där benämningarna inte säger riktningen: den räknas ur
+   turordningen. Följden börjar lördagen före veckan, så måndagen är
+   tredje natten och ska gå upp, inte börja om. */
+beforeAll(async () => {
+  const [board] = await db.select().from(schema.board);
+  const [station] = await db.select().from(schema.stationPlace);
+  const [anna] = await db
+    .insert(schema.employee)
+    .values({ firstName: "Anna", lastName: "Ström", stationPlaceId: station.id })
+    .returning();
+  const [följd] = await db
+    .insert(schema.boardRow)
+    .values({ boardId: board.id, label: "BT30/31", sortOrder: 2, vehicleKind: "linjebil" })
+    .returning();
+  följdRow = följd.id;
+  for (const date of ["2026-08-15", "2026-08-16", "2026-08-17", "2026-08-18"]) {
+    await db.insert(schema.assignment).values({
+      boardRowId: följd.id,
+      date,
+      shift: "night",
+      slot: 0,
+      employeeId: anna.id,
+      source: "generated",
+    });
+  }
+  await db.insert(schema.assignment).values({
+    boardRowId: följd.id,
+    date: "2026-08-20",
+    shift: "night",
+    slot: 0,
+    employeeId: anna.id,
+    source: "generated",
+  });
+});
+
 afterAll(async () => {
   delete (globalThis as Record<symbol, unknown>)[DB_KEY];
   await closeDb(db);
@@ -148,14 +184,14 @@ describe("getBoardWeek", () => {
       "2026-08-21",
     ]);
     // Varje subselect ska ha kommit fram — det är det frågan mest kan gå sönder på.
-    expect(week!.rows.map((r) => r.label)).toEqual(["BT08/09", "BT17/23"]);
+    expect(week!.rows.map((r) => r.label)).toEqual(["BT08/09", "BT17/23", "BT30/31"]);
     expect(week!.rows[0].groupLabel).toBe("STOCKHOLM");
     expect(week!.crew.map((c) => c.name).sort()).toEqual(["Elin Karlsson", "Peter Mauritzson"]);
     expect(week!.vehicles.map((v) => v.name)).toEqual(["BT08"]);
     expect(week!.groups.map((g) => g.label)).toEqual(["STOCKHOLM"]);
     expect(week!.baseSchedule).toHaveLength(1);
     // Stationsorten kommer ur sin egen subselect, via personalväljaren.
-    expect(week!.pickerEmployees.map((e) => e.stationPlace)).toEqual(["Nybro", "Nybro"]);
+    expect(week!.pickerEmployees.map((e) => e.stationPlace)).toEqual(["Nybro", "Nybro", "Nybro"]);
   });
 
   it("ger null för en tavla som inte finns", async () => {
@@ -185,6 +221,17 @@ describe("riktning i cellen", () => {
     expect(week!.rows.find((r) => r.id === linjeRow)!.vehicleKind).toBe("linjebil");
     // Raden som inte fått något val ska bete sig som förut.
     expect(week!.rows.find((r) => r.label === "BT08/09")!.vehicleKind).toBe("annan");
+  });
+
+  it("växlar upp och ner natt för natt på en linjebil, även över veckoskiftet", async () => {
+    const week = await getBoardWeek("fjarr-nybro", 2026, 34);
+    const rad = week!.rows.find((r) => r.id === följdRow)!;
+    const riktning = (date: string) => rad.cells[`${date}|night`][0].direction;
+
+    expect(riktning("2026-08-17")).toBe("upp");
+    expect(riktning("2026-08-18")).toBe("ner");
+    // Ledigt den 19:e — följden börjar om.
+    expect(riktning("2026-08-20")).toBe("upp");
   });
 
   /* Ett pass utan riktning i benämningen ska ge null, inte en gissning. */
