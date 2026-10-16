@@ -68,6 +68,13 @@ med; därefter styr tavelredigeraren allt.
 Personal, fordon och stationsorter ska komma från TransPA-synken. Tills
 den finns lägger en administratör upp dem under **Grunddata**.
 
+**Hämta nya personer** på startsidan, bredvid Grunddata, lägger upp de
+personer som tillkommit i TransPA sedan sist och räknar upp dem med namn.
+Den lägger bara till, så den är öppen för planerare: befintliga rader
+lämnas orörda, och avslutade i TransPA tas inte in. Den som lagts upp
+för hand kopplas ihop med sin TransPA-rad när anställningsnummer och
+namn stämmer, i stället för att dubbleras.
+
 Tre knappar i verktygsraden, ingen av dem kräver en utvecklare:
 
 **⚙ Tavla** — radernas namn, ordning (dra), gruppering, färg och vilken
