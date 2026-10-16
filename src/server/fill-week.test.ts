@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { planWeek, type BaseScheduleEntry, type ExistingAssignment } from "./fill-week";
 import type { WorkDay } from "@/lib/work-days";
+import { kopplingarFrånVeckor } from "@/lib/rotation";
 
 const WEEK = ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21"];
 const [MON, TUE, WED, THU, FRI] = WEEK;
@@ -597,5 +598,39 @@ describe("cykler sida vid sida", () => {
 
     expect(kör(1)).toEqual(["e1"]); // utan förskjutning träffar vecka 1
     expect(kör(3)).toEqual(["e2"]); // med förskjutning 2 träffar vecka 3
+  });
+});
+
+describe("planWeek med ett veckoschema per person", () => {
+  /* Fyra veckor, flera linjer i vecka 1: så som planeraren lägger ut det. */
+  it("följer varje veckas linjer och dagar", () => {
+    const schema = kopplingarFrånVeckor(
+      [
+        [
+          { boardRowId: "BT13", weekdays: [1, 2, 3, 4] },
+          { boardRowId: "BT24", weekdays: [5] },
+        ],
+        [{ boardRowId: "BT50", weekdays: [] }],
+        [],
+        [{ boardRowId: "BT24", weekdays: [1, 2] }],
+      ],
+      4,
+      0,
+    ).map((k) => base({ ...k, employeeId: "e1" }));
+
+    const veckan = (isoWeek: number) =>
+      planWeek({
+        workDays: work("e1", WEEK),
+        baseSchedule: schema,
+        existing: [],
+        isoWeek,
+        dates: WEEK,
+      }).create.map((c) => c.boardRowId);
+
+    expect(veckan(1)).toEqual(["BT13", "BT13", "BT13", "BT13", "BT24"]);
+    expect(veckan(2)).toEqual(["BT50", "BT50", "BT50", "BT50", "BT50"]);
+    expect(veckan(3)).toEqual([]);
+    expect(veckan(4)).toEqual(["BT24", "BT24"]);
+    expect(veckan(5)).toEqual(veckan(1));
   });
 });

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { appliesTo, cyclePosition, describeRule, kommandeVeckor, MAX_CYCLE_WEEKS, specificity } from "./rotation";
+import {
+  appliesTo,
+  cyclePosition,
+  describeRule,
+  kommandeVeckor,
+  kopplingarFrånVeckor,
+  linjerPerCykelvecka,
+  MAX_CYCLE_WEEKS,
+  specificity,
+} from "./rotation";
 
 /**
  * Sanningen om cykeln ligger i Värnamobladets Lists-flik, som mappar
@@ -117,5 +126,63 @@ describe("describeRule", () => {
 
   it("skriver ihop veckodag och cykelvecka", () => {
     expect(describeRule({ cycleWeeks: [1, 3], weekdays: [2] }, 4)).toBe("tis · v. 1/3 av 4");
+  });
+});
+
+describe("veckoschema per person", () => {
+  const fyraVeckor = [
+    [
+      { boardRowId: "BT13", weekdays: [1, 2, 3, 4] },
+      { boardRowId: "BT24", weekdays: [5] },
+    ],
+    [{ boardRowId: "BT24", weekdays: [] }],
+    [],
+    [{ boardRowId: "BT50", weekdays: [3, 1] }],
+  ];
+
+  it("blir en koppling per vecka och linje", () => {
+    expect(kopplingarFrånVeckor(fyraVeckor, 4, 2)).toEqual([
+      { boardRowId: "BT13", weekdays: [1, 2, 3, 4], cycleWeeks: [1], cycleLength: 4, cycleOffset: 2, sortOrder: 0 },
+      { boardRowId: "BT24", weekdays: [5], cycleWeeks: [1], cycleLength: 4, cycleOffset: 2, sortOrder: 1 },
+      { boardRowId: "BT24", weekdays: null, cycleWeeks: [2], cycleLength: 4, cycleOffset: 2, sortOrder: 2 },
+      { boardRowId: "BT50", weekdays: [1, 3], cycleWeeks: [4], cycleLength: 4, cycleOffset: 2, sortOrder: 3 },
+    ]);
+  });
+
+  it("läses tillbaka till samma veckor", () => {
+    const kopplingar = kopplingarFrånVeckor(fyraVeckor, 4, 2);
+    expect(linjerPerCykelvecka(kopplingar, 4, 2)).toEqual([
+      fyraVeckor[0],
+      fyraVeckor[1],
+      [],
+      [{ boardRowId: "BT50", weekdays: [1, 3] }],
+    ]);
+  });
+
+  it("ger stående kopplingar i en cykel på en vecka", () => {
+    expect(kopplingarFrånVeckor([[{ boardRowId: "BT13", weekdays: [] }]], 1, 3)).toEqual([
+      { boardRowId: "BT13", weekdays: null, cycleWeeks: null, cycleLength: 1, cycleOffset: 0, sortOrder: 0 },
+    ]);
+  });
+
+  it("lägger en stående koppling i varje vecka", () => {
+    const stående = { boardRowId: "BT13", weekdays: null, cycleWeeks: null, cycleLength: 1, cycleOffset: 0, sortOrder: 0 };
+    expect(linjerPerCykelvecka([stående], 3, 0)).toEqual([
+      [{ boardRowId: "BT13", weekdays: [] }],
+      [{ boardRowId: "BT13", weekdays: [] }],
+      [{ boardRowId: "BT13", weekdays: [] }],
+    ]);
+  });
+
+  it("lägger ut en tvåveckorsregel i en fyraveckorscykel", () => {
+    const varannan = { boardRowId: "BT13", weekdays: null, cycleWeeks: [1], cycleLength: 2, cycleOffset: 0, sortOrder: 0 };
+    expect(linjerPerCykelvecka([varannan], 4, 0).map((v) => v.length)).toEqual([1, 0, 1, 0]);
+  });
+
+  it("klarar tio veckor och släpper veckor utanför cykeln", () => {
+    const tolv = Array.from({ length: 12 }, (_, i) => [{ boardRowId: `R${i + 1}`, weekdays: [] }]);
+    const ut = kopplingarFrånVeckor(tolv, 10, 0);
+    expect(ut).toHaveLength(10);
+    expect(ut.at(-1)).toMatchObject({ boardRowId: "R10", cycleWeeks: [10], cycleLength: 10 });
   });
 });

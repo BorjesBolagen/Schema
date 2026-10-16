@@ -126,3 +126,92 @@ export function kommandeVeckor(input: {
   }
   return ut;
 }
+
+/**
+ * En linje i en persons veckoschema: vilken rad, och vilka dagar.
+ * Tom lista dagar betyder alla dagar, som i kopplingen.
+ */
+export interface VeckoLinje {
+  boardRowId: string;
+  weekdays: number[];
+}
+
+/** Den första ISO-veckan som hamnar på plats `position` i cykeln. */
+function förstaVeckanPå(position: number, längd: number, förskjutning: number): number {
+  return ((((position - 1 - förskjutning) % längd) + längd) % längd) + 1;
+}
+
+/**
+ * En persons kopplingar utlagda vecka för vecka i en cykel.
+ *
+ * Det är så planeraren tänker på en rotation: "vecka 1 kör hon BT13
+ * mån–tors, vecka 2 BT24 hela veckan" — inte som en lista regler med
+ * cykelnummer. En koppling utan cykelveckor står i varje vecka. En
+ * koppling skriven i en annan cykellängd placeras efter den första
+ * riktiga vecka som hamnar på varje plats, så att inget försvinner när
+ * vyn öppnas.
+ */
+export function linjerPerCykelvecka(
+  kopplingar: Array<{
+    boardRowId: string;
+    weekdays: number[] | null;
+    cycleWeeks: number[] | null;
+    cycleLength: number;
+    cycleOffset: number;
+    sortOrder: number;
+  }>,
+  längd: number,
+  förskjutning: number,
+): VeckoLinje[][] {
+  const l = Math.max(1, Math.floor(längd));
+  const ordnade = [...kopplingar].sort((a, b) => a.sortOrder - b.sortOrder);
+  return Array.from({ length: l }, (_, i) => {
+    const isoVecka = förstaVeckanPå(i + 1, l, förskjutning);
+    return ordnade
+      .filter((k) => {
+        const veckor = k.cycleWeeks ?? [];
+        if (veckor.length === 0) return true;
+        return veckor.includes(cyclePosition(isoVecka, k.cycleLength, k.cycleOffset));
+      })
+      .map((k) => ({ boardRowId: k.boardRowId, weekdays: [...(k.weekdays ?? [])] }));
+  });
+}
+
+/**
+ * Tillbaka från veckor till kopplingar, en per vecka och linje.
+ *
+ * Ordningen inom veckan blir sortOrder: den översta linjen vinner när
+ * två gäller samma dag, precis som i listan. Räknas löpande över alla
+ * veckor så att listan i bas-schemat visar dem i veckoordning. I en cykel på en vecka
+ * behövs inget cykelnummer — då blir det vanliga stående kopplingar.
+ */
+export function kopplingarFrånVeckor(
+  veckor: VeckoLinje[][],
+  längd: number,
+  förskjutning: number,
+): Array<{
+  boardRowId: string;
+  weekdays: number[] | null;
+  cycleWeeks: number[] | null;
+  cycleLength: number;
+  cycleOffset: number;
+  sortOrder: number;
+}> {
+  const l = Math.min(Math.max(1, Math.floor(längd)), MAX_CYCLE_WEEKS);
+  const f = ((Math.floor(förskjutning) % l) + l) % l;
+  const ut: ReturnType<typeof kopplingarFrånVeckor> = [];
+  veckor.slice(0, l).forEach((linjer, i) => {
+    linjer.forEach((linje) => {
+      const dagar = [...new Set(linje.weekdays.filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b);
+      ut.push({
+        boardRowId: linje.boardRowId,
+        weekdays: dagar.length ? dagar : null,
+        cycleWeeks: l > 1 ? [i + 1] : null,
+        cycleLength: l,
+        cycleOffset: l > 1 ? f : 0,
+        sortOrder: ut.length,
+      });
+    });
+  });
+  return ut;
+}

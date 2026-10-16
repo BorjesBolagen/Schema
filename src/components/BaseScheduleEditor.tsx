@@ -9,6 +9,7 @@ import {
   setBaseScheduleRule,
 } from "@/app/actions";
 import { cyclePosition, describeRule, kommandeVeckor, MAX_CYCLE_WEEKS } from "@/lib/rotation";
+import { PersonWeekEditor } from "./PersonWeekEditor";
 
 /**
  * Bas-schemat: den stående kopplingen person ↔ bil.
@@ -215,6 +216,8 @@ export function BaseScheduleEditor({
   const [pending, startTransition] = useTransition();
   /** Vilken kopplings regel som redigeras. Null = ingen. */
   const [oppen, setOppen] = useState<string | null>(null);
+  /** Vems veckoschema som visas i stället för listan. Null = listan. */
+  const [veckoPerson, setVeckoPerson] = useState<string | null>(null);
 
   const nameOf = (id: string) =>
     data.crew.find((c) => c.employeeId === id)?.name ??
@@ -270,9 +273,20 @@ export function BaseScheduleEditor({
           </button>
         </div>
 
+        {veckoPerson ? (
+          <PersonWeekEditor
+            key={veckoPerson}
+            data={data}
+            employeeId={veckoPerson}
+            name={nameOf(veckoPerson)}
+            onClose={() => setVeckoPerson(null)}
+          />
+        ) : (
+        <>
         <p className="border-b border-(--color-line) bg-gray-50 px-5 py-2 text-xs text-(--color-muted)">
           Kopplar person till bil. Vilka dagar personen kör avgörs av personens arbetsdagar —
-          koppla gärna flera personer till samma rad.
+          koppla gärna flera personer till samma rad. Går någon i en rullande cykel, öppna
+          personens veckoschema och lägg ut varje vecka för sig.
         </p>
 
         <table className="w-full border-collapse text-sm">
@@ -296,7 +310,16 @@ export function BaseScheduleEditor({
             {ordnade.map(({ entry, syskon, index }) => (
               <Fragment key={entry.id}>
               <tr className="border-t border-(--color-line)">
-                <td className="px-5 py-1.5 font-medium">{nameOf(entry.employeeId)}</td>
+                <td className="px-5 py-1.5 font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setVeckoPerson(entry.employeeId)}
+                    className="text-left hover:text-(--color-accent) hover:underline"
+                    title="Lägg ut personens schema vecka för vecka"
+                  >
+                    {nameOf(entry.employeeId)}
+                  </button>
+                </td>
                 <td className="px-3 py-1.5">{rowOf(entry.boardRowId)?.label ?? "—"}</td>
                 <td className="px-3 py-1.5">
                   <button
@@ -438,12 +461,24 @@ export function BaseScheduleEditor({
             Koppla
           </button>
 
+          <button
+            type="button"
+            disabled={!employeeId}
+            onClick={() => setVeckoPerson(employeeId)}
+            className="rounded border border-(--color-line) px-3 py-1.5 text-sm text-(--color-accent) disabled:opacity-40"
+            title="Lägg ut personens schema vecka för vecka i en cykel"
+          >
+            Veckoschema …
+          </button>
+
           {data.crew.length === 0 && (
             <p className="w-full text-xs text-(--color-warn)">
               Ingen bemanning vald ännu — välj personal först.
             </p>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );
