@@ -246,3 +246,159 @@ async function syncTenant(
 
   return results;
 }
+
+export interface NewEmployee {
+  name: string;
+  employeeNumber: string | null;
+  company: string;
+}
+
+export interface ImportNewResult {
+  ok: boolean;
+  /** Personer som inte fanns och nu lagts upp. */
+  added: NewEmployee[];
+  /**
+   * Handupplagda personer som nu hittats i TransPA och kopplats ihop
+   * med sin rad där, i stället för att läggas upp en gång till.
+   */
+  linked: NewEmployee[];
+  errors: string[];
+}
+
+/**
+ * Hämtar personer som finns i TransPA men inte i appen.
+ *
+ * Skiljer sig från den fulla synken på /transpa genom att aldrig röra
+ * den som redan finns: namn, roll och avslutad-markering ligger kvar
+ * som de är tills den fulla synken körs. Därför kan knappen ligga hos
+ * planerarna under Grunddata — den kan bara lägga till, aldrig ändra.
+ *
+ * Avslutade i TransPA hoppas över: en ny rad för någon som slutat gör
+ * bara personallistan längre.
+ *
+ * Den som lagts upp för hand innan hen fanns i TransPA kopplas ihop
+ * med sin TransPA-rad när anställningsnummer *och* namn stämmer. Bara
+ * numret räcker inte — det skrivs in för hand och två bolag har
+ * överlappande nummerserier.
+ */
+export async function importNewEmployees(
+  fetchImpl: typeof fetch = fetch,
+  /** Egen koppling när hämtningen körs utanför webbappen, t.ex. i test. */
+  dbOverride?: Db,
+): Promise<ImportNewResult> {
+  const db = dbOverride ?? getDb();
+  const result: ImportNewResult = { ok: false, added: [], linked: [], errors: [] };
+
+  if (!process.env.TRANSPA_CLIENT_ID || !process.env.TRANSPA_CLIENT_SECRET) {
+    result.errors.push("Inga TransPA-uppgifter inlagda.");
+    return result;
+  }
+  const tenants = await tenantsToSync(db);
+  if (tenants.length === 0) {
+    result.errors.push("Inget bolag att hämta från.");
+    return result;
+  }
+
+  for (const tenant of tenants) {
+    const credentials = credentialsForTenant(tenant.tenantId);
+    if (!credentials) continue;
+    const client = new TranspaClient({ credentials, fetchImpl });
+    const run = await track(db, "employees", `nya personer · ${tenant.name}`, async () => {
+      const rows = await client.list<TranspaEmployee>("/v1/employees");
+      const { added, linked } = await addMissingEmployees(db, rows, tenant);
+      result.added.push(...added);
+      result.linked.push(...linked);
+      return { fetched: rows.length, written: added.length + linked.length };
+    });
+    if (run.error) result.errors.push(`${tenant.name}: ${run.error}`);
+  }
+
+  result.ok = result.errors.length === 0;
+  return result;
+}
+
+const nameKey = (first: string, last: string) =>
+  `${first} ${last}`.trim().toLocaleLowerCase("sv").replace(/\s+/g, " ");
+
+async function addMissingEmployees(
+  db: Db,
+  rows: TranspaEmployee[],
+  tenant: { id: string; name: string },
+): Promise<{ added: NewEmployee[]; linked: NewEmployee[] }> {
+  const existing = await db
+    .select({
+      id: schema.employee.id,
+      transpaId: schema.employee.transpaId,
+      employeeNumber: schema.employee.employeeNumber,
+      firstName: schema.employee.firstName,
+      lastName: schema.employee.lastName,
+      transpaTenantId: schema.employee.transpaTenantId,
+    })
+    .from(schema.employee);
+
+  const known = new Set(existing.map((e) => e.transpaId).filter(Boolean));
+  const takenNumbers = new Set(
+    existing
+      .filter((e) => e.transpaTenantId === tenant.id && e.employeeNumber)
+      .map((e) => e.employeeNumber),
+  );
+  const handMade = new Map<string, string>();
+  for (const e of existing) {
+    if (e.transpaId || !e.employeeNumber) continue;
+    handMade.set(`${e.employeeNumber}|${nameKey(e.firstName, e.lastName)}`, e.id);
+  }
+
+  const added: NewEmployee[] = [];
+  const linked: NewEmployee[] = [];
+
+  for (const r of rows) {
+    if (!r.id || !(r.firstName || r.lastName)) continue;
+    if (r.isActive === false) continue;
+    const transpaId = String(r.id);
+    if (known.has(transpaId)) continue;
+
+    const firstName = r.firstName ?? "";
+    const lastName = r.lastName ?? "";
+    const employeeNumber = str(r.employeeNumber);
+    const person: NewEmployee = {
+      name: `${firstName} ${lastName}`.trim(),
+      employeeNumber,
+      company: tenant.name,
+    };
+    const fields = {
+      transpaId,
+      employeeNumber,
+      firstName,
+      lastName,
+      signature: str(r.signature),
+      professionGroup: str(r.professionGroup),
+      isActive: true,
+      transpaTenantId: tenant.id,
+    };
+
+    const match = employeeNumber
+      ? handMade.get(`${employeeNumber}|${nameKey(firstName, lastName)}`)
+      : undefined;
+    if (match && !(employeeNumber && takenNumbers.has(employeeNumber))) {
+      // Stationsorten och allt annat som satts i appen ligger kvar.
+      await db
+        .update(schema.employee)
+        .set({ ...fields, updatedAt: new Date() })
+        .where(eq(schema.employee.id, match));
+      handMade.delete(`${employeeNumber}|${nameKey(firstName, lastName)}`);
+      linked.push(person);
+    } else {
+      const inserted = await db
+        .insert(schema.employee)
+        .values(fields)
+        .onConflictDoNothing()
+        .returning({ id: schema.employee.id });
+      if (inserted.length === 0) continue;
+      added.push(person);
+    }
+    known.add(transpaId);
+    if (employeeNumber) takenNumbers.add(employeeNumber);
+  }
+
+  return { added, linked };
+}

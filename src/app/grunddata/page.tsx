@@ -35,7 +35,12 @@ export default async function BaseDataPage() {
         </p>
       )}
 
-      <BaseDataAdmin stations={stations} employees={employees} vehicles={vehicles} />
+      <BaseDataAdmin
+        stations={stations}
+        employees={employees}
+        vehicles={vehicles}
+        transpaConfigured={!!(process.env.TRANSPA_CLIENT_ID && process.env.TRANSPA_CLIENT_SECRET)}
+      />
     </main>
   );
 }
