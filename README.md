@@ -83,6 +83,11 @@ vilka fält som syns i cellen. En rad kan *avslutas* med ett datum i
 stället för att raderas, så en inställd linje inte tar sin historik med
 sig.
 
+En rad som står för en *linjebil* visar riktningen på nattpassen: den
+första natten en person kör bilen får pil upp, nästa natt pil ner, och så
+vidare så länge nätterna följer på varandra. Står riktningen uttryckligen
+i passets benämning i TransPA är det den som gäller.
+
 **Bas-schema** — kopplar person till bil. Inga dagar anges här; flera
 personer får kopplas till samma rad och deras arbetsdagar avgör vem som
 står där vilken dag.
