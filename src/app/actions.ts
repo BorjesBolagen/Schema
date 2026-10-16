@@ -6,7 +6,7 @@ import { getDb, schema } from "@/db";
 import type { Shift } from "@/lib/work-days";
 import type { VehicleKind } from "@/lib/vehicle-kind";
 import { addDays, mondayOfWeek, weekDates, weekSpan } from "@/lib/week";
-import { MAX_CYCLE_WEEKS } from "@/lib/rotation";
+import { kopplingarFrånVeckor, MAX_CYCLE_WEEKS, type VeckoLinje } from "@/lib/rotation";
 import { requireUser } from "@/server/auth";
 import { boardForAction, requireBoardBySlug } from "@/server/access";
 import { skrivOrdning } from "@/server/sortering";
@@ -657,6 +657,68 @@ export async function setBaseScheduleRule(input: {
     .where(
       and(eq(schema.baseSchedule.id, input.id), eq(schema.baseSchedule.boardId, board.id)),
     );
+  refresh(input.boardSlug);
+}
+
+/**
+ * Skriver om en persons hela veckoschema på tavlan.
+ *
+ * Planeraren lägger ut cykeln vecka för vecka, med en eller flera
+ * linjer per vecka och de dagar personen kör på varje. Det sparas som
+ * vanliga kopplingar, en per vecka och linje, så att "Fyll veckan" och
+ * listan i bas-schemat läser dem som förut. Personens tidigare
+ * kopplingar på tavlan ersätts i samma transaktion — ett halvt
+ * utskrivet schema vore värre än det gamla.
+ */
+export async function setPersonWeekSchedule(input: {
+  boardSlug: string;
+  employeeId: string;
+  cycleLength: number;
+  cycleOffset: number;
+  veckor: VeckoLinje[][];
+}): Promise<void> {
+  const user = await requireUser();
+  const board = await boardForAction(user, input.boardSlug);
+  const db = getDb();
+
+  /* Id:n från klienten är inte bundna till tavlan. */
+  await employeeOnBoard(board.id, input.employeeId);
+  const nya = kopplingarFrånVeckor(input.veckor, input.cycleLength, input.cycleOffset);
+  await rowsOnBoard(board.id, [...new Set(nya.map((k) => k.boardRowId))]);
+
+  await db.transaction(async (tx) => {
+    const tidigare = await tx
+      .select({ validFrom: schema.baseSchedule.validFrom, validTo: schema.baseSchedule.validTo })
+      .from(schema.baseSchedule)
+      .where(
+        and(
+          eq(schema.baseSchedule.boardId, board.id),
+          eq(schema.baseSchedule.employeeId, input.employeeId),
+        ),
+      )
+      .limit(1);
+
+    await tx
+      .delete(schema.baseSchedule)
+      .where(
+        and(
+          eq(schema.baseSchedule.boardId, board.id),
+          eq(schema.baseSchedule.employeeId, input.employeeId),
+        ),
+      );
+
+    if (nya.length) {
+      await tx.insert(schema.baseSchedule).values(
+        nya.map((k) => ({
+          ...k,
+          boardId: board.id,
+          employeeId: input.employeeId,
+          validFrom: tidigare[0]?.validFrom ?? null,
+          validTo: tidigare[0]?.validTo ?? null,
+        })),
+      );
+    }
+  });
   refresh(input.boardSlug);
 }
 
