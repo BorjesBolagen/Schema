@@ -15,7 +15,9 @@
  * syntes förrän någon försökte.
  */
 
-export const MAX_CYCLE_WEEKS = 8;
+/** Längsta cykeln som går att välja. Tio veckor räcker för de
+ * längsta rullande scheman som används i dag. */
+export const MAX_CYCLE_WEEKS = 10;
 
 /**
  * Vilken plats i cykeln en ISO-vecka hamnar på, räknat från 1.

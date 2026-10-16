@@ -177,7 +177,7 @@ i förväg utan att historiken skrivs om.
 
 ### Arbetsmönster (tills TransPA levererar)
 
-Ett mönster per person: en cykel på 1–8 veckor, med veckodagar och skift per
+Ett mönster per person: en cykel på 1–10 veckor, med veckodagar och skift per
 cykelvecka, plus ett ankardatum som avgör var i cykeln en given vecka hamnar.
 
 En vanlig anställd får cykellängd 1 och kryssar i måndag–fredag. Värnamos

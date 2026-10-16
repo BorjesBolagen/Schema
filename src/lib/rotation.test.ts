@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appliesTo, cyclePosition, describeRule, specificity } from "./rotation";
+import { appliesTo, cyclePosition, describeRule, kommandeVeckor, MAX_CYCLE_WEEKS, specificity } from "./rotation";
 
 /**
  * Sanningen om cykeln ligger i Värnamobladets Lists-flik, som mappar
@@ -42,6 +42,23 @@ describe("cyclePosition", () => {
 
   it("tål en förskjutning större än cykeln", () => {
     expect(cyclePosition(1, 4, 6)).toBe(cyclePosition(1, 4, 2));
+  });
+
+  it("klarar ett tioveckorsschema", () => {
+    expect(MAX_CYCLE_WEEKS).toBeGreaterThanOrEqual(10);
+    // Vecka 1–10 är ett varv, vecka 11 börjar om.
+    expect(Array.from({ length: 11 }, (_, i) => cyclePosition(i + 1, 10))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1,
+    ]);
+    expect(cyclePosition(1, 10, 9)).toBe(10);
+  });
+});
+
+describe("kommandeVeckor", () => {
+  it("hittar cykelvecka 9 och 10 i en tioveckorscykel", () => {
+    expect(
+      kommandeVeckor({ year: 2026, week: 1, cycleLength: 10, cycleOffset: 0, cycleWeeks: [9, 10], antal: 4 }),
+    ).toEqual([9, 10, 19, 20]);
   });
 });
 

@@ -640,18 +640,18 @@ export async function setBaseScheduleRule(input: {
   const board = await boardForAction(user, input.boardSlug);
   const db = getDb();
 
+  /* Längden klämd inom det modellen kan visa, och förskjutningen och
+     cykelveckorna inom längden — annars går det att spara en regel som
+     aldrig träffar någon vecka. */
+  const längd = Math.min(Math.max(1, Math.floor(input.cycleLength)), MAX_CYCLE_WEEKS);
+  const cykelveckor = input.cycleWeeks.filter((v) => v >= 1 && v <= längd);
+
   await db
     .update(schema.baseSchedule)
     .set({
-      /* Längden klämd inom det modellen kan visa, och förskjutningen
-         inom längden — annars går det att spara en regel som aldrig
-         träffar någon vecka. */
-      cycleLength: Math.min(Math.max(1, Math.floor(input.cycleLength)), MAX_CYCLE_WEEKS),
-      cycleOffset:
-        ((Math.floor(input.cycleOffset) % Math.max(1, Math.floor(input.cycleLength))) +
-          Math.max(1, Math.floor(input.cycleLength))) %
-        Math.max(1, Math.floor(input.cycleLength)),
-      cycleWeeks: input.cycleWeeks.length ? [...input.cycleWeeks].sort((a, b) => a - b) : null,
+      cycleLength: längd,
+      cycleOffset: ((Math.floor(input.cycleOffset) % längd) + längd) % längd,
+      cycleWeeks: cykelveckor.length ? [...cykelveckor].sort((a, b) => a - b) : null,
       weekdays: input.weekdays.length ? [...input.weekdays].sort((a, b) => a - b) : null,
     })
     .where(

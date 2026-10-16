@@ -121,7 +121,7 @@ function RuleEditor({
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-24 text-xs text-(--color-muted)">Hur ofta</span>
-        {[1, 2, 3, 4, 6, 8].map((n) => (
+        {[1, 2, 3, 4, 6, 8, 10].map((n) => (
           <Chip
             key={n}
             on={cycleLength === n}
