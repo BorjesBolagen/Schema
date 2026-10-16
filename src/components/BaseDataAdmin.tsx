@@ -11,15 +11,12 @@ import {
   editStation,
   editVehicle,
 } from "@/app/basedata-actions";
-import { ImportEmployeesButton } from "@/components/ImportEmployeesButton";
 import type { ManagedEmployee, ManagedStation, ManagedVehicle } from "@/server/basedata";
 
 interface Props {
   stations: ManagedStation[];
   employees: ManagedEmployee[];
   vehicles: ManagedVehicle[];
-  /** Sant när TransPA-uppgifter finns, så att nya personer kan hämtas. */
-  transpaConfigured: boolean;
 }
 
 type Tab = "personal" | "fordon" | "orter";
@@ -46,7 +43,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "orter", label: "Stationsorter" },
 ];
 
-export function BaseDataAdmin({ stations, employees, vehicles, transpaConfigured }: Props) {
+export function BaseDataAdmin({ stations, employees, vehicles }: Props) {
   const [tab, setTab] = useState<Tab>("personal");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -92,13 +89,7 @@ export function BaseDataAdmin({ stations, employees, vehicles, transpaConfigured
       )}
 
       {tab === "personal" && (
-        <EmployeeTab
-          employees={employees}
-          stations={stations}
-          pending={pending}
-          run={run}
-          transpaConfigured={transpaConfigured}
-        />
+        <EmployeeTab employees={employees} stations={stations} pending={pending} run={run} />
       )}
       {tab === "fordon" && (
         <VehicleTab vehicles={vehicles} stations={stations} pending={pending} run={run} />
@@ -122,13 +113,11 @@ function EmployeeTab({
   stations,
   pending,
   run,
-  transpaConfigured,
 }: {
   employees: ManagedEmployee[];
   stations: ManagedStation[];
   pending: boolean;
   run: Run;
-  transpaConfigured: boolean;
 }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -261,9 +250,6 @@ function EmployeeTab({
           </label>
         )}
         <span className="text-xs text-(--color-muted)">{shown.length} visas</span>
-        <div className="ml-auto">
-          <ImportEmployeesButton disabled={!transpaConfigured} />
-        </div>
       </div>
 
       {picked.size > 0 && (

@@ -6,6 +6,7 @@ import { dateRangeLabel, isoWeek, toIso, weekDates } from "@/lib/week";
 import { boardOverviews, lastSync } from "@/server/board-overview";
 import { antal } from "@/lib/plural";
 import { NewBoardForm } from "@/components/NewBoardForm";
+import { ImportEmployeesButton } from "@/components/ImportEmployeesButton";
 import { RemoveBoardButton } from "@/components/RemoveBoardButton";
 import { SchemaOutOfDate } from "@/components/SchemaOutOfDate";
 import { schemaStatusFor } from "@/server/schema-guard";
@@ -110,6 +111,11 @@ export default async function Home() {
         <nav className="flex flex-wrap gap-2 text-sm">
           {/* Grunddata är underlaget tavlorna byggs av, inte
               administration av appen — planeraren behöver det. */}
+          {/* Lägger bara till personer, så den är öppen för alla. */}
+          <ImportEmployeesButton
+            className={SEKUNDÄR}
+            disabled={!(process.env.TRANSPA_CLIENT_ID && process.env.TRANSPA_CLIENT_SECRET)}
+          />
           <Link href="/grunddata" className={SEKUNDÄR}>
             Grunddata
           </Link>
