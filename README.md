@@ -19,7 +19,7 @@ för hand och kan tryckas om när arbetsdagarna ändrats. Den bemannar
 heller inte någon som är ledig.
 
 **Arbetsdagarna ska komma från TransPA.** Tills hämtningen finns läses
-de ur ett arbetsmönster i appen — en cykel på 1–8 veckor, vilket täcker
+de ur ett arbetsmönster i appen — en cykel på 1–10 veckor, vilket täcker
 både vanliga veckoscheman och roterande upplägg. `CompositeWorkDayProvider`
 faller tillbaka **per person**, så övergången till TransPA kan ske en
 person i taget.
