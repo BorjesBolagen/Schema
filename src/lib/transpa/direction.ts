@@ -50,3 +50,54 @@ export function parseDirection(name: string | null | undefined): Direction | nul
  */
 export const DIRECTION_ARROW: Record<Direction, string> = { upp: "▲", ner: "▼" };
 export const DIRECTION_LABEL: Record<Direction, string> = { upp: "Upp", ner: "Ner" };
+
+/**
+ * Riktningen på en persons nattpass på en linjebil, ur turordningen.
+ *
+ * Den som kör en linjebil flera nätter i följd går upp första natten,
+ * ner nästa, upp den tredje och ner den fjärde — bilen står i andra
+ * änden efter varje natt. Så när benämningen i TransPA inte säger
+ * riktningen går den ändå att räkna ut ur ordningen.
+ *
+ * Indata är personens nattdatum på *en* rad, i valfri ordning, med
+ * riktningen ur benämningen när den finns. En följd bryts när en dag
+ * saknas, och nästa följd börjar om med upp.
+ *
+ * En känd riktning vinner över räkningen — benämningen beskriver resan
+ * som faktiskt är planerad. Finns en känd natt i följden räknas de
+ * okända ut från den, så att följden fortsätter växla runt den.
+ */
+export function alternatingNightDirections(
+  nights: Array<{ date: string; known: Direction | null }>,
+  addDays: (iso: string, days: number) => string,
+): Map<string, Direction> {
+  const byDate = new Map<string, Direction | null>();
+  for (const n of nights) {
+    // Två pass samma natt på samma rad: en känd riktning går före.
+    if (!byDate.has(n.date) || byDate.get(n.date) === null) byDate.set(n.date, n.known);
+  }
+  const dates = [...byDate.keys()].sort();
+
+  const runs: string[][] = [];
+  for (const d of dates) {
+    const run = runs[runs.length - 1];
+    if (run && addDays(run[run.length - 1], 1) === d) run.push(d);
+    else runs.push([d]);
+  }
+
+  const motsatt = (d: Direction): Direction => (d === "upp" ? "ner" : "upp");
+  const result = new Map<string, Direction>();
+  for (const run of runs) {
+    const ankare = run.findIndex((d) => byDate.get(d));
+    const ankareRiktning: Direction = ankare >= 0 ? byDate.get(run[ankare])! : "upp";
+    const ankareIndex = Math.max(ankare, 0);
+    run.forEach((d, i) => {
+      const känd = byDate.get(d);
+      result.set(
+        d,
+        känd ?? ((i - ankareIndex) % 2 === 0 ? ankareRiktning : motsatt(ankareRiktning)),
+      );
+    });
+  }
+  return result;
+}

@@ -40,7 +40,7 @@ function DirectionMark({ cell }: { cell: CellAssignment & { direction: NonNullab
           : "bg-[#E9EBF6] text-(--color-shift-night-ink)"
       }`}
       style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
-      title={`${DIRECTION_LABEL[cell.direction]} — ur passets benämning i TransPA`}
+      title={`${DIRECTION_LABEL[cell.direction]} — ur benämningen i TransPA, annars nattens plats i följden`}
       aria-label={DIRECTION_LABEL[cell.direction]}
     >
       {DIRECTION_ARROW[cell.direction]}
