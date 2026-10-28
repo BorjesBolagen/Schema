@@ -31,8 +31,11 @@ export const config = {
     Att lägga ut dem öppet är ofarligt: det är en logotyp. Och den
     verkliga gränsen ligger ändå inte här utan i requireUser() på varje
     sida och server-action — mellanvaran är en genväg.
+
+    api/cron undantas också: Vercel Cron har ingen sessionskaka, och
+    rutterna där kontrollerar CRON_SECRET själva.
   */
   matcher: [
-    "/((?!logga-in|kom-igang|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|ico|webmanifest)$).*)",
+    "/((?!logga-in|kom-igang|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|ico|webmanifest)$).*)",
   ],
 };
