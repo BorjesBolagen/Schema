@@ -1,3 +1,7 @@
 {
-  "regions": ["dub1"]
+  "regions": ["dub1"],
+  "crons": [
+    { "path": "/api/cron/transpa-personal?utc=20", "schedule": "0 20 * * 5" },
+    { "path": "/api/cron/transpa-personal?utc=21", "schedule": "0 21 * * 5" }
+  ]
 }

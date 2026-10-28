@@ -63,6 +63,7 @@ Lägg in miljövariablerna:
 | `TRANSPA_CLIENT_ID` | nej | När Visma beviljat access |
 | `TRANSPA_CLIENT_SECRET` | nej | |
 | `TRANSPA_TENANT_ID` | nej | |
+| `CRON_SECRET` | nej | Krävs för fredagshämtningen av nya personer, se nedan |
 
 Utan `DATABASE_URL` faller appen tillbaka på en inbäddad PGlite i en
 katalog. Det fungerar lokalt men inte på Vercel, vars filsystem är
@@ -283,6 +284,29 @@ transpaapi:shifts:read
 
 (Samma lista står i `src/lib/transpa/auth.ts` — om den ändras där ska
 den ändras här också.)
+
+### Automatisk hämtning på fredagar
+
+Varje fredag kl 22 svensk tid hämtar appen nya personer från TransPA —
+samma sak som knappen "Hämta nya personer" gör. Den lägger bara till
+och kopplar ihop handupplagda; den som redan finns rörs inte.
+
+Det körs av Vercel Cron (`vercel.json`) mot `/api/cron/transpa-personal`.
+Vercel räknar i UTC, så jobbet står på både 20 och 21 UTC och rutten
+släpper bara igenom den som är 22 i Stockholm — då blir det rätt både
+på sommar- och vintertid.
+
+För att det ska köra: lägg in `CRON_SECRET` i Vercel (Settings →
+Environment Variables, ett långt slumpat värde, t.ex. från
+`openssl rand -hex 32`) och deploya om. Utan den svarar rutten 401 och
+inget hämtas. Varje körning skrivs till tabellen `sync_run` som
+"nya personer · <bolag>", och Vercel visar svaret under Settings →
+Cron Jobs. Vill du prova direkt:
+
+```
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://<din-domän>/api/cron/transpa-personal?force=1"
+```
 
 ### Flera bolag
 
